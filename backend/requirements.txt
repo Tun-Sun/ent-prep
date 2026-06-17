@@ -14,3 +14,4 @@ whitenoise>=6.7
 dj-database-url>=2.2
 python-dotenv>=1.0
 Pillow>=10.0
+#1
