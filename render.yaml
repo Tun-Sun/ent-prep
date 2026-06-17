@@ -1,16 +1,11 @@
 # Render.com Blueprint — деплой всего приложения одной кнопкой
 # https://render.com/docs/blueprint-spec
-#
-# Инструкция:
-# 1. Загрузи проект на GitHub
-# 2. На Render.com → New → Blueprint → выбери репозиторий
-# 3. Render автоматически создаст базу данных и backend
-
+ 
 services:
   # ── PostgreSQL база данных (бесплатный план) ──
-  - type: pserv
+  - type: postgres
     name: ent-prep-db
-    env: docker
+    plan: free
     envVars:
       - key: POSTGRES_DB
         value: entprep
@@ -18,12 +13,7 @@ services:
         value: entprep
       - key: POSTGRES_PASSWORD
         generateValue: true
-    plan: free
-    disk:
-      name: db-data
-      mountPath: /var/lib/postgresql/data
-      sizeGB: 1
-
+ 
   # ── Django Backend (с фронтендом) ──
   - type: web
     name: ent-prep
@@ -33,12 +23,12 @@ services:
       cd frontend
       npm install
       npm run build
-
+ 
       # Копируем билд фронтенда в static для Django
       cd ..
       mkdir -p backend/staticfiles
       cp -r frontend/dist/* backend/staticfiles/
-
+ 
       # Устанавливаем Python-зависимости и готовим Django
       cd backend
       pip install -r requirements.txt
