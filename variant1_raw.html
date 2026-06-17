@@ -1,0 +1,1871 @@
+
+
+
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Пробный тест ЕНТ по физике - Кинематика и Графики.</title>
+	
+	<meta name="description" content="Практический тест, имитирующий реальные вопросы ЕНТ по разделу Кинематика. Научитесь быстро находить перемещение, среднюю скорость и анализировать уравнения движения.">	
+	
+	<meta name="robots" content="noindex, nofollow">
+	<link rel="canonical" href="https://test-ent.kz/test/physics/variant-1.php" />
+	<link rel="icon" href="../../favicon.png"  type="image/png"> 
+
+	
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+  <link rel="stylesheet" href="../../style.css">
+	
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,200..1000;1,200..1000&display=swap" rel="stylesheet">
+
+<link rel="icon" href="/logo.png"/> 
+
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6597628849157926"
+     crossorigin="anonymous"></script>
+
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-HYLXTDWLJ7"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-HYLXTDWLJ7');
+</script>
+
+
+
+  
+</head>
+
+<body>
+
+<!-- NAVBAR -->
+<nav class="navbar navbar-expand-lg sticky-top">
+  <div class="container">
+    <a class="navbar-brand" href="/index.php">ЕНТ<span style="color:#f59e0b">Тест</span></a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMenu">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navMenu">
+      <ul class="navbar-nav mx-auto gap-1">
+        <li class="nav-item"><a class="nav-link px-3" href="/test.php">Предметы</a></li>
+        <li class="nav-item"><a class="nav-link px-3" href="/about.php">Как работает</a></li>
+		  <li class="nav-item"><a class="nav-link px-3" href="/blog.php">Блог</a></li>
+        
+      </ul>
+      <a href="/test.php" class="btn btn-primary btn-sm px-4 rounded-pill">
+        <i class="bi bi-play-fill me-1"></i>Начать тест
+      </a>
+    </div>
+  </div>
+</nav>
+
+
+<!-- ent media header -->
+<ins class="adsbygoogle"
+     style="display:block"
+     data-ad-client="ca-pub-6597628849157926"
+     data-ad-slot="5562163491"
+     data-ad-format="auto"
+     data-full-width-responsive="true"></ins>
+<script>
+     (adsbygoogle = window.adsbygoogle || []).push({});
+</script>	
+
+
+
+<section class="hero">
+  <div class="container text-center">
+    <h1>Пробный тест ЕНТ Физика. Вариант 1</h1>
+    <p class="mt-2">Кинематика: равномерное/равноускоренное движение, графики.</p>
+  </div>
+</section>
+	
+<!-- -->
+	
+	
+	<main class="py-4">
+    <div class="container-fluid">
+  <div class="row g-3">
+    
+    <div class="col-12 col-lg-8 mx-auto left-col" id="left-col">
+          <div class="content-area">
+            <div class="toolbar-wrap">
+              <div class="quiz-toolbar" aria-label="Quiz toolbar">
+                <a class="btn btn-outline-secondary" href="/fisica.php" title="Home" aria-label="Home">
+  <i class="fas fa-home" aria-hidden="true"></i>
+</a>
+
+                
+                <button id="btn-finish" class="btn btn-outline-danger d-none" onclick="TestApp.finishTest()" title="Finish">
+                  <i class="fas fa-flag-checkered" aria-hidden="true"></i>
+                  <span class="ml-2">Завершить</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="content-area mt-3">
+            <div id="welcome-screen" class="text-center">
+              <h2 class="h4 mb-2">Пробный тест ЕНТ по физике. Вариант 1</h2>
+              <p class="text-muted mb-3">В этом тесте 40 вопросов</p>
+              <button class="btn btn-primary" onclick="TestApp.loadTest('test1')">Старт</button>
+            </div>
+
+            <div id="test-content" style="display:none;"></div>
+          </div>
+        </div>
+
+     
+        <div class="col-12 col-lg-4 d-none" id="right-col">
+          <aside class="explain-area" id="right-panel">
+            <div class="explain-header">
+              <h4 class="mb-1">Пояснение к ответу</h4>
+              <div id="answer-status" class="answer-status small text-muted"></div>
+            </div>
+            <div class="explain-body">
+              <div id="explain-correct" class="mb-2"></div>
+              <div id="explain-text"></div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </main>
+
+
+  <div class="modal fade" id="explainModal" tabindex="-1" role="dialog" aria-labelledby="explainModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content">
+        <div class="modal-header" style="gap: 54%;">
+          <h5 class="modal-title" id="explainModalLabel">Пояснение к ответу</h5>
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div id="m-answer-status" class="answer-status small text-muted mb-2"></div>
+          <div id="m-explain-correct" class="mb-2"></div>
+          <div id="m-explain-text"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <button id="explainFab"
+    type="button"
+    class="btn btn-primary"
+    data-toggle="modal"
+    data-target="#explainModal"
+    style="display:none; position:fixed; right:16px; bottom:16px; z-index:2000;">
+    Решение
+  </button>
+
+  <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+  const TestApp = (function() {
+    const testConfigs = {
+      'test1': { title: 'Пробный тест ЕНТ по физике. Вариант 1', icon: 'fa-calculator', questions: 40, currentQuestion: 1 }
+    };
+
+    const questionDatabase = {
+		
+		
+      'test1': [
+  {
+    question: 'Автомобиль движется равномерно со скоростью <span class="math-chip"><math><mrow><mn>72</mn><mi>км/ч</mi></mrow></math></span>. Какой путь он пройдет за <span class="math-chip"><math><mrow><mn>10</mn><mi>с</mi></mrow></math></span>?',
+    options: ['720 м', '200 м', '360 м', '20 м'],
+    correct: 1,
+    explanation: `
+      <div class="mb-2"><strong>Ответ:</strong> 200 м</div>
+      <div class="step">
+        <div class="step-title">Шаг 1</div>
+        <div class="math-chip">Переведем скорость в систему СИ: <math><mrow><mi>v</mi><mo>=</mo><mn>72</mn><mo>·</mo><mfrac><mn>1000</mn><mn>3600</mn></mfrac><mo>=</mo><mn>20</mn><mi>м/с</mi></mrow></math></div>
+      </div>
+      <div class="step">
+        <div class="step-title">Шаг 2</div>
+        <div class="math-chip">Используем формулу пути для равномерного движения: <math><mrow><mi>S</mi><mo>=</mo><mi>v</mi><mo>·</mo><mi>t</mi></mrow></math></div>
+      </div>
+      <div class="step">
+        <div class="step-title">Шаг 3</div>
+        <div class="math-chip">Вычислим результат: <math><mrow><mi>S</mi><mo>=</mo><mn>20</mn><mo>·</mo><mn>10</mn><mo>=</mo><mn>200</mn><mi>м</mi></mrow></math></div>
+      </div>
+    `
+  },
+  {
+    question: 'Уравнение движения тела имеет вид <span class="math-chip"><math><mrow><mi>x</mi><mo>=</mo><mn>5</mn><mo>+</mo><mn>2</mn><mi>t</mi><mo>+</mo><mn>0,5</mn><msup><mi>t</mi><mn>2</mn></msup></mrow></math></span>. Чему равно начальное ускорение тела?',
+    options: ['1 м/с²', '0,5 м/с²', '2 м/с²', '5 м/с²'],
+    correct: 0,
+    explanation: `
+      <div class="mb-2"><strong>Ответ:</strong> 1 м/с²</div>
+      <div class="step">
+        <div class="step-title">Шаг 1</div>
+        <div class="math-chip">Запишем общее уравнение равноускоренного движения: <math><mrow><mi>x</mi><mo>=</mo><msub><mi>x</mi><mn>0</mn></msub><mo>+</mo><msub><mi>v</mi><mn>0</mn></msub><mi>t</mi><mo>+</mo><mfrac><mrow><mi>a</mi><msup><mi>t</mi><mn>2</mn></msup></mrow><mn>2</mn></mfrac></mrow></math></div>
+      </div>
+      <div class="step">
+        <div class="step-title">Шаг 2</div>
+        <div class="math-chip">Сопоставим коэффициенты перед <math><mrow><msup><mi>t</mi><mn>2</mn></msup></mrow></math>: <math><mrow><mfrac><mi>a</mi><mn>2</mn></mfrac><mo>=</mo><mn>0,5</mn></mrow></math></div>
+      </div>
+      <div class="step">
+        <div class="step-title">Шаг 3</div>
+        <div class="math-chip">Находим ускорение: <math><mrow><mi>a</mi><mo>=</mo><mn>0,5</mn><mo>·</mo><mn>2</mn><mo>=</mo><mn>1</mn><mi>м/с²</mi></mrow></math></div>
+      </div>
+    `
+  },
+  {
+    question: 'Тело движется без начальной скорости с ускорением <span class="math-chip"><math><mrow><mn>4</mn><mi>м/с²</mi></mrow></math></span>. Какой путь оно пройдет за третью секунду движения?',
+    options: ['18 м', '8 м', '10 м', '12 м'],
+    correct: 2,
+    explanation: `
+      <div class="mb-2"><strong>Ответ:</strong> 10 м</div>
+      <div class="step">
+        <div class="step-title">Шаг 1</div>
+        <div class="math-chip">Путь за n-ную секунду вычисляется по формуле: <math><mrow><msub><mi>S</mi><mi>n</mi></msub><mo>=</mo><mfrac><mi>a</mi><mn>2</mn></mfrac><mo>(</mo><mn>2</mn><mi>n</mi><mo>−</mo><mn>1</mn><mo>)</mo></mrow></math></div>
+      </div>
+      <div class="step">
+        <div class="step-title">Шаг 2</div>
+        <div class="math-chip">Подставим значения <math><mrow><mi>a</mi><mo>=</mo><mn>4</mn></mrow></math> и <math><mrow><mi>n</mi><mo>=</mo><mn>3</mn></mrow></math></div>
+      </div>
+      <div class="step">
+        <div class="step-title">Шаг 3</div>
+        <div class="math-chip">Расчет: <math><mrow><msub><mi>S</mi><mn>3</mn></msub><mo>=</mo><mfrac><mn>4</mn><mn>2</mn></mfrac><mo>(</mo><mn>2</mn><mo>·</mo><mn>3</mn><mo>−</mo><mn>1</mn><mo>)</mo><mo>=</mo><mn>2</mn><mo>·</mo><mn>5</mn><mo>=</mo><mn>10</mn><mi>м</mi></mrow></math></div>
+      </div>
+    `
+  },
+  {
+    question: 'Тормозной путь автомобиля при скорости <span class="math-chip"><math><mi>v</mi></math></span> равен <span class="math-chip"><math><mi>S</mi></math></span>. Чему будет равен тормозной путь, если скорость увеличить в 3 раза?',
+    options: ['3S', '6S', '9S', '1,5S'],
+    correct: 2,
+    explanation: `
+      <div class="mb-2"><strong>Ответ:</strong> 9S</div>
+      <div class="step">
+        <div class="step-title">Шаг 1</div>
+        <div class="math-chip">Формула тормозного пути: <math><mrow><mi>S</mi><mo>=</mo><mfrac><msup><mi>v</mi><mn>2</mn></msup><mrow><mn>2</mn><mi>a</mi></mrow></mfrac></mrow></math></div>
+      </div>
+      <div class="step">
+        <div class="step-title">Шаг 2</div>
+        <div class="math-chip">Зависимость пути от скорости квадратичная: <math><mrow><mi>S</mi><mo>~</mo><msup><mi>v</mi><mn>2</mn></msup></mrow></math></div>
+      </div>
+      <div class="step">
+        <div class="step-title">Шаг 3</div>
+        <div class="math-chip">При увеличении скорости в 3 раза путь увеличится в <math><mrow><msup><mn>3</mn><mn>2</mn></msup><mo>=</mo><mn>9</mn></mrow></math> раз.</div>
+      </div>
+    `
+  },
+  {
+    question: 'По графику зависимости скорости от времени <span class="math-chip"><math><mrow><mi>v</mi><mo>(</mo><mi>t</mi><mo>)</mo></mrow></math></span> определите ускорение тела, если за <span class="math-chip"><math><mrow><mn>5</mn><mi>с</mi></mrow></math></span> скорость изменилась от <span class="math-chip"><math><mrow><mn>2</mn><mi>м/с</mi></mrow></math></span> до <span class="math-chip"><math><mrow><mn>12</mn><mi>м/с</mi></mrow></math></span>.',
+    options: ['2 м/с²', '10 м/с²', '5 м/с²', '14 м/с²'],
+    correct: 0,
+    explanation: `
+      <div class="mb-2"><strong>Ответ:</strong> 2 м/с²</div>
+      <div class="step">
+        <div class="step-title">Шаг 1</div>
+        <div class="math-chip">Используем определение ускорения: <math><mrow><mi>a</mi><mo>=</mo><mfrac><mrow><mi>v</mi><mo>−</mo><msub><mi>v</mi><mn>0</mn></msub></mrow><mi>t</mi></mfrac></mrow></math></div>
+      </div>
+      <div class="step">
+        <div class="step-title">Шаг 2</div>
+        <div class="math-chip">Подставим данные: <math><mrow><mi>a</mi><mo>=</mo><mfrac><mrow><mn>12</mn><mo>−</mo><mn>2</mn></mrow><mn>5</mn></mfrac></mrow></math></div>
+      </div>
+      <div class="step">
+        <div class="step-title">Шаг 3</div>
+        <div class="math-chip">Вычисление: <math><mrow><mi>a</mi><mo>=</mo><mfrac><mn>10</mn><mn>5</mn></mfrac><mo>=</mo><mn>2</mn><mi>м/с²</mi></mrow></math></div>
+      </div>
+    `
+  },
+  {
+    question: 'Чему равна средняя скорость тела, если первую половину времени оно двигалось со скоростью <span class="math-chip"><math><mrow><mn>10</mn><mi>м/с</mi></mrow></math></span>, а вторую — со скоростью <span class="math-chip"><math><mrow><mn>20</mn><mi>м/с</mi></mrow></math></span>?',
+    options: ['13,3 м/с', '15 м/с', '12 м/с', '25 м/с'],
+    correct: 1,
+    explanation: `
+      <div class="mb-2"><strong>Ответ:</strong> 15 м/с</div>
+      <div class="step">
+        <div class="step-title">Шаг 1</div>
+        <div class="math-chip">Если интервалы времени равны, средняя скорость равна среднему арифметическому: <math><mrow><msub><mi>v</mi><mi>ср</mi></msub><mo>=</mo><mfrac><mrow><msub><mi>v</mi><mn>1</mn></msub><mo>+</mo><msub><mi>v</mi><mn>2</mn></msub></mrow><mn>2</mn></mfrac></mrow></math></div>
+      </div>
+      <div class="step">
+        <div class="step-title">Шаг 2</div>
+        <div class="math-chip">Подставим значения: <math><mrow><msub><mi>v</mi><mi>ср</mi></msub><mo>=</mo><mfrac><mrow><mn>10</mn><mo>+</mo><mn>20</mn></mrow><mn>2</mn></mfrac></mrow></math></div>
+      </div>
+      <div class="step">
+        <div class="step-title">Шаг 3</div>
+        <div class="math-chip">Результат: <math><mrow><mn>15</mn><mi>м/с</mi></mrow></math></div>
+      </div>
+    `
+  },
+  {
+    question: 'Свободно падающее тело (без начальной скорости) достигает земли через <span class="math-chip"><math><mrow><mn>4</mn><mi>с</mi></mrow></math></span>. С какой высоты оно упало? (<span class="math-chip"><math><mrow><mi>g</mi><mo>=</mo><mn>10</mn><mi>м/с²</mi></mrow></math></span>)',
+    options: ['40 м', '160 м', '80 м', '20 м'],
+    correct: 2,
+    explanation: `
+      <div class="mb-2"><strong>Ответ:</strong> 80 м</div>
+      <div class="step">
+        <div class="step-title">Шаг 1</div>
+        <div class="math-chip">Формула высоты при свободном падении: <math><mrow><mi>h</mi><mo>=</mo><mfrac><mrow><mi>g</mi><msup><mi>t</mi><mn>2</mn></msup></mrow><mn>2</mn></mfrac></mrow></math></div>
+      </div>
+      <div class="step">
+        <div class="step-title">Шаг 2</div>
+        <div class="math-chip">Подставим <math><mrow><mi>g</mi><mo>=</mo><mn>10</mn></mrow></math> и <math><mrow><mi>t</mi><mo>=</mo><mn>4</mn></mrow></math></div>
+      </div>
+      <div class="step">
+        <div class="step-title">Шаг 3</div>
+        <div class="math-chip">Расчет: <math><mrow><mi>h</mi><mo>=</mo><mfrac><mrow><mn>10</mn><mo>·</mo><mn>16</mn></mrow><mn>2</mn></mfrac><mo>=</mo><mn>80</mn><mi>м</mi></mrow></math></div>
+      </div>
+    `
+  },
+  {
+    question: 'Скорость тела изменяется по закону <span class="math-chip"><math><mrow><mi>v</mi><mo>=</mo><mn>10</mn><mo>−</mo><mn>2</mn><mi>t</mi></mrow></math></span>. Через какое время тело остановится?',
+    options: ['10 с', '2 с', '20 с', '5 с'],
+    correct: 3,
+    explanation: `
+      <div class="mb-2"><strong>Ответ:</strong> 5 с</div>
+      <div class="step">
+        <div class="step-title">Шаг 1</div>
+        <div class="math-chip">В момент остановки конечная скорость <math><mrow><mi>v</mi><mo>=</mo><mn>0</mn></mrow></math></div>
+      </div>
+      <div class="step">
+        <div class="step-title">Шаг 2</div>
+        <div class="math-chip">Составим уравнение: <math><mrow><mn>0</mn><mo>=</mo><mn>10</mn><mo>−</mo><mn>2</mn><mi>t</mi></mrow></math></div>
+      </div>
+      <div class="step">
+        <div class="step-title">Шаг 3</div>
+        <div class="math-chip">Выразим время: <math><mrow><mn>2</mn><mi>t</mi><mo>=</mo><mn>10</mn><mo>⇒</mo><mi>t</mi><mo>=</mo><mn>5</mn><mi>с</mi></mrow></math></div>
+      </div>
+    `
+  },
+  {
+    question: 'Два поезда движутся навстречу друг другу со скоростями <span class="math-chip"><math><mrow><mn>20</mn><mi>м/с</mi></mrow></math></span> и <span class="math-chip"><math><mrow><mn>30</mn><mi>м/с</mi></mrow></math></span>. Какова их относительная скорость?',
+    options: ['10 м/с', '50 м/с', '25 м/с', '600 м/с'],
+    correct: 1,
+    explanation: `
+      <div class="mb-2"><strong>Ответ:</strong> 50 м/с</div>
+      <div class="step">
+        <div class="step-title">Шаг 1</div>
+        <div class="math-chip">При встречном движении относительная скорость равна сумме скоростей: <math><mrow><msub><mi>v</mi><mi>отн</mi></msub><mo>=</mo><msub><mi>v</mi><mn>1</mn></msub><mo>+</mo><msub><mi>v</mi><mn>2</mn></msub></mrow></math></div>
+      </div>
+      <div class="step">
+        <div class="step-title">Шаг 2</div>
+        <div class="math-chip">Сложим значения: <math><mrow><msub><mi>v</mi><mi>отн</mi></msub><mo>=</mo><mn>20</mn><mo>+</mo><mn>30</mn></mrow></math></div>
+      </div>
+      <div class="step">
+        <div class="step-title">Шаг 3</div>
+        <div class="math-chip">Итого: <math><mrow><mn>50</mn><mi>м/с</mi></mrow></math></div>
+      </div>
+    `
+  },
+  {
+    question: 'Вертолет пролетел на север <span class="math-chip"><math><mrow><mn>30</mn><mi>км</mi></mrow></math></span>, а затем повернул на восток и пролетел еще <span class="math-chip"><math><mrow><mn>40</mn><mi>км</mi></mrow></math></span>. Чему равен модуль перемещения вертолета?',
+    options: ['70 км', '10 км', '50 км', '1200 км'],
+    correct: 2,
+    explanation: `
+      <div class="mb-2"><strong>Ответ:</strong> 50 км</div>
+      <div class="step">
+        <div class="step-title">Шаг 1</div>
+        <div class="math-chip">Перемещение — это вектор, соединяющий начало и конец пути. В данном случае это гипотенуза прямоугольного треугольника.</div>
+      </div>
+      <div class="step">
+        <div class="step-title">Шаг 2</div>
+        <div class="math-chip">Применим теорему Пифагора: <math><mrow><mi>S</mi><mo>=</mo><msqrt><mrow><msubsup><mi>S</mi><mn>1</mn><mn>2</mn></msubsup><mo>+</mo><msubsup><mi>S</mi><mn>2</mn><mn>2</mn></msubsup></mrow></msqrt></mrow></math></div>
+      </div>
+      <div class="step">
+        <div class="step-title">Шаг 3</div>
+        <div class="math-chip">Вычисление: <math><mrow><mi>S</mi><mo>=</mo><msqrt><mrow><msup><mn>30</mn><mn>2</mn></msup><mo>+</mo><msup><mn>40</mn><mn>2</mn></msup></mrow></msqrt><mo>=</mo><msqrt><mrow><mn>900</mn><mo>+</mo><mn>1600</mn></mrow></msqrt><mo>=</mo><mn>50</mn><mi>км</mi></mrow></math></div>
+      </div>
+    `
+  },
+		  
+		  {
+  question: 'Тело движется равномерно. По графику зависимости координаты от времени видно, что за <span class="math-chip"><math><mrow><mn>6</mn><mi>с</mi></mrow></math></span> координата изменилась с <span class="math-chip"><math><mrow><mn>4</mn><mi>м</mi></mrow></math></span> до <span class="math-chip"><math><mrow><mn>22</mn><mi>м</mi></mrow></math></span>. Чему равна скорость тела?',
+  options: ['2 м/с', '4 м/с', '3 м/с', '18 м/с'],
+  correct: 2,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> 3 м/с</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">При равномерном движении скорость равна отношению изменения координаты ко времени: <math><mrow><mi>v</mi><mo>=</mo><mfrac><mrow><mi>Δx</mi></mrow><mrow><mi>Δt</mi></mrow></mfrac></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Найдём изменение координаты: <math><mrow><mi>Δx</mi><mo>=</mo><mn>22</mn><mo>−</mo><mn>4</mn><mo>=</mo><mn>18</mn><mi>м</mi></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Скорость: <math><mrow><mi>v</mi><mo>=</mo><mfrac><mn>18</mn><mn>6</mn></mfrac><mo>=</mo><mn>3</mn><mi>м/с</mi></mrow></math></div>
+    </div>
+  `
+},
+{
+  question: 'Тело двигалось прямолинейно со скоростью <span class="math-chip"><math><mrow><mn>5</mn><mi>м/с</mi></mrow></math></span> в течение <span class="math-chip"><math><mrow><mn>8</mn><mi>с</mi></mrow></math></span>. Какой путь прошло тело?',
+  options: ['40 м', '13 м', '1,6 м', '80 м'],
+  correct: 0,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> 40 м</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">Для равномерного движения используем формулу: <math><mrow><mi>S</mi><mo>=</mo><mi>v</mi><mo>·</mo><mi>t</mi></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Подставим значения: <math><mrow><mi>S</mi><mo>=</mo><mn>5</mn><mo>·</mo><mn>8</mn></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Получаем: <math><mrow><mi>S</mi><mo>=</mo><mn>40</mn><mi>м</mi></mrow></math></div>
+    </div>
+  `
+},
+{
+  question: 'Скорость тела увеличилась с <span class="math-chip"><math><mrow><mn>3</mn><mi>м/с</mi></mrow></math></span> до <span class="math-chip"><math><mrow><mn>15</mn><mi>м/с</mi></mrow></math></span> за <span class="math-chip"><math><mrow><mn>4</mn><mi>с</mi></mrow></math></span>. Какое ускорение имело тело?',
+  options: ['12 м/с²', '6 м/с²', '4 м/с²', '3 м/с²'],
+  correct: 3,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> 3 м/с²</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">Ускорение равно изменению скорости за единицу времени: <math><mrow><mi>a</mi><mo>=</mo><mfrac><mrow><mi>v</mi><mo>−</mo><msub><mi>v</mi><mn>0</mn></msub></mrow><mi>t</mi></mfrac></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Изменение скорости: <math><mrow><mn>15</mn><mo>−</mo><mn>3</mn><mo>=</mo><mn>12</mn><mi>м/с</mi></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Ускорение: <math><mrow><mi>a</mi><mo>=</mo><mfrac><mn>12</mn><mn>4</mn></mfrac><mo>=</mo><mn>3</mn><mi>м/с²</mi></mrow></math></div>
+    </div>
+  `
+},
+{
+  question: 'Тело начинает движение со скоростью <span class="math-chip"><math><mrow><mn>4</mn><mi>м/с</mi></mrow></math></span> и движется с ускорением <span class="math-chip"><math><mrow><mn>2</mn><mi>м/с²</mi></mrow></math></span>. Какой будет скорость через <span class="math-chip"><math><mrow><mn>6</mn><mi>с</mi></mrow></math></span>?',
+  options: ['8 м/с', '16 м/с', '12 м/с', '20 м/с'],
+  correct: 1,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> 16 м/с</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">Для равноускоренного движения: <math><mrow><mi>v</mi><mo>=</mo><msub><mi>v</mi><mn>0</mn></msub><mo>+</mo><mi>a</mi><mi>t</mi></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Подставим данные: <math><mrow><mi>v</mi><mo>=</mo><mn>4</mn><mo>+</mo><mn>2</mn><mo>·</mo><mn>6</mn></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Получаем: <math><mrow><mi>v</mi><mo>=</mo><mn>4</mn><mo>+</mo><mn>12</mn><mo>=</mo><mn>16</mn><mi>м/с</mi></mrow></math></div>
+    </div>
+  `
+},
+{
+  question: 'Тело движется с начальной скоростью <span class="math-chip"><math><mrow><mn>6</mn><mi>м/с</mi></mrow></math></span> и ускорением <span class="math-chip"><math><mrow><mn>2</mn><mi>м/с²</mi></mrow></math></span>. Какой путь оно пройдет за <span class="math-chip"><math><mrow><mn>5</mn><mi>с</mi></mrow></math></span>?',
+  options: ['25 м', '40 м', '55 м', '80 м'],
+  correct: 2,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> 55 м</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">Путь при равноускоренном движении: <math><mrow><mi>S</mi><mo>=</mo><msub><mi>v</mi><mn>0</mn></msub><mi>t</mi><mo>+</mo><mfrac><mrow><mi>a</mi><msup><mi>t</mi><mn>2</mn></msup></mrow><mn>2</mn></mfrac></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Подставим значения: <math><mrow><mi>S</mi><mo>=</mo><mn>6</mn><mo>·</mo><mn>5</mn><mo>+</mo><mfrac><mrow><mn>2</mn><mo>·</mo><msup><mn>5</mn><mn>2</mn></msup></mrow><mn>2</mn></mfrac></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Вычислим: <math><mrow><mi>S</mi><mo>=</mo><mn>30</mn><mo>+</mo><mn>25</mn><mo>=</mo><mn>55</mn><mi>м</mi></mrow></math></div>
+    </div>
+  `
+},
+{
+  question: 'По графику скорости от времени площадь под графиком за первые <span class="math-chip"><math><mrow><mn>4</mn><mi>с</mi></mrow></math></span> равна <span class="math-chip"><math><mrow><mn>24</mn><mi>м</mi></mrow></math></span>. Что показывает эта площадь?',
+  options: ['Ускорение тела', 'Начальную координату', 'Массу тела', 'Путь, пройденный телом'],
+  correct: 3,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> Путь, пройденный телом</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">На графике <math><mrow><mi>v</mi><mo>(</mo><mi>t</mi><mo>)</mo></mrow></math> площадь под линией показывает путь или перемещение.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Если скорость положительна, эта площадь численно равна пройденному пути.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Следовательно, площадь <math><mn>24</mn><mi>м</mi></math> означает, что тело прошло <math><mn>24</mn><mi>м</mi></math>.</div>
+    </div>
+  `
+},
+{
+  question: 'Тело прошло первую половину пути со скоростью <span class="math-chip"><math><mrow><mn>12</mn><mi>м/с</mi></mrow></math></span>, а вторую половину пути — со скоростью <span class="math-chip"><math><mrow><mn>6</mn><mi>м/с</mi></mrow></math></span>. Чему равна средняя скорость на всём пути?',
+  options: ['9 м/с', '6 м/с', '12 м/с', '8 м/с'],
+  correct: 3,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> 8 м/с</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">Если равны не промежутки времени, а участки пути, средняя скорость не равна обычному среднему арифметическому.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Для двух равных участков пути: <math><mrow><msub><mi>v</mi><mi>ср</mi></msub><mo>=</mo><mfrac><mrow><mn>2</mn><msub><mi>v</mi><mn>1</mn></msub><msub><mi>v</mi><mn>2</mn></msub></mrow><mrow><msub><mi>v</mi><mn>1</mn></msub><mo>+</mo><msub><mi>v</mi><mn>2</mn></msub></mrow></mfrac></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Вычислим: <math><mrow><msub><mi>v</mi><mi>ср</mi></msub><mo>=</mo><mfrac><mrow><mn>2</mn><mo>·</mo><mn>12</mn><mo>·</mo><mn>6</mn></mrow><mrow><mn>12</mn><mo>+</mo><mn>6</mn></mrow></mfrac><mo>=</mo><mfrac><mn>144</mn><mn>18</mn></mfrac><mo>=</mo><mn>8</mn><mi>м/с</mi></mrow></math></div>
+    </div>
+  `
+},
+{
+  question: 'Координата тела изменяется по закону <span class="math-chip"><math><mrow><mi>x</mi><mo>=</mo><mn>12</mn><mo>−</mo><mn>3</mn><mi>t</mi></mrow></math></span>. Какой вывод о движении тела верен?',
+  options: ['Тело движется равномерно в отрицательном направлении оси', 'Тело движется с ускорением 12 м/с²', 'Тело покоится', 'Тело движется равномерно в положительном направлении оси'],
+  correct: 0,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> Тело движется равномерно в отрицательном направлении оси</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">Уравнение равномерного движения имеет вид: <math><mrow><mi>x</mi><mo>=</mo><msub><mi>x</mi><mn>0</mn></msub><mo>+</mo><mi>v</mi><mi>t</mi></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">В уравнении <math><mrow><mi>x</mi><mo>=</mo><mn>12</mn><mo>−</mo><mn>3</mn><mi>t</mi></mrow></math> коэффициент при <math><mi>t</mi></math> равен <math><mrow><mo>−</mo><mn>3</mn></mrow></math>, значит скорость отрицательна.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Так как скорость постоянна, тело движется равномерно в отрицательном направлении оси.</div>
+    </div>
+  `
+},
+{
+  question: 'Тело тормозит с ускорением по модулю <span class="math-chip"><math><mrow><mn>4</mn><mi>м/с²</mi></mrow></math></span>. Начальная скорость равна <span class="math-chip"><math><mrow><mn>20</mn><mi>м/с</mi></mrow></math></span>. Какой путь тело пройдет до остановки?',
+  options: ['20 м', '40 м', '50 м', '80 м'],
+  correct: 2,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> 50 м</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">Используем формулу без времени: <math><mrow><msup><mi>v</mi><mn>2</mn></msup><mo>−</mo><msubsup><mi>v</mi><mn>0</mn><mn>2</mn></msubsup><mo>=</mo><mn>2</mn><mi>a</mi><mi>S</mi></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">При остановке <math><mrow><mi>v</mi><mo>=</mo><mn>0</mn></mrow></math>, а ускорение направлено против движения. По модулю: <math><mrow><mi>S</mi><mo>=</mo><mfrac><msubsup><mi>v</mi><mn>0</mn><mn>2</mn></msubsup><mrow><mn>2</mn><mi>a</mi></mrow></mfrac></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Вычислим: <math><mrow><mi>S</mi><mo>=</mo><mfrac><msup><mn>20</mn><mn>2</mn></msup><mrow><mn>2</mn><mo>·</mo><mn>4</mn></mrow></mfrac><mo>=</mo><mfrac><mn>400</mn><mn>8</mn></mfrac><mo>=</mo><mn>50</mn><mi>м</mi></mrow></math></div>
+    </div>
+  `
+},
+{
+  question: 'На графике <span class="math-chip"><math><mrow><mi>x</mi><mo>(</mo><mi>t</mi><mo>)</mo></mrow></math></span> прямая линия горизонтальна. Что это означает?',
+  options: ['Тело движется с постоянным ускорением', 'Тело движется с возрастающей скоростью', 'Координата тела не изменяется, тело покоится', 'Тело движется равномерно с большой скоростью'],
+  correct: 2,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> Координата тела не изменяется, тело покоится</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">График <math><mrow><mi>x</mi><mo>(</mo><mi>t</mi><mo>)</mo></mrow></math> показывает, как координата зависит от времени.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Если линия горизонтальна, координата остаётся постоянной.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Если координата не меняется, скорость равна нулю, значит тело покоится.</div>
+    </div>
+  `
+},
+		  
+		  {
+  question: 'Тело начинает движение из состояния покоя и за <span class="math-chip"><math><mrow><mn>6</mn><mi>с</mi></mrow></math></span> достигает скорости <span class="math-chip"><math><mrow><mn>18</mn><mi>м/с</mi></mrow></math></span>. Какой путь оно прошло за это время при равноускоренном движении?',
+  options: ['36 м', '54 м', '72 м', '108 м'],
+  correct: 1,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> 54 м</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">При равноускоренном движении средняя скорость равна: <math><mrow><msub><mi>v</mi><mi>ср</mi></msub><mo>=</mo><mfrac><mrow><msub><mi>v</mi><mn>0</mn></msub><mo>+</mo><mi>v</mi></mrow><mn>2</mn></mfrac></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Так как тело начало движение из покоя: <math><mrow><msub><mi>v</mi><mn>0</mn></msub><mo>=</mo><mn>0</mn></mrow></math>, значит <math><mrow><msub><mi>v</mi><mi>ср</mi></msub><mo>=</mo><mfrac><mn>18</mn><mn>2</mn></mfrac><mo>=</mo><mn>9</mn><mi>м/с</mi></mrow></math>.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Путь: <math><mrow><mi>S</mi><mo>=</mo><msub><mi>v</mi><mi>ср</mi></msub><mo>·</mo><mi>t</mi><mo>=</mo><mn>9</mn><mo>·</mo><mn>6</mn><mo>=</mo><mn>54</mn><mi>м</mi></mrow></math>.</div>
+    </div>
+  `
+},
+{
+  question: 'Скорость тела за <span class="math-chip"><math><mrow><mn>3</mn><mi>с</mi></mrow></math></span> уменьшилась с <span class="math-chip"><math><mrow><mn>16</mn><mi>м/с</mi></mrow></math></span> до <span class="math-chip"><math><mrow><mn>4</mn><mi>м/с</mi></mrow></math></span>. Чему равно ускорение тела?',
+  options: ['4 м/с²', '-4 м/с²', '-12 м/с²', '12 м/с²'],
+  correct: 1,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> -4 м/с²</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">Ускорение определяется по формуле: <math><mrow><mi>a</mi><mo>=</mo><mfrac><mrow><mi>v</mi><mo>−</mo><msub><mi>v</mi><mn>0</mn></msub></mrow><mi>t</mi></mfrac></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Подставим значения: <math><mrow><mi>a</mi><mo>=</mo><mfrac><mrow><mn>4</mn><mo>−</mo><mn>16</mn></mrow><mn>3</mn></mfrac></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Получаем: <math><mrow><mi>a</mi><mo>=</mo><mfrac><mrow><mo>−</mo><mn>12</mn></mrow><mn>3</mn></mfrac><mo>=</mo><mo>−</mo><mn>4</mn><mi>м/с²</mi></mrow></math>. Знак минус показывает торможение.</div>
+    </div>
+  `
+},
+{
+  question: 'Координата тела задана уравнением <span class="math-chip"><math><mrow><mi>x</mi><mo>=</mo><mo>−</mo><mn>5</mn><mo>+</mo><mn>4</mn><mi>t</mi></mrow></math></span>. Чему равна координата тела через <span class="math-chip"><math><mrow><mn>7</mn><mi>с</mi></mrow></math></span>?',
+  options: ['28 м', '23 м', '-23 м', '33 м'],
+  correct: 1,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> 23 м</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">В уравнение движения нужно подставить время <math><mrow><mi>t</mi><mo>=</mo><mn>7</mn><mi>с</mi></mrow></math>.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Получаем: <math><mrow><mi>x</mi><mo>=</mo><mo>−</mo><mn>5</mn><mo>+</mo><mn>4</mn><mo>·</mo><mn>7</mn></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Вычислим: <math><mrow><mi>x</mi><mo>=</mo><mo>−</mo><mn>5</mn><mo>+</mo><mn>28</mn><mo>=</mo><mn>23</mn><mi>м</mi></mrow></math>.</div>
+    </div>
+  `
+},
+{
+  question: 'Два велосипедиста движутся в одном направлении. Первый едет со скоростью <span class="math-chip"><math><mrow><mn>12</mn><mi>м/с</mi></mrow></math></span>, второй впереди него — со скоростью <span class="math-chip"><math><mrow><mn>8</mn><mi>м/с</mi></mrow></math></span>. Начальное расстояние между ними <span class="math-chip"><math><mrow><mn>60</mn><mi>м</mi></mrow></math></span>. Через сколько секунд первый догонит второго?',
+  options: ['10 с', '20 с', '12 с', '15 с'],
+  correct: 3,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> 15 с</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">При движении в одном направлении скорость сближения равна разности скоростей.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Найдём скорость сближения: <math><mrow><msub><mi>v</mi><mi>сбл</mi></msub><mo>=</mo><mn>12</mn><mo>−</mo><mn>8</mn><mo>=</mo><mn>4</mn><mi>м/с</mi></mrow></math>.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Время: <math><mrow><mi>t</mi><mo>=</mo><mfrac><mn>60</mn><mn>4</mn></mfrac><mo>=</mo><mn>15</mn><mi>с</mi></mrow></math>.</div>
+    </div>
+  `
+},
+{
+  question: 'Тело равноускоренно увеличило скорость с <span class="math-chip"><math><mrow><mn>2</mn><mi>м/с</mi></mrow></math></span> до <span class="math-chip"><math><mrow><mn>10</mn><mi>м/с</mi></mrow></math></span> и прошло путь <span class="math-chip"><math><mrow><mn>48</mn><mi>м</mi></mrow></math></span>. Сколько времени длилось движение?',
+  options: ['6 с', '8 с', '10 с', '12 с'],
+  correct: 1,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> 8 с</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">При равноускоренном движении средняя скорость: <math><mrow><msub><mi>v</mi><mi>ср</mi></msub><mo>=</mo><mfrac><mrow><msub><mi>v</mi><mn>0</mn></msub><mo>+</mo><mi>v</mi></mrow><mn>2</mn></mfrac></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Вычислим: <math><mrow><msub><mi>v</mi><mi>ср</mi></msub><mo>=</mo><mfrac><mrow><mn>2</mn><mo>+</mo><mn>10</mn></mrow><mn>2</mn></mfrac><mo>=</mo><mn>6</mn><mi>м/с</mi></mrow></math>.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Время: <math><mrow><mi>t</mi><mo>=</mo><mfrac><mi>S</mi><msub><mi>v</mi><mi>ср</mi></msub></mfrac><mo>=</mo><mfrac><mn>48</mn><mn>6</mn></mfrac><mo>=</mo><mn>8</mn><mi>с</mi></mrow></math>.</div>
+    </div>
+  `
+},
+{
+  question: 'Тело начинает движение без начальной скорости и за <span class="math-chip"><math><mrow><mn>4</mn><mi>с</mi></mrow></math></span> проходит <span class="math-chip"><math><mrow><mn>32</mn><mi>м</mi></mrow></math></span>. Чему равно ускорение тела?',
+  options: ['2 м/с²', '8 м/с²', '4 м/с²', '16 м/с²'],
+  correct: 2,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> 4 м/с²</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">Для движения без начальной скорости: <math><mrow><mi>S</mi><mo>=</mo><mfrac><mrow><mi>a</mi><msup><mi>t</mi><mn>2</mn></msup></mrow><mn>2</mn></mfrac></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Выразим ускорение: <math><mrow><mi>a</mi><mo>=</mo><mfrac><mrow><mn>2</mn><mi>S</mi></mrow><msup><mi>t</mi><mn>2</mn></msup></mfrac></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Подставим данные: <math><mrow><mi>a</mi><mo>=</mo><mfrac><mrow><mn>2</mn><mo>·</mo><mn>32</mn></mrow><msup><mn>4</mn><mn>2</mn></msup></mfrac><mo>=</mo><mfrac><mn>64</mn><mn>16</mn></mfrac><mo>=</mo><mn>4</mn><mi>м/с²</mi></mrow></math>.</div>
+    </div>
+  `
+},
+{
+  question: 'На графике скорости от времени скорость тела равномерно увеличивается с <span class="math-chip"><math><mrow><mn>4</mn><mi>м/с</mi></mrow></math></span> до <span class="math-chip"><math><mrow><mn>12</mn><mi>м/с</mi></mrow></math></span> за <span class="math-chip"><math><mrow><mn>5</mn><mi>с</mi></mrow></math></span>. Какой путь прошло тело?',
+  options: ['40 м', '20 м', '60 м', '80 м'],
+  correct: 0,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> 40 м</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">Путь по графику <math><mrow><mi>v</mi><mo>(</mo><mi>t</mi><mo>)</mo></mrow></math> равен площади под графиком.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Здесь площадь — трапеция: <math><mrow><mi>S</mi><mo>=</mo><mfrac><mrow><msub><mi>v</mi><mn>0</mn></msub><mo>+</mo><mi>v</mi></mrow><mn>2</mn></mfrac><mo>·</mo><mi>t</mi></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Вычислим: <math><mrow><mi>S</mi><mo>=</mo><mfrac><mrow><mn>4</mn><mo>+</mo><mn>12</mn></mrow><mn>2</mn></mfrac><mo>·</mo><mn>5</mn><mo>=</mo><mn>8</mn><mo>·</mo><mn>5</mn><mo>=</mo><mn>40</mn><mi>м</mi></mrow></math>.</div>
+    </div>
+  `
+},
+{
+  question: 'По графику <span class="math-chip"><math><mrow><mi>x</mi><mo>(</mo><mi>t</mi><mo>)</mo></mrow></math></span> координата тела изменилась с <span class="math-chip"><math><mrow><mn>30</mn><mi>м</mi></mrow></math></span> до <span class="math-chip"><math><mrow><mn>0</mn><mi>м</mi></mrow></math></span> за <span class="math-chip"><math><mrow><mn>10</mn><mi>с</mi></mrow></math></span>. Чему равна скорость тела?',
+  options: ['3 м/с', '-3 м/с', '30 м/с', '-30 м/с'],
+  correct: 1,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> -3 м/с</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">Скорость по графику координаты равна наклону прямой: <math><mrow><mi>v</mi><mo>=</mo><mfrac><mrow><mi>Δx</mi></mrow><mrow><mi>Δt</mi></mrow></mfrac></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Изменение координаты: <math><mrow><mi>Δx</mi><mo>=</mo><mn>0</mn><mo>−</mo><mn>30</mn><mo>=</mo><mo>−</mo><mn>30</mn><mi>м</mi></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Скорость: <math><mrow><mi>v</mi><mo>=</mo><mfrac><mrow><mo>−</mo><mn>30</mn></mrow><mn>10</mn></mfrac><mo>=</mo><mo>−</mo><mn>3</mn><mi>м/с</mi></mrow></math>.</div>
+    </div>
+  `
+},
+{
+  question: 'По графику ускорения от времени видно, что тело двигалось с постоянным ускорением <span class="math-chip"><math><mrow><mn>3</mn><mi>м/с²</mi></mrow></math></span> в течение <span class="math-chip"><math><mrow><mn>5</mn><mi>с</mi></mrow></math></span>. Начальная скорость равна <span class="math-chip"><math><mrow><mn>7</mn><mi>м/с</mi></mrow></math></span>. Какой стала скорость тела?',
+  options: ['10 м/с', '15 м/с', '22 м/с', '35 м/с'],
+  correct: 2,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> 22 м/с</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">При постоянном ускорении изменение скорости равно: <math><mrow><mi>Δv</mi><mo>=</mo><mi>a</mi><mi>t</mi></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Найдём изменение скорости: <math><mrow><mi>Δv</mi><mo>=</mo><mn>3</mn><mo>·</mo><mn>5</mn><mo>=</mo><mn>15</mn><mi>м/с</mi></mrow></math>.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Конечная скорость: <math><mrow><mi>v</mi><mo>=</mo><mn>7</mn><mo>+</mo><mn>15</mn><mo>=</mo><mn>22</mn><mi>м/с</mi></mrow></math>.</div>
+    </div>
+  `
+},
+{
+  question: 'Тело брошено вертикально вверх со скоростью <span class="math-chip"><math><mrow><mn>20</mn><mi>м/с</mi></mrow></math></span>. Какой максимальной высоты оно достигнет? Считать <span class="math-chip"><math><mrow><mi>g</mi><mo>=</mo><mn>10</mn><mi>м/с²</mi></mrow></math></span>.',
+  options: ['10 м', '20 м', '30 м', '40 м'],
+  correct: 1,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> 20 м</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">В верхней точке скорость тела становится равной нулю: <math><mrow><mi>v</mi><mo>=</mo><mn>0</mn></mrow></math>.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Используем формулу: <math><mrow><mi>h</mi><mo>=</mo><mfrac><msubsup><mi>v</mi><mn>0</mn><mn>2</mn></msubsup><mrow><mn>2</mn><mi>g</mi></mrow></mfrac></mrow></math></div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Вычислим: <math><mrow><mi>h</mi><mo>=</mo><mfrac><msup><mn>20</mn><mn>2</mn></msup><mrow><mn>2</mn><mo>·</mo><mn>10</mn></mrow></mfrac><mo>=</mo><mfrac><mn>400</mn><mn>20</mn></mfrac><mo>=</mo><mn>20</mn><mi>м</mi></mrow></math>.</div>
+    </div>
+  `
+},
+		  
+		  {
+  question: 'Если на графике <span class="math-chip"><math><mrow><mi>x</mi><mo>(</mo><mi>t</mi><mo>)</mo></mrow></math></span> прямая становится всё более крутой, что это означает?',
+  options: ['Тело обязательно движется назад', 'Координата тела не меняется', 'Скорость тела увеличивается', 'Ускорение тела равно нулю'],
+  correct: 2,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> Скорость тела увеличивается</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">На графике координаты от времени скорость связана с наклоном линии.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Чем больше наклон графика, тем больше модуль скорости тела.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Если график становится всё круче, значит скорость тела увеличивается.</div>
+    </div>
+  `
+},
+{
+  question: 'На графике <span class="math-chip"><math><mrow><mi>v</mi><mo>(</mo><mi>t</mi><mo>)</mo></mrow></math></span> скорость тела положительна, но постепенно уменьшается. Какой вывод верен?',
+  options: ['Тело движется вперёд, но замедляется', 'Тело движется назад и ускоряется', 'Тело покоится', 'Тело движется равномерно'],
+  correct: 0,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> Тело движется вперёд, но замедляется</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">Положительная скорость означает движение в положительном направлении выбранной оси.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Если скорость уменьшается, тело теряет быстроту движения.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Следовательно, тело продолжает двигаться вперёд, но замедляется.</div>
+    </div>
+  `
+},
+{
+  question: 'Если скорость тела равна нулю только в один момент времени, обязательно ли тело всё время находится в покое?',
+  options: ['Да, нулевая скорость всегда означает покой на всём участке', 'Да, если скорость стала нулевой, тело больше не может двигаться', 'Нет, но только если тело движется равномерно', 'Нет, тело могло остановиться на мгновение и затем продолжить движение'],
+  correct: 3,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> Нет, тело могло остановиться на мгновение и затем продолжить движение</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">Нулевая скорость в один момент означает только мгновенную остановку.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">При изменении направления движения тело может на короткое мгновение иметь скорость <math><mn>0</mn></math>.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Например, тело, брошенное вверх, в верхней точке имеет нулевую скорость, но затем начинает падать вниз.</div>
+    </div>
+  `
+},
+{
+  question: 'Что означает отрицательное значение скорости на графике <span class="math-chip"><math><mrow><mi>v</mi><mo>(</mo><mi>t</mi><mo>)</mo></mrow></math></span>?',
+  options: ['Тело обязательно замедляется', 'Тело движется в направлении, противоположном выбранной положительной оси', 'Тело не имеет ускорения', 'Тело находится в покое'],
+  correct: 1,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> Тело движется в направлении, противоположном выбранной положительной оси</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">Знак скорости показывает направление движения относительно выбранной оси.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Положительная скорость соответствует движению вдоль положительного направления оси.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Отрицательная скорость означает движение в противоположном направлении.</div>
+    </div>
+  `
+},
+{
+  question: 'Если скорость и ускорение направлены в одну сторону, что происходит с телом?',
+  options: ['Тело обязательно покоится', 'Тело меняет массу', 'Модуль скорости увеличивается', 'Координата тела не изменяется'],
+  correct: 2,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> Модуль скорости увеличивается</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">Ускорение показывает, как изменяется скорость тела.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Если ускорение направлено туда же, куда и скорость, оно увеличивает скорость движения.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Поэтому тело движется всё быстрее.</div>
+    </div>
+  `
+},
+{
+  question: 'Если скорость направлена вправо, а ускорение направлено влево, как изменяется движение тела в начальный момент?',
+  options: ['Тело движется вправо, но замедляется', 'Тело сразу начинает двигаться влево', 'Тело движется равномерно', 'Тело мгновенно останавливается'],
+  correct: 0,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> Тело движется вправо, но замедляется</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">Направление скорости показывает, куда тело движется в данный момент.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Если ускорение направлено противоположно скорости, оно уменьшает модуль скорости.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Поэтому тело сначала продолжает двигаться вправо, но его скорость уменьшается.</div>
+    </div>
+  `
+},
+{
+  question: 'Что показывает площадь под графиком скорости от времени, если часть графика находится ниже оси времени?',
+  options: ['Только массу тела', 'Только ускорение тела', 'Только начальную координату', 'Перемещение с учётом направления движения'],
+  correct: 3,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> Перемещение с учётом направления движения</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">Площадь под графиком <math><mrow><mi>v</mi><mo>(</mo><mi>t</mi><mo>)</mo></mrow></math> связана с перемещением.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Участок выше оси времени даёт положительное перемещение.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Участок ниже оси времени даёт отрицательное перемещение, потому что тело движется в противоположном направлении.</div>
+    </div>
+  `
+},
+{
+  question: 'Тело движется равномерно прямолинейно. Как в этом случае выглядит график скорости от времени?',
+  options: ['Парабола', 'Горизонтальная прямая', 'Ломаная линия с обязательным переходом через ноль', 'Окружность'],
+  correct: 1,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> Горизонтальная прямая</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">Равномерное движение означает, что скорость тела не изменяется со временем.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">На графике <math><mrow><mi>v</mi><mo>(</mo><mi>t</mi><mo>)</mo></mrow></math> постоянная величина изображается горизонтальной линией.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Поэтому график скорости при равномерном движении — горизонтальная прямая.</div>
+    </div>
+  `
+},
+{
+  question: 'Почему при равноускоренном движении график координаты от времени является кривой, а не прямой?',
+  options: ['Потому что тело обязательно движется по окружности', 'Потому что координата не зависит от времени', 'Потому что скорость тела изменяется со временем', 'Потому что ускорение всегда равно нулю'],
+  correct: 2,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> Потому что скорость тела изменяется со временем</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">Наклон графика координаты от времени связан со скоростью тела.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">При равноускоренном движении скорость не постоянна, а постепенно меняется.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Из-за изменения скорости наклон графика тоже меняется, поэтому график становится кривой.</div>
+    </div>
+  `
+},
+{
+  question: 'Какой вывод можно сделать, если на графике скорости от времени прямая пересекает ось времени?',
+  options: ['Тело в этот момент меняет направление движения или останавливается на мгновение', 'Тело всё время движется равномерно', 'У тела исчезает путь', 'Координата тела становится равной массе'],
+  correct: 0,
+  explanation: `
+    <div class="mb-2"><strong>Ответ:</strong> Тело в этот момент меняет направление движения или останавливается на мгновение</div>
+    <div class="step">
+      <div class="step-title">Шаг 1</div>
+      <div class="math-chip">Ось времени на графике <math><mrow><mi>v</mi><mo>(</mo><mi>t</mi><mo>)</mo></mrow></math> соответствует значению скорости <math><mn>0</mn></math>.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 2</div>
+      <div class="math-chip">Если график пересекает эту ось, скорость тела в этот момент становится нулевой.</div>
+    </div>
+    <div class="step">
+      <div class="step-title">Шаг 3</div>
+      <div class="math-chip">Если после этого знак скорости меняется, тело начинает двигаться в противоположном направлении.</div>
+    </div>
+  `
+}
+]
+		
+		
+    };
+
+     let currentTestId = null;
+    let userAnswers = {};
+    let questionStates = {};
+    let isFinished = false;
+
+    const EMPTY_EXPLAIN_HTML = `<div class="text-muted">Выберите вариант, чтобы увидеть объяснение.</div>`;
+
+    function isMobile(){
+      return window.matchMedia('(max-width: 991.98px)').matches;
+    }
+
+    function showFinishBtn(){ $('#btn-finish').removeClass('d-none'); }
+    function hideFinishBtn(){ $('#btn-finish').addClass('d-none'); }
+
+    function setLayout(hasRightPanel){
+  if (isMobile()) return;
+
+  if (hasRightPanel){
+    $('#right-col').removeClass('d-none');
+    $('#left-col')
+      .removeClass('mx-auto')
+      .removeClass('col-lg-12')
+      .addClass('col-lg-8');
+  } else {
+    $('#right-col').addClass('d-none');
+    $('#left-col')
+      .removeClass('col-lg-12')
+      .addClass('col-lg-8')
+      .addClass('mx-auto');
+  }
+}
+
+
+    function getQuestion(testId, questionNum){
+      const qs = questionDatabase[testId] || [];
+      if (!qs.length) return null;
+      return qs[(questionNum - 1) % qs.length];
+    }
+
+   
+    function clearExplanation(){
+      $('#answer-status').empty();
+      $('#explain-correct').empty();
+      $('#explain-text').empty();
+
+      $('#m-answer-status').empty();
+      $('#m-explain-correct').empty();
+      $('#m-explain-text').empty();
+    }
+
+    function resetSession(full = true){
+      clearExplanation();
+      $('#explainModal').modal('hide');
+      setLayout(false);
+
+      $('#explainFab').hide();
+      $('#welcome-screen').show();
+      $('#test-content').hide().empty();
+
+      hideFinishBtn();
+      isFinished = false;
+
+      if (full){
+        currentTestId = null;
+        userAnswers = {};
+        questionStates = {};
+      }
+    }
+
+    function showEmptyExplanation(){
+      const statusHtml = '<span class="text-muted">Ответ еще не выбран.</span>';
+      const correctHtml = '<div class="text-muted"><strong>Правильный ответ:</strong> —</div>';
+
+      $('#m-answer-status').html(statusHtml);
+      $('#m-explain-correct').html(correctHtml);
+      $('#m-explain-text').html(EMPTY_EXPLAIN_HTML);
+
+      if (isMobile()){
+        $('#explainFab').hide();
+      } else {
+        setLayout(false);
+        $('#answer-status').html(statusHtml);
+        $('#explain-correct').html(correctHtml);
+        $('#explain-text').html(EMPTY_EXPLAIN_HTML);
+        $('#explainFab').hide();
+      }
+    }
+
+    function renderExplanation(testId, questionNum, chosenIndex){
+      const q = getQuestion(testId, questionNum);
+      if (!q) return;
+
+      const ok = chosenIndex === q.correct;
+      const statusHtml = ok
+        ? '<span class="badge-dot ok"></span>Правильно'
+        : '<span class="badge-dot bad"></span>Неправильно';
+
+      const correctHtml = `<div><strong>Правильный ответ:</strong> ${q.options[q.correct] ?? ''}</div>`;
+      const textHtml = q.explanation ? q.explanation : '<div class="text-muted">No explanation.</div>';
+
+      if (isMobile()){
+        $('#m-answer-status').html(statusHtml);
+        $('#m-explain-correct').html(correctHtml);
+        $('#m-explain-text').html(textHtml);
+        $('#explainFab').show();
+      } else {
+        setLayout(true);
+        $('#answer-status').html(statusHtml);
+        $('#explain-correct').html(correctHtml);
+        $('#explain-text').html(textHtml);
+        $('#explainFab').hide();
+      }
+    }
+
+    function lockCurrentQuestionUI(locked){
+      const $card = $('#test-content').find('.question-card');
+      if (!$card.length) return;
+
+      if (locked){
+        $card.addClass('locked');
+        $card.find('input[type="radio"]').prop('disabled', true);
+      } else {
+        $card.removeClass('locked');
+        $card.find('input[type="radio"]').prop('disabled', false);
+      }
+    }
+
+
+	  
+function segmentWidthStyle(testId){
+  const test = testConfigs[testId];
+  const n = test.questions;
+  return `width: calc(100% / ${n});`;
+}
+
+
+
+	  
+
+    function renderProgressSegments(testId){
+      const test = testConfigs[testId];
+      const wStyle = segmentWidthStyle(testId);
+
+      let html = '';
+      for (let i = 1; i <= test.questions; i++){
+        const st = (questionStates[testId] || {})[i];
+
+        let cls = 'bg-secondary';
+        if (st === 'correct') cls = 'bg-success';
+        if (st === 'wrong') cls = 'bg-danger';
+        if (st === 'skipped') cls = 'bg-info';
+
+        html += `<div class="seg ${cls}" style="${wStyle}"></div>`;
+      }
+      return html;
+    }
+
+    function calculateScore(testId){
+      const test = testConfigs[testId];
+      const ans = userAnswers[testId] || {};
+      let answered = 0, correct = 0;
+
+      for (let i = 1; i <= test.questions; i++){
+        const q = getQuestion(testId, i);
+        const a = ans[i];
+        if (a === undefined) continue;
+        answered++;
+        if (q && a === q.correct) correct++;
+      }
+      return {answered, correct, score: answered ? Math.round((correct/answered)*100) : 0};
+    }
+	  
+	  //
+	  
+	  function buildQuestionsReport(testId){
+  const test = testConfigs[testId];
+  const answers = userAnswers[testId] || {};
+
+  let correctCount = 0;
+  let totalAnswered = 0;
+  let questionsReport = '';
+
+  for (let i = 1; i <= test.questions; i++){
+    const q = getQuestion(testId, i) || {
+      question: '-',
+      options: ['-','-','-','-'],
+      correct: 0,
+      explanation: ''
+    };
+
+    const userAnswer = answers[i];
+    const isAnswered = userAnswer !== undefined;
+    const isCorrect = isAnswered && userAnswer === q.correct;
+
+    if (isAnswered){
+      totalAnswered++;
+      if (isCorrect) correctCount++;
+    }
+
+    const statusIcon = !isAnswered
+      ? 'fa-minus-circle text-warning'
+      : (isCorrect ? 'fa-check-circle text-success' : 'fa-times-circle text-danger');
+
+    const statusText = !isAnswered
+      ? 'Пропущен'
+      : (isCorrect ? 'Правильно' : 'Неправильно');
+
+    const hasExplanation = q.explanation && String(q.explanation).trim().length > 0;
+
+    questionsReport += `
+      <div class="question-result mb-3 p-3 border rounded">
+        <div class="d-flex align-items-start">
+          <div class="mr-3">
+            <i class="fas ${statusIcon} fa-lg"></i>
+          </div>
+          <div class="flex-grow-1">
+            <h6><strong>Вопрос ${i}:</strong> ${q.question}</h6>
+
+            <div class="row mt-2">
+              <div class="col-md-6">
+                <small class="text-muted">Ваш ответ:</small><br>
+                <span class="${isCorrect ? 'text-success' : (isAnswered ? 'text-danger' : 'text-warning')}">
+                  ${isAnswered ? (q.options[userAnswer] ?? 'Не выбран') : 'Не выбран'}
+                </span>
+              </div>
+              <div class="col-md-6">
+                <small class="text-muted">Правильный ответ:</small><br>
+                <span class="text-success font-weight-bold">
+                  ${q.options[q.correct] ?? '-'}
+                </span>
+              </div>
+            </div>
+
+            <div class="mt-2">
+              <span class="badge badge-${!isAnswered ? 'warning' : (isCorrect ? 'success' : 'danger')}">
+                ${statusText}
+              </span>
+            </div>
+
+            ${hasExplanation ? `
+              <div class="alert alert-info mt-3 mb-0" role="alert">
+                <strong>Объяснение:</strong> ${q.explanation}
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  return {
+    correctCount,
+    totalAnswered,
+    questionsReport
+  };
+}
+	  
+	  //
+
+    function calculateBreakdown(testId){
+      const test = testConfigs[testId];
+      const st = questionStates[testId] || {};
+      let correct = 0, wrong = 0, skipped = 0;
+
+      for (let i = 1; i <= test.questions; i++){
+        if (st[i] === 'correct') correct++;
+        else if (st[i] === 'wrong') wrong++;
+        else if (st[i] === 'skipped') skipped++;
+      }
+
+      const total = test.questions || 1;
+      const pc = Math.round((correct / total) * 100);
+      const pw = Math.round((wrong / total) * 100);
+      const ps = Math.max(0, 100 - pc - pw);
+
+      return { total, correct, wrong, skipped, pc, pw, ps };
+    }
+
+    function renderResultProgressBar(testId){
+      const b = calculateBreakdown(testId);
+
+      return `
+        <div class="text-left mt-3" style="max-width:520px;margin:0 auto;">
+          <div class="small text-muted mb-2">
+            Итог: Правильно ${b.correct}, Неправильно ${b.wrong}, Пропущено ${b.skipped}
+          </div>
+
+          <div class="progress" style="height: 14px; border-radius: 999px; overflow: hidden;">
+            <div class="progress-bar bg-success" role="progressbar"
+                 style="width:${b.pc}%"
+                 aria-valuenow="${b.pc}" aria-valuemin="0" aria-valuemax="100"></div>
+
+            <div class="progress-bar bg-danger" role="progressbar"
+                 style="width:${b.pw}%"
+                 aria-valuenow="${b.pw}" aria-valuemin="0" aria-valuemax="100"></div>
+
+            <div class="progress-bar bg-info" role="progressbar"
+                 style="width:${b.ps}%"
+                 aria-valuenow="${b.ps}" aria-valuemin="0" aria-valuemax="100"></div>
+          </div>
+
+          <div class="d-flex justify-content-between small text-muted mt-2">
+            <span>✅ ${b.pc}%</span>
+            <span>❌ ${b.pw}%</span>
+            <span>⏭ ${b.ps}%</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function generateQuestionContent(testId, questionNum) {
+      const test = testConfigs[testId];
+      const q = getQuestion(testId, questionNum) || {
+        question: 'No questions loaded',
+        options: ['-', '-', '-', '-'],
+        correct: 0,
+        explanation: ''
+      };
+
+      const saved = userAnswers[testId] && userAnswers[testId][questionNum];
+      const alreadyAnswered = (saved !== undefined);
+      const disabledAttr = (isFinished || alreadyAnswered) ? 'disabled' : '';
+
+      const touched = Object.keys(questionStates[testId] || {}).length;
+      const progressPct = Math.round((touched / test.questions) * 100);
+
+      return `
+        <div class="test-header mb-3">
+          <div>
+            <div class="text-muted small">Вопрос ${test.currentQuestion} из ${test.questions}</div>
+            <h3 class="h5 mb-1"><i class="fas ${test.icon} mr-2"></i> ${test.title}</h3>
+            <div class="text-muted small">Прогресс: ${progressPct}%</div>
+          </div>
+
+          <div class="seg-progress mt-3">
+            ${renderProgressSegments(testId)}
+          </div>
+        </div>
+
+        <div class="question-card ${ (isFinished || alreadyAnswered) ? 'locked' : '' }">
+          <h5 class="mb-3"><strong></strong> ${q.question}</h5>
+          <div class="text-muted mb-2">Выберите ответ:</div>
+
+          ${q.options.map((opt, idx) => `
+            <div class="option-item ${saved === idx ? 'selected' : ''}"
+              data-option-index="${idx}"
+              onclick="TestApp.selectOption(this, ${idx})">
+              <label class="mb-0 w-100">
+                <input type="radio" name="question${questionNum}" value="${idx}"
+                  ${saved === idx ? 'checked' : ''} ${disabledAttr} />
+                ${opt}
+              </label>
+            </div>
+          `).join('')}
+
+          <div class="d-flex justify-content-between mt-3">
+            <button class="btn btn-outline-secondary" onclick="TestApp.previousQuestion()" ${test.currentQuestion === 1 ? 'disabled' : ''}>
+              <i class="fas fa-arrow-left mr-2"></i> Предыдущий
+            </button>
+            <button class="btn btn-primary" onclick="TestApp.nextQuestion()">
+              ${test.currentQuestion === test.questions ? 'Завершить' : 'Следующий'}
+              <i class="fas fa-${test.currentQuestion === test.questions ? 'check' : 'arrow-right'} ml-2"></i>
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    function markOptionsUI(testId, questionNum, chosenIndex){
+      const q = getQuestion(testId, questionNum);
+      if (!q) return;
+
+      const $wrap = $('#test-content').find('.question-card');
+      const $items = $wrap.find('.option-item');
+
+      $items.removeClass('selected correct wrong');
+      $items.find('input').prop('checked', false);
+
+      $items.each(function(){
+        const idx = Number($(this).data('option-index'));
+        if (idx === q.correct) $(this).addClass('correct');
+      });
+
+      const $chosen = $items.filter(`[data-option-index="${chosenIndex}"]`);
+      $chosen.addClass('selected');
+      $chosen.find('input').prop('checked', true);
+      if (chosenIndex !== q.correct) $chosen.addClass('wrong');
+    }
+
+    return {
+      loadTest(testId) {
+        resetSession(true);
+
+        currentTestId = testId;
+        userAnswers[testId] = {};
+        questionStates[testId] = {};
+        testConfigs[testId].currentQuestion = 1;
+        isFinished = false;
+
+        showFinishBtn();
+
+        $('#welcome-screen').hide();
+        $('#test-content').show();
+
+        this.renderTest();
+      },
+
+      renderTest() {
+        const test = testConfigs[currentTestId];
+
+        $('#test-content').html(generateQuestionContent(currentTestId, test.currentQuestion));
+
+        const saved = (userAnswers[currentTestId] || {})[test.currentQuestion];
+
+        if (saved !== undefined){
+          markOptionsUI(currentTestId, test.currentQuestion, saved);
+          renderExplanation(currentTestId, test.currentQuestion, saved);
+          lockCurrentQuestionUI(true);
+        } else {
+          showEmptyExplanation();
+          lockCurrentQuestionUI(false);
+        }
+      },
+
+      selectOption(element, value) {
+        if (isFinished) return;
+
+        const test = testConfigs[currentTestId];
+        const already = (userAnswers[currentTestId] || {})[test.currentQuestion];
+        if (already !== undefined) return;
+
+        userAnswers[currentTestId][test.currentQuestion] = value;
+
+        const q = getQuestion(currentTestId, test.currentQuestion);
+        questionStates[currentTestId][test.currentQuestion] = (q && value === q.correct) ? 'correct' : 'wrong';
+
+        markOptionsUI(currentTestId, test.currentQuestion, value);
+        renderExplanation(currentTestId, test.currentQuestion, value);
+        lockCurrentQuestionUI(true);
+
+        this.renderTest();
+      },
+
+      nextQuestion() {
+        const test = testConfigs[currentTestId];
+
+        const cur = test.currentQuestion;
+        const already = (userAnswers[currentTestId] || {})[cur];
+        if (already === undefined){
+          questionStates[currentTestId][cur] = 'skipped';
+        }
+
+        if (test.currentQuestion < test.questions) {
+          test.currentQuestion++;
+          this.renderTest();
+         
+        } else {
+          this.finishTest();
+        }
+      },
+
+      previousQuestion() {
+        const test = testConfigs[currentTestId];
+        if (test.currentQuestion > 1) {
+          test.currentQuestion--;
+          this.renderTest();
+       
+        }
+      },
+
+      goHome() { this.showWelcome(); },
+      goTests() { this.showWelcome(); },
+
+      finishTest() {
+  const test = testConfigs[currentTestId];
+
+  const cur = test.currentQuestion;
+  const already = (userAnswers[currentTestId] || {})[cur];
+  if (already === undefined){
+    questionStates[currentTestId][cur] = 'skipped';
+  }
+
+  const r = calculateScore(currentTestId);
+  const details = buildQuestionsReport(currentTestId);
+
+  const resultData = {
+    testId: currentTestId,
+    title: test.title,
+    description: test.description || '',
+    questions: test.questions,
+    currentQuestion: test.currentQuestion,
+    completedAt: new Date().toLocaleString('ru-RU'),
+    correctCount: details.correctCount,
+    totalAnswered: details.totalAnswered,
+    questionsReport: details.questionsReport,
+    score: r.score
+  };
+
+  localStorage.setItem('lastTestResult', JSON.stringify(resultData));
+
+  isFinished = true;
+  hideFinishBtn();
+
+  clearExplanation();
+  $('#explainModal').modal('hide');
+  $('#explainFab').hide();
+
+  setLayout(false);
+
+$('#test-content').html(`
+  
+
+  <div class="text-center my-5">
+    <i class="fas fa-clipboard-check fa-4x text-success mb-4"></i>
+    <h2 class="mb-3">Тест пройден</h2>
+
+    <p class="lead mt-4 mb-4">
+      Ваш результат сохранён. Нажмите кнопку ниже, чтобы посмотреть его на отдельной странице.
+    </p>
+
+    <a href="rezultat-testa.php" class="btn btn-primary btn-lg mr-2 mb-2">
+      <i class="fas fa-external-link-alt mr-2"></i>Посмотреть результат
+    </a>
+
+    <button class="btn btn-outline-primary btn-lg mr-2 mb-2" onclick="TestApp.retakeTest()">
+      <i class="fas fa-redo mr-2"></i>Пройти снова
+    </button>
+
+    <button class="btn btn-outline-secondary btn-lg mb-2" onclick="TestApp.showWelcome()">
+      <i class="fas fa-home mr-2"></i>К списку тестов
+    </button>
+  </div>
+`);;
+},
+
+      retakeTest() {
+        const test = testConfigs[currentTestId];
+        test.currentQuestion = 1;
+        userAnswers[currentTestId] = {};
+        questionStates[currentTestId] = {};
+        isFinished = false;
+
+        showFinishBtn();
+        clearExplanation();
+        $('#explainModal').modal('hide');
+        this.renderTest();
+      },
+
+      showWelcome() {
+        resetSession(true);
+      }
+    };
+  })();
+  </script>
+	
+	<style>
+		
+		 body{ background:#f6f7fb; }
+    .content-area{
+      background:#fff;
+      border:1px solid rgba(0,0,0,.08);
+      border-radius:14px;
+      padding:18px 18px;
+      box-shadow:0 10px 30px rgba(0,0,0,.06);
+    }
+    .toolbar-wrap{
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:10px;
+    }
+    .quiz-toolbar{
+      display:flex;
+      gap:6px;
+      flex-wrap:wrap;
+      justify-content:center;
+    }
+    .quiz-toolbar .btn{
+      font-size:16px;
+      border-radius:12px;
+      padding:5px 14px;
+    }
+    .explain-area{
+      background:#fff;
+      border:1px solid rgba(0,0,0,.08);
+      border-radius:14px;
+      padding:18px 18px;
+      box-shadow:0 10px 30px rgba(0,0,0,.06);
+      top: 90px;
+      max-height: calc(100vh - 120px);
+      overflow:auto;
+    }
+    .explain-header{
+      border-bottom:1px solid rgba(0,0,0,.07);
+      padding-bottom:10px;
+      margin-bottom:14px;
+    }
+    .answer-status{
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+    .badge-dot{
+      width:10px; height:10px; border-radius:50%;
+      display:inline-block;
+    }
+    .badge-dot.ok{ background:#16a34a; }
+    .badge-dot.bad{ background:#dc2626; }
+
+    .question-card h5{ line-height:1.35; }
+    .option-item{
+      border:1px solid rgba(0,0,0,.10);
+      border-radius:10px;
+      padding:12px 12px;
+      margin-bottom:10px;
+      cursor:pointer;
+      transition:.15s ease;
+      user-select:none;
+    }
+    .option-item:hover{ background:rgba(2,132,199,.06); }
+    .option-item input{ margin-right:.5rem; }
+    .option-item.selected{
+      border-color: rgba(2,132,199,.45);
+      background: rgba(2,132,199,.08);
+    }
+    .option-item.correct{
+      border-color: rgba(22,163,74,.55);
+      background: rgba(22,163,74,.10);
+    }
+    .option-item.wrong{
+      border-color: rgba(220,38,38,.55);
+      background: rgba(220,38,38,.10);
+    }
+    .question-card.locked .option-item{
+      pointer-events:none;
+      opacity:.9;
+      cursor:default;
+    }
+    .step{
+      background:#f4f6fb;
+      border:1px solid rgba(0,0,0,.06);
+      border-radius:10px;
+      padding:10px 12px;
+      margin:10px 0;
+    }
+    .step-title{ font-weight:600; margin-bottom:6px; }
+    .math-chip{
+      display:inline-block;
+      background:#e9eefc;
+      border-radius:10px;
+      padding:6px 10px;
+      margin:6px 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+
+		
+		
+	.seg-progress{
+  height:10px;
+  display:flex;
+  gap:4px;
+  border-radius:999px;
+  overflow:hidden; 
+}
+
+		.seg-progress .seg{
+  height:100%;
+  border-radius:999px;
+  background:#adb5bd;
+}
+
+
+ 
+    #explainFab{
+      position: fixed;
+      left: 50%;
+      bottom: 16px;
+      transform: translateX(-50%);
+      z-index: 1080;
+      border-radius: 999px;
+      padding: 10px 14px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, .18);
+      display: none;
+      font-size: 16px;
+    }
+    @media (max-width: 991.98px){
+      #right-col{ display:none !important; }
+    }
+    @media (min-width: 992px){
+      #explainFab{ display:none !important; }
+    }
+
+    .modal-body{
+      max-height: 70vh;
+      overflow:auto;
+    }
+    .text-muted { padding-bottom: 5px; }
+
+
+    .bg-success { background-color: rgb(51 241 153) !important; }
+    .bg-danger { background-color: rgb(249 33 54) !important; }
+    .bg-info { background-color: rgb(18 204 241) !important; }
+	  
+	 footer {
+            background: #1a1d29;
+            color: white;
+            padding: 3rem 2rem 1.5rem;
+        }
+
+        .footer-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .footer-section h4 {
+            margin-bottom: 1rem;
+            color: var(--accent-color);
+        }
+
+        .footer-section ul {
+            list-style: none;
+        }
+
+        .footer-section ul li {
+            margin-bottom: 0.5rem;
+        }
+
+        .footer-section a {
+            color: rgba(255, 255, 255, 0.7);
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        .footer-section a:hover {
+            color: white;
+        }
+
+        .footer-bottom {
+            text-align: center;
+            padding-top: 2rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            color: rgba(255, 255, 255, 0.6);
+        }
+ 
+	 
+
+        
+
+        .hero-content {
+            max-width: 800px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        .hero h1 {
+            font-size: 29px;
+            margin-bottom: 1rem;
+            font-weight: 700;
+			
+        }
+
+        .hero p {
+            font-size: 1.2rem;
+            margin-bottom: 0;
+            opacity: 0.95;
+			
+        }
+	  
+.fa-calculator:before {
+    content: "\f1ec";
+    color: #2196F3;
+}
+	</style>
+	
+	
+	  <div class="container pb-5 pt-5">
+  <div class="row">
+    <div class="col-md-12">
+		
+		<p>Данный тест разработан специально для подготовки учащихся к Единому Национальному Тестированию (ЕНТ) в Казахстане по предмету «Физика». Основной упор сделан на один из фундаментальных разделов механики — кинематику. В рамках предложенных 10 вопросов детально прорабатываются ключевые концепции описания движения материальной точки без учета причин, вызывающих это движение.</p>
+		<p>Тест охватывает несколько критически важных подтем. Во-первых, это равномерное прямолинейное движение, где проверяется умение оперировать понятиями скорости и пути, а также переводить единицы измерения в систему СИ. Во-вторых, значительная часть заданий посвящена равноускоренному движению. Здесь абитуриентам предлагается работать с уравнениями координаты и проекции скорости, вычислять ускорение по заданным параметрам и определять пути за конкретные промежутки времени (например, за n-ную секунду).</p>
+		<p>Особое внимание уделено графическому методу решения задач — навыку, который часто вызывает затруднения на экзамене. Ученикам необходимо интерпретировать графики зависимости скорости от времени для нахождения ускорения или пройденного пути. Также включены классические задачи на свободное падение под действием силы тяжести, расчет средней скорости при различных условиях движения и нахождение модуля перемещения при поворотах траектории.</p>
+		<p></p>
+		<p></p>
+		<p></p>
+         
+</div></div></div>
+	
+	
+	
+<ins class="adsbygoogle"
+     style="display:block"
+     data-ad-client="ca-pub-6597628849157926"
+     data-ad-slot="5562163491"
+     data-ad-format="auto"
+     data-full-width-responsive="true"></ins>
+<script>
+     (adsbygoogle = window.adsbygoogle || []).push({});
+</script>
+
+<!-- FOOTER -->
+<footer class="py-5">
+  <div class="container">
+    <div class="row g-4"> 
+      <div class="col-lg-4">
+        <div class="footer-brand mb-2">ЕНТ<span style="color:#f59e0b">Тест</span></div>
+        <p class="small mb-2">Бесплатные тесты для подготовки к ЕНТ в Казахстане. </p>
+        <p class="small mb-0" style="color:#475569">Все материалы доступны бесплатно и без регистрации.</p>
+      </div>
+      <div class="col-6 col-lg-2">
+        <h6 class="text-white mb-3">Предметы</h6>
+        <ul class="list-unstyled small">
+          <li class="mb-2"><a href="/matematica.php">Математика</a></li>
+          <li class="mb-2"><a href="/fisica.php">Физика</a></li>
+          <li class="mb-2"><a href="/chemie.php">Химия</a></li>
+          <li class="mb-2"><a href="/bio.php">Биология</a></li>
+          <li class="mb-2"><a href="/history-kz.php">История Казахстана</a></li>
+        </ul>
+      </div>
+      <div class="col-6 col-lg-2">
+        <h6 class="text-white mb-3">Разделы</h6>
+        <ul class="list-unstyled small">
+          
+          <li class="mb-2"><a href="/about.php">О сайте</a></li>
+			<li class="mb-2"><a href="/privacy-policy.php">Конфиденциальность</a></li>
+			<li class="mb-2"><a href="/terms-of-use.php">Пользовательское соглашение</a></li>
+			
+          <li class="mb-2"><a href="/contact.php">Контакты</a></li>
+        </ul>
+      </div>
+      <div class="col-lg-4">
+        <h6 class="text-white mb-3">О формате ЕНТ</h6>
+        <ul class="list-unstyled small">
+          <li class="mb-2"><i class="bi bi-check2 me-2 text-success"></i>120 вопросов всего</li>
+          <li class="mb-2"><i class="bi bi-check2 me-2 text-success"></i>3 обязательных предмета</li>
+          <li class="mb-2"><i class="bi bi-check2 me-2 text-success"></i>2 профильных по 40 вопросов</li>
+          <li class="mb-2"><i class="bi bi-check2 me-2 text-success"></i>Проходной балл — от 50</li>
+        </ul>
+      </div>
+    </div>
+    <hr style="border-color:#334155;margin-top:36px" />
+    <div class="d-flex flex-wrap justify-content-between align-items-center pt-2">
+      <p class="small mb-0">© 2025 ЕНТ Тест. Независимый учебный проект. Не является официальным сайтом госорганов/НЦТ.</p>
+     
+    </div>
+  </div>
+</footer>
+
+<script type="text/javascript">
+    (function(m,e,t,r,i,k,a){
+        m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+        m[i].l=1*new Date();
+        for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
+        k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+    })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=106956112', 'ym');
+
+    ym(106956112, 'init', {ssr:true, webvisor:true, clickmap:true, referrer: document.referrer, url: location.href, accurateTrackBounce:true, trackLinks:true});
+</script>
+<noscript><div><img src="https://mc.yandex.ru/watch/106956112" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+
+	
+	
+
+
+
+
+</body>
+</html>	

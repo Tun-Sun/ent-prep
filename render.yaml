@@ -1,0 +1,65 @@
+# Render.com Blueprint — деплой всего приложения одной кнопкой
+# https://render.com/docs/blueprint-spec
+#
+# Инструкция:
+# 1. Загрузи проект на GitHub
+# 2. На Render.com → New → Blueprint → выбери репозиторий
+# 3. Render автоматически создаст базу данных и backend
+
+services:
+  # ── PostgreSQL база данных (бесплатный план) ──
+  - type: pserv
+    name: ent-prep-db
+    env: docker
+    envVars:
+      - key: POSTGRES_DB
+        value: entprep
+      - key: POSTGRES_USER
+        value: entprep
+      - key: POSTGRES_PASSWORD
+        generateValue: true
+    plan: free
+    disk:
+      name: db-data
+      mountPath: /var/lib/postgresql/data
+      sizeGB: 1
+
+  # ── Django Backend (с фронтендом) ──
+  - type: web
+    name: ent-prep
+    env: python
+    buildCommand: |
+      # Билдим фронтенд
+      cd frontend
+      npm install
+      npm run build
+
+      # Копируем билд фронтенда в static для Django
+      cd ..
+      mkdir -p backend/staticfiles
+      cp -r frontend/dist/* backend/staticfiles/
+
+      # Устанавливаем Python-зависимости и готовим Django
+      cd backend
+      pip install -r requirements.txt
+      python manage.py collectstatic --noinput
+      python manage.py migrate
+    startCommand: cd backend && gunicorn core.wsgi:application --bind 0.0.0.0:$PORT
+    plan: free
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.0"
+      - key: NODE_VERSION
+        value: "20"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: ALLOWED_HOSTS
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ent-prep-db
+          property: connectionString
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
