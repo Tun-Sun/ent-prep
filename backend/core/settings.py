@@ -8,17 +8,61 @@ from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
 
-# Загружаем .env файл (если есть)
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Security
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-ent-prep-dev-key-change-in-production-2024!')
+# ── Security (до Sentry — DEBUG нужен для environment) ────────────────────
+SECRET_KEY = os.environ.get('SECRET_KEY')
 DEBUG = os.environ.get('DEBUG', 'True').lower() in ('true', '1', 'yes')
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',')
+
+if not DEBUG and not SECRET_KEY:
+    raise RuntimeError('SECRET_KEY must be set when DEBUG=False')
+
+if not SECRET_KEY:
+    SECRET_KEY = 'django-insecure-ent-prep-dev-key-change-in-production-2024!'
+
+ALLOWED_HOSTS = [
+    h.strip() for h in os.environ.get('ALLOWED_HOSTS', '*').split(',') if h.strip()
+]
+if not DEBUG:
+    assert ALLOWED_HOSTS and ALLOWED_HOSTS != ['*'], (
+        'ALLOWED_HOSTS must be set explicitly when DEBUG=False'
+    )
+
+# HTTPS/SSL — за Reverse Proxy (Render, Nginx)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'False').lower() in ('true', '1')
+SECURE_HSTS_SECONDS = 31536000 if not DEBUG else 0
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
+SECURE_HSTS_PRELOAD = not DEBUG
+CSRF_TRUSTED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get('CSRF_TRUSTED_ORIGINS', '').split(',')
+    if o.strip()
+] if not DEBUG else []
+
+# ── Sentry (мониторинг ошибок) ────────────────────────────────────────────
+_sentry_dsn = os.environ.get('SENTRY_DSN')
+if _sentry_dsn:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        integrations=[DjangoIntegration()],
+        traces_sample_rate=0.1,
+        send_default_pii=False,
+        environment='production' if not DEBUG else 'development',
+    )
 
 INSTALLED_APPS = [
+    # Local apps (должны быть до admin для переопределения шаблонов)
+    'subjects',
+    # Grappelli — должен быть до admin
+    'grappelli',
+    # Django
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -32,9 +76,9 @@ INSTALLED_APPS = [
     'whitenoise.runserver_nostatic',  # WhiteNoise в dev тоже
     # Local apps
     'users',
-    'subjects',
     'tests',
     'dashboard',
+    'grant_calc',
 ]
 
 MIDDLEWARE = [
@@ -130,3 +174,11 @@ SIMPLE_JWT = {
 _cors_origins = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://localhost:3000')
 CORS_ALLOWED_ORIGINS = [url.strip() for url in _cors_origins.split(',') if url.strip()]
 CORS_ALLOW_CREDENTIALS = True
+
+# AI (Gemini) — ключ для AI-разбора ошибок (https://aistudio.google.com/apikey)
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
+
+# Google Forms API — сервисный аккаунт для правильных ответов.
+# Без этого настройки импорт по ссылке работает только через скрапинг
+# (вопросы + картинки, но без правильных ответов).
+GOOGLE_SERVICE_ACCOUNT_FILE = os.environ.get('GOOGLE_SERVICE_ACCOUNT_FILE', '')

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { questionsAPI, subjectsAPI } from '../../api'
 import FormattedText from '../../components/FormattedText'
 
@@ -7,6 +8,7 @@ const EMPTY_FORM = {
   topic: '',
   difficulty: 'medium',
   explanation: '',
+  image: '',
   answers: [
     { text: '', is_correct: true },
     { text: '', is_correct: false },
@@ -18,11 +20,13 @@ const EMPTY_FORM = {
 const DIFF_LABELS = { easy: 'Лёгкий', medium: 'Средний', hard: 'Сложный' }
 
 export default function QuestionsPage() {
+  const [searchParams] = useSearchParams()
   const [questions, setQuestions] = useState([])
   const [subjects, setSubjects] = useState([])
   const [topics, setTopics] = useState([])
-  const [filterSubject, setFilterSubject] = useState('')
+  const [filterSubject, setFilterSubject] = useState(searchParams.get('subject') || '')
   const [filterTopic, setFilterTopic] = useState('')
+  const [filterSource, setFilterSource] = useState('')
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState(null)
@@ -49,6 +53,7 @@ export default function QuestionsPage() {
     const params = {}
     if (filterSubject) params.subject = filterSubject
     if (filterTopic) params.topic = filterTopic
+    if (filterSource) params.source_type = filterSource
     questionsAPI.list(params)
       .then(res => setQuestions(res.data))
       .finally(() => setLoading(false))
@@ -56,7 +61,7 @@ export default function QuestionsPage() {
 
   useEffect(() => {
     loadQuestions()
-  }, [filterSubject, filterTopic])
+  }, [filterSubject, filterTopic, filterSource])
 
   const openCreate = () => {
     setForm(EMPTY_FORM)
@@ -74,6 +79,7 @@ export default function QuestionsPage() {
         topic: data.topic,
         difficulty: data.difficulty,
         explanation: data.explanation,
+        image: data.image,
         answers: data.answers.map(a => ({ text: a.text, is_correct: a.is_correct })),
       })
       setEditingId(q.id)
@@ -178,6 +184,16 @@ export default function QuestionsPage() {
             <option value="">Все темы</option>
             {topics.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
+          <select
+            className="form-select"
+            style={{ maxWidth: 200 }}
+            value={filterSource}
+            onChange={e => setFilterSource(e.target.value)}
+          >
+            <option value="">Все базы</option>
+            <option value="collected">Собранные (ЕНТ)</option>
+            <option value="authorial">Авторские</option>
+          </select>
           <button className="btn btn-primary" onClick={openCreate} style={{ marginLeft: 'auto' }}>
             + Добавить вопрос
           </button>
@@ -241,6 +257,15 @@ export default function QuestionsPage() {
                 placeholder="Объяснение правильного ответа..."
               />
             </div>
+
+            {form.image && (
+              <div className="form-group">
+                <label className="form-label">Текущее изображение</label>
+                <div style={{ textAlign: 'center' }}>
+                  <img src={form.image} alt="" style={{ maxWidth: '100%', maxHeight: 300, borderRadius: 8 }} />
+                </div>
+              </div>
+            )}
 
             <div className="form-group">
               <label className="form-label">
@@ -312,6 +337,11 @@ export default function QuestionsPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600, marginBottom: 4 }}><FormattedText text={q.text} /></div>
+                  {q.image && (
+                    <div style={{ textAlign: 'center', margin: '8px 0' }}>
+                      <img src={q.image} alt="" style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8 }} />
+                    </div>
+                  )}
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <span className="badge badge-medium">{q.subject_name}</span>
                     <span className="badge badge-easy">{q.topic_name}</span>

@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "source": {
+    "form_id": "test_form_001",
+    "form_title": "Physics: Newton's Laws Quiz",
+    "form_url": "https://docs.google.com/forms/d/test_form_001",
+    "is_quiz": true
+  },
+  "subject_slug": "physics",
+  "subject_name": "Physics",
+  "topic_name": "Newton's Laws of Motion",
+  "language": "en",
+  "year": 2026,
+  "questions": [
+    {
+      "external_id": "test_form_001/q_001",
+      "title": "What is Newton's First Law of Motion?",
+      "type": "multiple_choice",
+      "answers": [
+        {
+          "text": "An object at rest stays at rest unless acted upon by an external force",
+          "is_correct": true
+        },
+        {
+          "text": "Force equals mass times acceleration",
+          "is_correct": false
+        },
+        {
+          "text": "For every action there is an equal and opposite reaction",
+          "is_correct": false
+        },
+        {
+          "text": "Objects fall at the same rate regardless of mass",
+          "is_correct": false
+        }
+      ],
+      "help_text": "Newton's First Law describes inertia — the tendency of objects to maintain their state of motion.",
+      "image_ref": null,
+      "order_index": 0
+    },
+    {
+      "external_id": "test_form_001/q_002",
+      "title": "A 2 kg object accelerates at 5 m/s². What is the net force?",
+      "type": "multiple_choice",
+      "answers": [
+        {
+          "text": "2.5 N",
+          "is_correct": false
+        },
+        {
+          "text": "7 N",
+          "is_correct": false
+        },
+        {
+          "text": "10 N",
+          "is_correct": true
+        },
+        {
+          "text": "20 N",
+          "is_correct": false
+        }
+      ],
+      "help_text": "Use F = ma. F = 2 kg × 5 m/s² = 10 N",
+      "image_ref": null,
+      "order_index": 1
+    }
+  ]
+}

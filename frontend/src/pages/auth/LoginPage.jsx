@@ -27,8 +27,7 @@ export default function LoginPage() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <div className="auth-logo">🎓</div>
-        <h1 className="auth-title">ENT Prep</h1>
+        <div className="auth-logo"><img src="/assets/logo2.png" alt="" /></div>
         <p className="auth-subtitle">Войдите в свой аккаунт</p>
 
         {error && <div className="alert alert-error">{error}</div>}
@@ -68,7 +67,8 @@ export default function LoginPage() {
         <div style={{ marginTop: 24, padding: '16px', background: '#F0F9FF', borderRadius: 8, fontSize: 13, color: '#6B7280' }}>
           <strong>Тестовые аккаунты:</strong><br />
           Ученик: <code>student1</code> / <code>password123</code><br />
-          Учитель: <code>teacher</code> / <code>password123</code>
+          Учитель: <code>teacher</code> / <code>teacher123</code><br />
+          Админ: <code>admin</code> / <code>admin123</code>
         </div>
       </div>
     </div>

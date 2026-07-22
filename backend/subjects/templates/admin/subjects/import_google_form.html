@@ -1,0 +1,118 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block extrastyle %}{{ block.super }}
+<style>
+  .result-box { background: var(--admin-white, #fff); border: 1px solid var(--hair-color, #ddd); border-radius: 4px; padding: 1em; margin-top: 1em; }
+  .result-box.ok { border-left: 4px solid var(--green, #28a745); }
+  .result-box.fail { border-left: 4px solid var(--red, #dc3545); }
+  .result-box pre { max-height: 300px; overflow: auto; font-size: .85em; }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+<ul class="grp-horizontal-list">
+  <li><a href="{% url 'admin:index' %}">{% translate 'Home' %}</a></li>
+  <li>Импорт из Google Forms</li>
+</ul>
+{% endblock %}
+
+{% block content %}
+<h1>Импорт авторских тестов из Google Forms</h1>
+
+<form method="post">
+  {% csrf_token %}
+
+  <fieldset class="module grp-module">
+    <h2 class="grp-collapse-handler">Параметры импорта</h2>
+
+    <div class="grp-row grp-cells-1">
+      <div class="l-2c-fluid l-d-4">
+        <div class="c-1"><label for="id_form_id" class="required">Ссылка на форму или ID редактора</label></div>
+        <div class="c-2">
+          <input type="text" id="id_form_id" name="form_id"
+                 placeholder="https://docs.google.com/forms/d/e/.../viewform"
+                 value="{{ request.POST.form_id|default:'' }}" required>
+          <p class="grp-help">Вставьте полную ссылку на Google Form или голый ID из редактора</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="grp-row grp-cells-1">
+      <div class="l-2c-fluid l-d-4">
+        <div class="c-1"><label for="id_subject_slug" class="required">Предмет (slug)</label></div>
+        <div class="c-2">
+          <input type="text" id="id_subject_slug" name="subject_slug"
+                 list="subject-list"
+                 placeholder="math, physics, chemistry ..."
+                 value="{{ request.POST.subject_slug|default:'' }}" required>
+          <datalist id="subject-list">
+            {% for s in subjects %}
+              <option value="{{ s.slug }}">
+            {% endfor %}
+          </datalist>
+        </div>
+      </div>
+    </div>
+
+    <div class="grp-row grp-cells-1">
+      <div class="l-2c-fluid l-d-4">
+        <div class="c-1"><label for="id_topic_name" class="required">Тема</label></div>
+        <div class="c-2">
+          <input type="text" id="id_topic_name" name="topic_name"
+                 placeholder="Законы Ньютона, Квадратные уравнения ..."
+                 value="{{ request.POST.topic_name|default:'' }}" required>
+        </div>
+      </div>
+    </div>
+
+    <div class="grp-row grp-cells-1">
+      <div class="l-2c-fluid l-d-4">
+        <div class="c-1"><label for="id_language">Язык</label></div>
+        <div class="c-2">
+          <select id="id_language" name="language">
+            <option value="ru"{% if request.POST.language == 'ru' %} selected{% endif %}>Русский</option>
+            <option value="kk"{% if request.POST.language == 'kk' %} selected{% endif %}>Қазақша</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="grp-row grp-cells-1">
+      <div class="l-2c-fluid l-d-4">
+        <div class="c-1"><label for="id_year">Год (опционально)</label></div>
+        <div class="c-2">
+          <input type="number" id="id_year" name="year" min="2024" max="2030"
+                 value="{{ request.POST.year|default:'' }}">
+        </div>
+      </div>
+    </div>
+
+    <div class="grp-row grp-cells-1">
+      <div class="l-2c-fluid l-d-4">
+        <div class="c-1"></div>
+        <div class="c-2">
+          <label>
+            <input type="checkbox" name="dry_run"
+                   {% if request.POST.dry_run == 'on' %}checked{% endif %}>
+            Сухой прогон (без записи в БД)
+          </label>
+        </div>
+      </div>
+    </div>
+  </fieldset>
+
+  <div class="grp-module grp-submit-row">
+    <ul>
+      <li><input type="submit" value="Импортировать" class="grp-button grp-default"></li>
+    </ul>
+  </div>
+</form>
+
+{% if result %}
+<div class="result-box {% if result.ok %}ok{% else %}fail{% endif %}">
+  <h2>{% if result.ok %}Успешно{% else %}Ошибка{% endif %}</h2>
+  <pre>{{ result|pprint }}</pre>
+</div>
+{% endif %}
+{% endblock %}

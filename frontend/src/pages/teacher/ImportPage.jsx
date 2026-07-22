@@ -246,6 +246,22 @@ export default function ImportPage() {
           Сложность: <code>easy</code> / <code>medium</code> / <code>hard</code> (или по-русски: лёгкий/средний/сложный)
         </p>
       </div>
+
+      {/* Ссылка на импорт из Google Forms */}
+      <div className="card" style={{ marginTop: 20, background: '#F5F3FF', borderColor: '#7C3AED' }}>
+        <div className="card-header">🔗 Импорт из Google Forms</div>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: 16 }}>
+          Подтяните вопросы прямо из Google Form по ссылке — автоматически,
+          включая текст, варианты ответов и картинки.
+        </p>
+        <Link
+          to="/teacher/import/google-forms"
+          className="btn btn-primary"
+          style={{ background: '#7C3AED' }}
+        >
+          📋 Импортировать из Google Forms →
+        </Link>
+      </div>
     </div>
   )
 }

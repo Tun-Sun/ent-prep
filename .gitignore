@@ -14,12 +14,24 @@ env/
 
 # Django
 backend/db.sqlite3
+backend/db.sqlite3.bak
+backend/*.sqlite3
 backend/staticfiles/
 backend/media/
+backend/raw_entries.json
 
 # Environment variables
 backend/.env
 .env
+
+# Google service-account credentials (НИКОГДА в репозиторий)
+backend/google_credentials/
+backend/service-account.json
+*-service-account*.json
+service-account*.json
+service_account*.json
+credentials.json
+token.pickle
 
 # IDE
 .vscode/

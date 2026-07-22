@@ -214,7 +214,7 @@ class Command(BaseCommand):
                 Question.objects.filter(topic__subject=subject).delete()
                 Topic.objects.filter(subject=subject).delete()
 
-            self.stdout.write(f'  ⬆ {entprep_slug:20s}...', ending='')
+            self.stdout.write(f'  >>> {entprep_slug:20s}...', ending='')
             self.stdout.flush()
 
             # Импортируем в транзакции

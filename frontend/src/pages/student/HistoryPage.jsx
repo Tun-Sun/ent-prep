@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { testsAPI } from '../../api'
 
 export default function HistoryPage() {
+  const navigate = useNavigate()
   const [sessions, setSessions] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -17,6 +18,11 @@ export default function HistoryPage() {
 
   return (
     <div>
+      <div className="d-card" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 20px', marginBottom: 16, cursor: 'pointer' }}
+        onClick={() => navigate(-1)}>
+        <span style={{ fontSize: 18, fontWeight: 700 }}>←</span>
+        <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Назад</span>
+      </div>
       <div className="page-header">
         <h1 className="page-title">История тестов</h1>
         <p className="page-subtitle">Все ваши завершённые тесты</p>

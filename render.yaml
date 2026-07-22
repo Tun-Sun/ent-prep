@@ -14,8 +14,6 @@ services:
     name: ent-prep
     env: python
     buildCommand: "./build.sh"
-    # predeploy запускается ПЕРЕД стартом сервера в runtime-окружении,
-    # где DATABASE_URL уже доступен. Работает на бесплатном плане.
     predeploy: "cd backend && python manage.py migrate && python manage.py import_json --skip-existing && python manage.py ensure_admin"
     startCommand: "cd backend && gunicorn core.wsgi:application --bind 0.0.0.0:$PORT"
     plan: free
@@ -35,6 +33,12 @@ services:
           name: ent-prep-db
           property: connectionString
       - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false
+      - key: SECURE_SSL_REDIRECT
+        value: "True"
+      - key: SENTRY_DSN
         sync: false
       - key: WEB_CONCURRENCY
         value: "2"
