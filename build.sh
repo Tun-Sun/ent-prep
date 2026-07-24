@@ -24,7 +24,7 @@ ls -la backend/staticfiles/
 # ── 3. Устанавливаем Python-зависимости ──
 echo ""
 echo "=== Installing Python dependencies ==="
-pip install -r requirements.txt
+python3 -m pip install -r requirements.txt --upgrade
 
 # ── 4. Собираем статику Django ──
 echo ""
