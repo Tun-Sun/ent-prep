@@ -3,7 +3,7 @@ from django.shortcuts import render
 from django.contrib import messages
 from functools import wraps
 
-from .models import Subject, Topic, Question, Answer
+from .models import Subject, Topic, Question, Answer, Variant
 from .import_views import import_from_google_form
 
 
@@ -31,10 +31,21 @@ class SubjectAdmin(admin.ModelAdmin):
         return Question.objects.filter(topic__subject=obj).count()
 
 
+@admin.register(Variant)
+class VariantAdmin(admin.ModelAdmin):
+    list_display = ('number', 'name', 'year', 'subjects_list')
+    search_fields = ('name',)
+
+    def subjects_list(self, obj):
+        subs = set(t.subject.name for t in obj.topics.all())
+        return ', '.join(sorted(subs))
+    subjects_list.short_description = 'Предметы'
+
+
 @admin.register(Topic)
 class TopicAdmin(admin.ModelAdmin):
-    list_display = ('name', 'subject', 'questions_count')
-    list_filter = ('subject',)
+    list_display = ('name', 'subject', 'variant', 'questions_count')
+    list_filter = ('subject', 'variant')
     search_fields = ('name',)
     autocomplete_fields = ('subject',)
 

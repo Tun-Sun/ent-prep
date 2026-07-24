@@ -39,6 +39,21 @@ class TestSession(models.Model):
         self.save()
 
 
+class TestSessionQuestion(models.Model):
+    """Immutable list of questions issued when a test session starts."""
+    session = models.ForeignKey(TestSession, on_delete=models.CASCADE, related_name='session_questions')
+    question = models.ForeignKey(Question, on_delete=models.PROTECT)
+    position = models.PositiveIntegerField()
+    section = models.CharField(max_length=12, choices=Question.SECTION_CHOICES, blank=True, default='')
+
+    class Meta:
+        ordering = ['position']
+        constraints = [
+            models.UniqueConstraint(fields=['session', 'question'], name='unique_session_question'),
+            models.UniqueConstraint(fields=['session', 'position'], name='unique_session_question_position'),
+        ]
+
+
 class TestSectionResult(models.Model):
     session = models.ForeignKey(TestSession, on_delete=models.CASCADE, related_name='section_results')
     section = models.CharField(max_length=12, choices=Question.SECTION_CHOICES)

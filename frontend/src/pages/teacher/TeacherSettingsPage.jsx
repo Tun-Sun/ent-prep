@@ -1,20 +1,19 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { authAPI, subjectsAPI } from '../../api'
+import { authAPI } from '../../api'
 import { useAuth } from '../../context/AuthContext'
-import { ArrowLeft, User, Camera, LogOut, Trash2, BookOpen, BarChart3, Settings, AlertTriangle, Tag } from 'lucide-react'
+import { ArrowLeft, User, Camera, LogOut, Trash2, BarChart3, Settings, AlertTriangle, Tag, Users, FileText, Pencil, Check } from 'lucide-react'
 
-export default function SettingsPage() {
+export default function TeacherSettingsPage() {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [allSubjects, setAllSubjects] = useState([])
-  const [selectedSubjects, setSelectedSubjects] = useState([])
-  const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
-
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [fullName, setFullName] = useState('')
+  const [editName, setEditName] = useState(false)
+  const [savingName, setSavingName] = useState(false)
   const fileInputRef = useRef(null)
 
   const handleAvatarChange = async (e) => {
@@ -33,36 +32,29 @@ export default function SettingsPage() {
   }
 
   useEffect(() => {
-    Promise.all([
-      authAPI.profile(),
-      subjectsAPI.list(),
-    ]).then(([prof, subs]) => {
-      setProfile(prof.data)
-      setAllSubjects(Array.isArray(subs.data) ? subs.data : [])
-      setSelectedSubjects(prof.data.profile_subjects || [])
-    }).catch(() => {})
+    authAPI.profile()
+      .then(res => { setProfile(res.data); setFullName(res.data.full_name || '') })
+      .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
+
+  const saveFullName = async () => {
+    if (!fullName.trim()) return
+    setSavingName(true)
+    try {
+      const res = await authAPI.updateProfile({ full_name: fullName.trim() })
+      setProfile(prev => ({ ...prev, full_name: res.data.full_name }))
+      setEditName(false)
+    } catch (error) {
+      alert(error.response?.data?.error || 'Ошибка сохранения')
+    } finally {
+      setSavingName(false)
+    }
+  }
 
   const handleLogout = () => {
     logout()
     navigate('/login')
-  }
-
-  const clearHistory = async () => {
-    if (!confirm('Удалить всю историю тестов? Это действие нельзя отменить.')) return
-    setDeleting(true)
-    try {
-      await authAPI.clearHistory()
-      setProfile(prev => ({
-        ...prev,
-        stats: { total_tests: 0, total_questions: 0, correct_answers: 0, avg_score: 0 },
-      }))
-    } catch (error) {
-      alert(error.response?.data?.error || error.response?.data?.detail || JSON.stringify(error.response?.data) || 'Ошибка сервера')
-    } finally {
-      setDeleting(false)
-    }
   }
 
   const deleteAccount = async () => {
@@ -88,7 +80,6 @@ export default function SettingsPage() {
   if (loading) return <div className="text-center mt-8"><div className="spinner"></div></div>
 
   const stats = profile?.stats || {}
-  const isStudent = user?.role === 'student'
 
   return (
     <div style={{ maxWidth: 600, margin: '0 auto' }}>
@@ -138,13 +129,55 @@ export default function SettingsPage() {
               <Camera size={14} strokeWidth={2} style={{ color: '#fff' }} />
             </button>
           </div>
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)' }}>
-              {profile?.full_name || profile?.username}
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {editName ? (
+                <>
+                  <input
+                    value={fullName}
+                    onChange={e => setFullName(e.target.value)}
+                    autoFocus
+                    style={{
+                      fontSize: 20, fontWeight: 800, color: 'var(--text)',
+                      border: 'none', borderBottom: '2px solid var(--primary)',
+                      background: 'transparent', outline: 'none',
+                      flex: 1, padding: '2px 0', fontFamily: 'inherit',
+                    }}
+                    placeholder="ФИО"
+                  />
+                  <button onClick={saveFullName} disabled={savingName || !fullName.trim()}
+                    style={{
+                      padding: '6px 14px', borderRadius: 8, border: 'none',
+                      background: 'var(--primary)', color: '#fff', cursor: 'pointer',
+                      fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4,
+                      opacity: savingName ? 0.6 : 1,
+                    }}>
+                    {savingName ? '...' : <><Check size={14} strokeWidth={1.5} /> Сохранить</>}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span style={{ fontSize: 20, fontWeight: 800, color: 'var(--text)' }}>
+                    {fullName || profile?.username}
+                  </span>
+                  <button onClick={() => setEditName(true)}
+                    style={{
+                      padding: 4, borderRadius: 6, border: 'none',
+                      background: 'transparent', cursor: 'pointer',
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                    <Pencil size={14} strokeWidth={1.5} style={{ color: 'var(--text-secondary)' }} />
+                  </button>
+                </>
+              )}
             </div>
             <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
               <Tag size={12} strokeWidth={1.5} />
               @{profile?.username || 'user'}
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--primary)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Users size={12} strokeWidth={1.5} />
+              Учитель
             </div>
           </div>
         </div>
@@ -161,35 +194,6 @@ export default function SettingsPage() {
         </button>
       </div>
 
-      {isStudent && (
-        <>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: 10, paddingLeft: 4 }}>
-            <BookOpen size={14} strokeWidth={1.5} style={{ display: 'inline', marginRight: 6, verticalAlign: -2 }} />
-            Мои предметы
-          </div>
-          <div className="card" style={{ padding: 24, marginBottom: 28 }}>
-            <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 16 }}>
-              Предметы назначены учителем. Для изменения обратитесь к преподавателю.
-            </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {allSubjects.filter(s => selectedSubjects.includes(s.id) || s.subject_type === 'mandatory').map(s => (
-                <span key={s.id} style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  padding: '8px 14px', borderRadius: 10, fontSize: 14, fontWeight: 500,
-                  background: s.subject_type === 'mandatory' ? 'rgba(245,158,11,0.08)' : 'rgba(99,102,241,0.06)',
-                  color: s.subject_type === 'mandatory' ? '#92400E' : 'var(--primary)',
-                  border: '1px solid ' + (s.subject_type === 'mandatory' ? 'rgba(245,158,11,0.2)' : 'rgba(99,102,241,0.15)'),
-                }}>
-                  <span>{s.icon}</span>
-                  {s.name}
-                  {s.subject_type === 'mandatory' && <span style={{ fontSize: 10, opacity: 0.6 }}>обяз.</span>}
-                </span>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
-
       <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: 10, paddingLeft: 4 }}>
         <BarChart3 size={14} strokeWidth={1.5} style={{ display: 'inline', marginRight: 6, verticalAlign: -2 }} />
         Статистика
@@ -198,13 +202,16 @@ export default function SettingsPage() {
       <div className="card" style={{ padding: 24, marginBottom: 28 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {[
-            { label: 'Тестов пройдено', value: stats.total_tests ?? 0 },
-            { label: 'Вопросов решено', value: stats.total_questions ?? 0 },
-            { label: 'Правильных ответов', value: stats.correct_answers ?? 0 },
-            { label: 'Процент верных', value: (stats.avg_score ?? 0) + '%' },
+            { label: 'Учеников', value: stats.total_students ?? '—', icon: Users },
+            { label: 'Тестов проведено', value: stats.total_tests ?? '—', icon: FileText },
+            { label: 'Всего вопросов', value: stats.total_questions ?? '—', icon: BarChart3 },
+            { label: 'Средний балл учеников', value: stats.avg_score ? stats.avg_score + '%' : '—', icon: BarChart3 },
           ].map(row => (
             <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0' }}>
-              <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>{row.label}</span>
+              <span style={{ fontSize: 14, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <row.icon size={14} strokeWidth={1.5} style={{ opacity: 0.5 }} />
+                {row.label}
+              </span>
               <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>{row.value}</span>
             </div>
           ))}
@@ -218,19 +225,6 @@ export default function SettingsPage() {
 
       <div className="card" style={{ padding: 24, marginBottom: 40, border: '1px solid rgba(239,68,68,0.15)' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <button onClick={clearHistory} disabled={deleting}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 10, cursor: deleting ? 'wait' : 'pointer',
-              padding: '8px 12px', borderRadius: 10, background: 'none', border: 'none',
-              font: 'inherit', color: '#dc2626', transition: 'background 0.15s',
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.04)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-            <Trash2 size={16} strokeWidth={1.5} />
-            <span style={{ fontSize: 14, fontWeight: 600 }}>
-              {deleting ? 'Удаление...' : 'Удалить всю историю тестов'}
-            </span>
-          </button>
           <button onClick={deleteAccount} disabled={deleting}
             style={{
               display: 'flex', alignItems: 'center', gap: 10, cursor: deleting ? 'wait' : 'pointer',
@@ -240,7 +234,7 @@ export default function SettingsPage() {
             onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.04)'}
             onMouseLeave={e => e.currentTarget.style.background = 'none'}>
             <AlertTriangle size={16} strokeWidth={1.5} />
-            <span style={{ fontSize: 14, fontWeight: 600 }}>Удалить аккаунт</span>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>{deleting ? 'Удаление...' : 'Удалить аккаунт'}</span>
           </button>
         </div>
       </div>

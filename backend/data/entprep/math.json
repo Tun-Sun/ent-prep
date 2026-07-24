@@ -1121,25 +1121,6 @@
     "source": "rephrased"
   },
   {
-    "q": "На соревнования приехало 9 команд. Сколькими способами можно распределить золото, серебро и бронзу?",
-    "o": [
-      "504",
-      "648",
-      "720",
-      "729"
-    ],
-    "c": 0,
-    "e": "P(9,3)=9×8×7=504 способа.",
-    "type": "single",
-    "difficulty": "medium",
-    "topic": "uncertainty",
-    "subtopic": "statistics_combinatorics_probability",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "rephrased"
-  },
-  {
     "q": "Два насоса вместе заполняют бассейн за 4 ч. Первый в 1,5 раза быстрее второго. За сколько часов второй заполнит бассейн один?",
     "o": [
       "12 часов",
@@ -4066,25 +4047,6 @@
     "source": "rephrased"
   },
   {
-    "q": "Производство выросло на 25% в 1-м квартале и на 20% во 2-м. На сколько % вырос объём за полгода?",
-    "o": [
-      "48%",
-      "45%",
-      "52%",
-      "50%"
-    ],
-    "c": 3,
-    "e": "1,25×1,20=1,50 — рост 50% относительно начала года.",
-    "type": "single",
-    "difficulty": "easy",
-    "topic": "quantitative_reasoning",
-    "subtopic": "percentages_diagrams",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "rephrased"
-  },
-  {
     "q": "600 000 тг разделили между двумя банками: под 8% и 12% годовых. Доход — 58 000 тг/год. Сколько во втором банке?",
     "o": [
       "400000 тенге",
@@ -5014,25 +4976,6 @@
     "pairs": null,
     "passage_text": null,
     "source": "static"
-  },
-  {
-    "q": "Цилиндрический бак высотой 12 м заполнен на 60%. После добавления 1884 л уровень стал 80%. Диаметр основания?",
-    "o": [
-      "3,2 м",
-      "2,8 м",
-      "4,2 м",
-      "3,6 м"
-    ],
-    "c": 0,
-    "e": "Прирост 20% высоты: объём=π·r²·12·0,2=2,4π·r²=18,84 м³ → r²≈2,5 → d≈3,16≈3,2 м.",
-    "type": "single",
-    "difficulty": "medium",
-    "topic": "space_shape",
-    "subtopic": "surface_area_solids",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
   },
   {
     "q": "Цена товара выросла на 25%. На сколько процентов нужно снизить новую цену, чтобы вернуть исходную?",
@@ -11968,6 +11911,25 @@
     "pairs": null,
     "passage_text": null,
     "source": "generated"
+  },
+  {
+    "q": "Сплав Cu:Zn:Sn = 5:3:2. После +4 кг меди стало 3:2:1. Начальная масса сплава?",
+    "o": [
+      "18 кг",
+      "24 кг",
+      "20 кг",
+      "15 кг"
+    ],
+    "c": 2,
+    "e": "Пусть масса сплава = 10x. Медь=5x, цинк=3x, олово=2x. После добавления 4 кг: (5x+4):(3x):(2x)=3:2:1 → цинк/олово=3x/2x=3/2=2/1? Нет, 3x:2x=3:2. В новом отношении 3:2:1 цинк/олово=2:1, но 3x:2x=3:2≠2:1. Используем медь/олово: (5x+4)/(2x)=3/1 → 5x+4=6x → x=4 → 10x=20 кг.",
+    "type": "single",
+    "difficulty": "medium",
+    "topic": "quantitative_reasoning",
+    "subtopic": "equation_word_problems",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "rephrased"
   },
   {
     "q": "Куртка за 45 000 тг подешевела на 20% до 36 000 тг, затем подорожала на 15%. Итоговая цена?",
@@ -22534,25 +22496,6 @@
     "source": "rephrased"
   },
   {
-    "q": "В банке лежит 500000 тенге под 8% годовых. Через сколько лет сумма превысит 600000 тенге при простых процентах?",
-    "o": [
-      "2,5 года",
-      "3 года",
-      "3,5 года",
-      "2 года"
-    ],
-    "c": 0,
-    "e": "600 000 = 500 000×(1+0,08×t) → t = 100 000/40 000 = 2,5 года.",
-    "type": "single",
-    "difficulty": "easy",
-    "topic": "quantitative_reasoning",
-    "subtopic": "percentages_diagrams",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "rephrased"
-  },
-  {
     "q": "8 сотрудников могли завершить проект за 18 дней. После 6 дней работы добавили 4 человека. За сколько дней завершат оставшуюся часть?",
     "o": [
       "8 дней",
@@ -24187,6 +24130,25 @@
     "source": "ai_gen_2026-06"
   },
   {
+    "q": "В банке лежит 500000 тенге под 8% годовых. Через сколько лет сумма превысит 600000 тенге при простых процентах?",
+    "o": [
+      "2,5 года",
+      "3 года",
+      "3,5 года",
+      "2 года"
+    ],
+    "c": 0,
+    "e": "600 000 = 500 000×(1+0,08×t) → t = 100 000/40 000 = 2,5 года.",
+    "type": "single",
+    "difficulty": "easy",
+    "topic": "quantitative_reasoning",
+    "subtopic": "percentages_diagrams",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "rephrased"
+  },
+  {
     "q": "Семья тратит 35% дохода на питание, 25% на жильё, а остальные 72000 тенге на другие нужды. Каков общий доход семьи?",
     "o": [
       "160000",
@@ -24263,6 +24225,25 @@
     "source": "generated"
   },
   {
+    "q": "На соревнования приехало 9 команд. Сколькими способами можно распределить золото, серебро и бронзу?",
+    "o": [
+      "504",
+      "648",
+      "720",
+      "729"
+    ],
+    "c": 0,
+    "e": "P(9,3)=9×8×7=504 способа.",
+    "type": "single",
+    "difficulty": "medium",
+    "topic": "uncertainty",
+    "subtopic": "statistics_combinatorics_probability",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "rephrased"
+  },
+  {
     "q": "За 12 месяцев нужно накопить 720 000 тг. В первые 4 месяца дополнительно тратится по 15 000 тг на консультации. Сколько тг откладывать ежемесячно?",
     "o": [
       "65000 тенге",
@@ -24280,6 +24261,44 @@
     "pairs": null,
     "passage_text": null,
     "source": "rephrased"
+  },
+  {
+    "q": "Производство выросло на 25% в 1-м квартале и на 20% во 2-м. На сколько % вырос объём за полгода?",
+    "o": [
+      "48%",
+      "45%",
+      "52%",
+      "50%"
+    ],
+    "c": 3,
+    "e": "1,25×1,20=1,50 — рост 50% относительно начала года.",
+    "type": "single",
+    "difficulty": "easy",
+    "topic": "quantitative_reasoning",
+    "subtopic": "percentages_diagrams",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "rephrased"
+  },
+  {
+    "q": "Цилиндрический бак высотой 12 м заполнен на 60%. После добавления 1884 л уровень стал 80%. Диаметр основания?",
+    "o": [
+      "3,2 м",
+      "2,8 м",
+      "4,2 м",
+      "3,6 м"
+    ],
+    "c": 0,
+    "e": "Прирост 20% высоты: объём=π·r²·12·0,2=2,4π·r²=18,84 м³ → r²≈2,5 → d≈3,16≈3,2 м.",
+    "type": "single",
+    "difficulty": "medium",
+    "topic": "space_shape",
+    "subtopic": "surface_area_solids",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
   },
   {
     "q": "Резервуар заполнен водой на 2/3. Израсходовали 1/4 от имеющейся воды. Какая часть резервуара осталась заполненной?",
@@ -24871,6 +24890,44 @@
     "source": "generated"
   },
   {
+    "q": "Стоимость проезда в такси составляет 400 тг за посадку плюс 120 тг за каждый километр. Сколько стоит поездка на 15 км?",
+    "o": [
+      "1 800 тг",
+      "2 000 тг",
+      "2 400 тг",
+      "2 200 тг"
+    ],
+    "c": 3,
+    "e": "400 + 120×15 = 400 + 1800 = 2200 тг.",
+    "type": "single",
+    "difficulty": "medium",
+    "topic": "quantitative_reasoning",
+    "subtopic": "equation_word_problems",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
+    "q": "Производство выросло на 15% в 1-м квартале, затем ещё на 20% во 2-м. Общий рост за полгода?",
+    "o": [
+      "35%",
+      "38%",
+      "40%",
+      "32%"
+    ],
+    "c": 1,
+    "e": "1,15×1,20=1,38 → общий рост 38%.",
+    "type": "single",
+    "difficulty": "medium",
+    "topic": "quantitative_reasoning",
+    "subtopic": "percentages_diagrams",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "rephrased"
+  },
+  {
     "q": "3 станка производят 40%, 35% и 25% продукции с браком 2%, 3% и 5%. Доля брака от общего объёма?",
     "o": [
       "2,85%",
@@ -24945,6 +25002,25 @@
     "pairs": null,
     "passage_text": null,
     "source": "generated"
+  },
+  {
+    "q": "Художественные — 42%, научные — 35%, справочные — 1840 книг. Сколько всего книг?",
+    "o": [
+      "8000",
+      "7200",
+      "7800",
+      "8400"
+    ],
+    "c": 0,
+    "e": "Справочных 23%; 1840/0,23=8000 книг",
+    "type": "single",
+    "difficulty": "easy",
+    "topic": "quantitative_reasoning",
+    "subtopic": "percentages_diagrams",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "static"
   },
   {
     "q": "Труба 1 наполняет бассейн за 6 ч, труба 2 — за 4 ч, слив опустошает за 12 ч. Все открыты одновременно. За сколько часов наполнится бассейн?",
@@ -27719,25 +27795,6 @@
     "pairs": null,
     "passage_text": null,
     "source": "rephrased"
-  },
-  {
-    "q": "Сумма квадратов первых n членов: S = n(2n² + 3n + 1)/6. Разность прогрессии, если a₁ = 2?",
-    "o": [
-      "3",
-      "1",
-      "2",
-      "4"
-    ],
-    "c": 1,
-    "e": "Из формулы S: a₁=S₁=1, a₂=S₂−S₁=4. Разность d=a₂−a₁=3. Но при a₁=2 (по условию) d=1 (нет противоречия с формулой только при a₁=1).",
-    "type": "single",
-    "difficulty": "hard",
-    "topic": "change_dependencies",
-    "subtopic": "sequences_table_analysis",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
   },
   {
     "q": "В библиотеке 1200 книг: 35% — учебники, 40% — худлит, остальное — справочники. Сколько справочников?",
@@ -30704,25 +30761,6 @@
     "source": "generated"
   },
   {
-    "q": "Стоимость проезда в такси составляет 400 тг за посадку плюс 120 тг за каждый километр. Сколько стоит поездка на 15 км?",
-    "o": [
-      "1 800 тг",
-      "2 000 тг",
-      "2 400 тг",
-      "2 200 тг"
-    ],
-    "c": 3,
-    "e": "400 + 120×15 = 400 + 1800 = 2200 тг.",
-    "type": "single",
-    "difficulty": "medium",
-    "topic": "quantitative_reasoning",
-    "subtopic": "equation_word_problems",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
     "q": "Акция выросла на 15%, затем упала на 20%, итог — 2760 тг. Начальная цена?",
     "o": [
       "2800 тенге",
@@ -33381,25 +33419,6 @@
     "pairs": null,
     "passage_text": null,
     "source": "generated"
-  },
-  {
-    "q": "Производство выросло на 15% в 1-м квартале, затем ещё на 20% во 2-м. Общий рост за полгода?",
-    "o": [
-      "35%",
-      "38%",
-      "40%",
-      "32%"
-    ],
-    "c": 1,
-    "e": "1,15×1,20=1,38 → общий рост 38%.",
-    "type": "single",
-    "difficulty": "medium",
-    "topic": "quantitative_reasoning",
-    "subtopic": "percentages_diagrams",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "rephrased"
   },
   {
     "q": "Телефон стоит 25 000 тг. Скидка 8% через приложение, наценка 4% в кредит. Разница в итоговой цене?",
@@ -38228,25 +38247,6 @@
     "source": "rephrased"
   },
   {
-    "q": "Инвестор получил 540 000 тенге, что составило 135% от первоначального вклада. Какова была сумма вклада?",
-    "o": [
-      "400 000 тг",
-      "380 000 тг",
-      "420 000 тг",
-      "450 000 тг"
-    ],
-    "c": 3,
-    "e": "540000÷1,35=400000 тенге — первоначальный вклад.",
-    "type": "single",
-    "difficulty": "medium",
-    "topic": "quantitative_reasoning",
-    "subtopic": "percentages_diagrams",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
     "q": "Зарплата 280 000 тг, удерживается 10% налог и 10% пенсионный взнос. Сколько получит на руки?",
     "o": [
       "240 000 тг",
@@ -38283,25 +38283,6 @@
     "pairs": null,
     "passage_text": null,
     "source": "static"
-  },
-  {
-    "q": "Сплав Cu:Zn:Sn = 5:3:2. После +4 кг меди стало 3:2:1. Начальная масса сплава?",
-    "o": [
-      "18 кг",
-      "24 кг",
-      "20 кг",
-      "15 кг"
-    ],
-    "c": 2,
-    "e": "Пусть масса сплава = 10x. Медь=5x, цинк=3x, олово=2x. После добавления 4 кг: (5x+4):(3x):(2x)=3:2:1 → цинк/олово=3x/2x=3/2=2/1? Нет, 3x:2x=3:2. В новом отношении 3:2:1 цинк/олово=2:1, но 3x:2x=3:2≠2:1. Используем медь/олово: (5x+4)/(2x)=3/1 → 5x+4=6x → x=4 → 10x=20 кг.",
-    "type": "single",
-    "difficulty": "medium",
-    "topic": "quantitative_reasoning",
-    "subtopic": "equation_word_problems",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "rephrased"
   },
   {
     "q": "Первая труба заполняет резервуар за 5 ч, вторая за 3 ч. За сколько часов заполнят вместе?",
@@ -41097,25 +41078,6 @@
     "source": "static"
   },
   {
-    "q": "Художественные — 42%, научные — 35%, справочные — 1840 книг. Сколько всего книг?",
-    "o": [
-      "8000",
-      "7200",
-      "7800",
-      "8400"
-    ],
-    "c": 0,
-    "e": "Справочных 23%; 1840/0,23=8000 книг",
-    "type": "single",
-    "difficulty": "easy",
-    "topic": "quantitative_reasoning",
-    "subtopic": "percentages_diagrams",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "static"
-  },
-  {
     "q": "Цена: +40%, −25%, +15%, −10%. Итог — 4158 тг. Какова закупочная цена?",
     "o": [
       "3500 тенге",
@@ -41186,25 +41148,6 @@
     "difficulty": "medium",
     "topic": "quantitative_reasoning",
     "subtopic": "percentages_diagrams",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
-    "q": "Ёмкость наполняется со скоростью 0,8 м³/мин. За 15 мин уровень поднялся на 1,5 м. Площадь дна?",
-    "o": [
-      "8 м²",
-      "10 м²",
-      "6 м²",
-      "12 м²"
-    ],
-    "c": 0,
-    "e": "За 15 мин поступило 0,8·15=12 м³; при подъёме 1,5 м площадь дна=12÷1,5=8 м².",
-    "type": "single",
-    "difficulty": "easy",
-    "topic": "space_shape",
-    "subtopic": "equation_word_problems",
     "correct_indices": null,
     "pairs": null,
     "passage_text": null,
@@ -47802,5 +47745,62 @@
     "pairs": null,
     "passage_text": null,
     "source": "ai_gen_2026-06"
+  },
+  {
+    "q": "Сумма квадратов первых n членов: S = n(2n² + 3n + 1)/6. Разность прогрессии, если a₁ = 2?",
+    "o": [
+      "3",
+      "1",
+      "2",
+      "4"
+    ],
+    "c": 1,
+    "e": "Из формулы S: a₁=S₁=1, a₂=S₂−S₁=4. Разность d=a₂−a₁=3. Но при a₁=2 (по условию) d=1 (нет противоречия с формулой только при a₁=1).",
+    "type": "single",
+    "difficulty": "hard",
+    "topic": "change_dependencies",
+    "subtopic": "sequences_table_analysis",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
+    "q": "Инвестор получил 540 000 тенге, что составило 135% от первоначального вклада. Какова была сумма вклада?",
+    "o": [
+      "400 000 тг",
+      "380 000 тг",
+      "420 000 тг",
+      "450 000 тг"
+    ],
+    "c": 3,
+    "e": "540000÷1,35=400000 тенге — первоначальный вклад.",
+    "type": "single",
+    "difficulty": "medium",
+    "topic": "quantitative_reasoning",
+    "subtopic": "percentages_diagrams",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
+    "q": "Ёмкость наполняется со скоростью 0,8 м³/мин. За 15 мин уровень поднялся на 1,5 м. Площадь дна?",
+    "o": [
+      "8 м²",
+      "10 м²",
+      "6 м²",
+      "12 м²"
+    ],
+    "c": 0,
+    "e": "За 15 мин поступило 0,8·15=12 м³; при подъёме 1,5 м площадь дна=12÷1,5=8 м².",
+    "type": "single",
+    "difficulty": "easy",
+    "topic": "space_shape",
+    "subtopic": "equation_word_problems",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
   }
 ]

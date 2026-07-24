@@ -380,25 +380,6 @@
     "source": "generated"
   },
   {
-    "q": "При сгорании 0,74 г органического вещества получено 1,32 г CO₂ и 0,54 г H₂O. Относительная плотность паров по воздуху равна 2,55. Молекулярная формула:",
-    "o": [
-      "C₄H₈O₂",
-      "C₃H₆O₂",
-      "C₂H₄O₂",
-      "C₂H₆O₂"
-    ],
-    "c": 1,
-    "e": "M=2,55×29≈74 г/моль. n(C)=0,03; n(H)=0,06; m(O)=0,74−0,36−0,06=0,32 г → n(O)=0,02. C:H:O=3:6:2 → C₃H₆O₂ (M=74 ✓).",
-    "type": "single",
-    "difficulty": "medium",
-    "topic": "calculations",
-    "subtopic": "molecular_formula_calculations",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
     "q": "В системе N₂+3H₂⇌2NH₃ давление увеличили в 4 раза. Куда сместится равновесие?",
     "o": [
       "В сторону образования NH₃",
@@ -741,25 +722,6 @@
     "source": "generated"
   },
   {
-    "q": "Формула муравьиной кислоты:",
-    "o": [
-      "HCl",
-      "CH₃COOH",
-      "C₂H₅COOH",
-      "HCOOH"
-    ],
-    "c": 3,
-    "e": "Муравьиная кислота — HCOOH (метановая кислота), простейшая карбоновая кислота.",
-    "type": "single",
-    "difficulty": "medium",
-    "topic": "organic_chemistry",
-    "subtopic": "oxygen_containing_organic",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "static"
-  },
-  {
     "q": "Температура кипения этанола (78°C) значительно выше температуры кипения диэтилового эфира (34,6°C) при одинаковой молекулярной массе. Чем объясняется данное различие?",
     "o": [
       "наличием водородных связей в этаноле",
@@ -907,25 +869,6 @@
     "pairs": null,
     "passage_text": null,
     "source": "ai_gen_2026-06"
-  },
-  {
-    "q": "Атом натрия имеет электронную конфигурацию:",
-    "o": [
-      "1s²2s²2p⁶3s²",
-      "1s²2s²2p⁶",
-      "1s²2s²2p⁵",
-      "1s²2s²2p⁶3s¹"
-    ],
-    "c": 3,
-    "e": "Na — 11-й элемент. Конфигурация: 1s²2s²2p⁶3s¹.",
-    "type": "single",
-    "difficulty": "medium",
-    "topic": "particle_structure",
-    "subtopic": "atom_structure_bonding",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "static"
   },
   {
     "q": "В молекуле акролеина (CH₂=CH-CHO) наблюдается сопряжение между двойной связью и карбонильной группой. Как это влияет на реакционную способность соединения?",
@@ -1099,25 +1042,6 @@
     "source": "ai_gen_2026-06"
   },
   {
-    "q": "При взаимодействии CaO с H₂O образуется:",
-    "o": [
-      "CaH₂",
-      "CaCO₃",
-      "CaSO₄",
-      "Ca(OH)₂"
-    ],
-    "c": 3,
-    "e": "CaO + H₂O → Ca(OH)₂ (гашёная известь). Основной оксид + вода = основание.",
-    "type": "single",
-    "difficulty": "medium",
-    "topic": "chemistry_life",
-    "subtopic": "group_1_2_3_elements",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "static"
-  },
-  {
     "q": "При термическом крекинге гексадекана C₁₆H₃₄ образуются два углеводорода с равным числом атомов углерода. Один из продуктов - алкан, другой - алкен. Какова формула образующегося алкена?",
     "o": [
       "C₆H₁₂",
@@ -1226,25 +1150,6 @@
     "difficulty": "medium",
     "topic": "organic_chemistry",
     "subtopic": "hydrocarbons",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
-    "q": "Для получения кремния в промышленности используют реакцию восстановления SiO₂ углём в электропечах. Определите массу кремния, полученного из 120 кг песка (SiO₂), если выход составляет 80%.",
-    "o": [
-      "56 кг",
-      "44,8 кг",
-      "28 кг",
-      "112 кг"
-    ],
-    "c": 1,
-    "e": "SiO₂ + 2C → Si + 2CO. n(SiO₂) = 120/60 = 2 кмоль; m(Si)теор = 2×28 = 56 кг. С учётом выхода 80%: 56×0,8 = 44,8 кг.",
-    "type": "single",
-    "difficulty": "hard",
-    "topic": "calculations",
-    "subtopic": "calculations_kinetics_electrolysis",
     "correct_indices": null,
     "pairs": null,
     "passage_text": null,
@@ -1650,25 +1555,6 @@
     "source": "generated"
   },
   {
-    "q": "Основной запасной полисахарид растений:",
-    "o": [
-      "Гликоген",
-      "Целлюлоза",
-      "Крахмал",
-      "Хитин"
-    ],
-    "c": 2,
-    "e": "Крахмал — запасной полисахарид растений (амилоза + амилопектин), накапливается в клубнях и зёрнах.",
-    "type": "single",
-    "difficulty": "easy",
-    "topic": "organic_chemistry",
-    "subtopic": "carbohydrates",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
     "q": "Каким реагентом обнаруживают крахмал?",
     "o": [
       "Раствор FeCl₃",
@@ -1701,25 +1587,6 @@
     "difficulty": "easy",
     "topic": "chemistry_life",
     "subtopic": "transition_metals_complexes",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
-    "q": "Какой моносахарид является изомером глюкозы?",
-    "o": [
-      "Мальтоза",
-      "Сахароза",
-      "Фруктоза",
-      "Целлюлоза"
-    ],
-    "c": 2,
-    "e": "Фруктоза (C₆H₁₂O₆) — изомер глюкозы: глюкоза — альдогексоза (—CHO), фруктоза — кетогексоза (>C=O в цепи).",
-    "type": "single",
-    "difficulty": "easy",
-    "topic": "organic_chemistry",
-    "subtopic": "carbohydrates",
     "correct_indices": null,
     "pairs": null,
     "passage_text": null,
@@ -2079,25 +1946,6 @@
     "e": "Cl₂ + H₂O ⇌ HCl + HClO. Образуются соляная и хлорноватистая кислоты. HClO — сильный окислитель, обеспечивает отбеливающие свойства.",
     "type": "single",
     "difficulty": "medium",
-    "topic": "chemistry_life",
-    "subtopic": "group_17_halogens",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
-    "q": "Какой галоген при обычных условиях является жидкостью?",
-    "o": [
-      "Йод (I₂)",
-      "Хлор (Cl₂)",
-      "Фтор (F₂)",
-      "Бром (Br₂)"
-    ],
-    "c": 3,
-    "e": "Бром Br₂ — единственный неметалл, при н.у. являющийся жидкостью. Красно-бурая жидкость с резким запахом.",
-    "type": "single",
-    "difficulty": "easy",
     "topic": "chemistry_life",
     "subtopic": "group_17_halogens",
     "correct_indices": null,
@@ -2999,25 +2847,6 @@
     "source": "ai_gen_2026-06"
   },
   {
-    "q": "Объём этилена (н.у.), необходимый для получения 1 кг полиэтилена при 100% выходе, равен:",
-    "o": [
-      "224 л",
-      "400 л",
-      "1600 л",
-      "800 л"
-    ],
-    "c": 3,
-    "e": "При полимеризации масса сохраняется: n(C₂H₄)=1000/28≈35,71 моль. V=35,71×22,4≈800 л.",
-    "type": "single",
-    "difficulty": "hard",
-    "topic": "organic_chemistry",
-    "subtopic": "polymers_petroleum",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
     "q": "При крекинге 580 г бутана получили смесь пропилена и метана. Объём (н.у.) образовавшегося пропилена равен:",
     "o": [
       "224 л",
@@ -3626,25 +3455,6 @@
     "source": "generated"
   },
   {
-    "q": "При дегидрировании н-гексана в процессе риформинга образуется:",
-    "o": [
-      "Циклогексан C₆H₁₂",
-      "Бензол C₆H₆",
-      "Гексен C₆H₁₂",
-      "Толуол C₇H₈"
-    ],
-    "c": 1,
-    "e": "C₆H₁₄→(кат.,t)C₆H₆+4H₂. При риформинге н-гексан циклизуется и дегидрируется до бензола — ароматизация.",
-    "type": "single",
-    "difficulty": "hard",
-    "topic": "organic_chemistry",
-    "subtopic": "polymers_petroleum",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
     "q": "Степень окисления щёлочноземельных металлов в соединениях:",
     "o": [
       "+1",
@@ -3829,25 +3639,6 @@
     "difficulty": "medium",
     "topic": "particle_structure",
     "subtopic": "periodic_law",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
-    "q": "Продукт взаимодействия CO₂ с избытком NaOH:",
-    "o": [
-      "Na₂O",
-      "NaHCO₃",
-      "NaOH",
-      "Na₂CO₃"
-    ],
-    "c": 3,
-    "e": "CO₂ + 2NaOH → Na₂CO₃ + H₂O (избыток NaOH → средняя соль). При избытке CO₂: CO₂ + NaOH → NaHCO₃.",
-    "type": "single",
-    "difficulty": "easy",
-    "topic": "chemistry_life",
-    "subtopic": "group_14_elements",
     "correct_indices": null,
     "pairs": null,
     "passage_text": null,
@@ -4966,6 +4757,63 @@
     "source": "ai_gen_2026-06"
   },
   {
+    "q": "Какая степень окисления хлора в соединении HCl?",
+    "o": [
+      "+7",
+      "+1",
+      "0",
+      "−1"
+    ],
+    "c": 3,
+    "e": "В HCl: H = +1, Cl = −1. Хлор более электроотрицателен, чем водород, притягивает общую пару электронов.",
+    "type": "single",
+    "difficulty": "easy",
+    "topic": "chemistry_life",
+    "subtopic": "group_17_halogens",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
+    "q": "К сильным электролитам относится:",
+    "o": [
+      "CH₃COOH",
+      "H₂O",
+      "NH₃",
+      "HCl"
+    ],
+    "c": 3,
+    "e": "HCl — сильная кислота, полностью диссоциирует: HCl → H⁺ + Cl⁻.",
+    "type": "single",
+    "difficulty": "medium",
+    "topic": "reaction_energetics",
+    "subtopic": "ionic_equilibria_hydrolysis",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "static"
+  },
+  {
+    "q": "При прокаливании 20 г технического CaCO₃ выделилось 3,36 л CO₂ (н.у.). Каково содержание примесей?",
+    "o": [
+      "45%",
+      "35%",
+      "25%",
+      "15%"
+    ],
+    "c": 2,
+    "e": "n(CO₂)=3,36/22,4=0,15 моль → m(CaCO₃)=0,15×100=15 г. Примеси=20-15=5 г → ω=5/20=25%.",
+    "type": "single",
+    "difficulty": "hard",
+    "topic": "calculations",
+    "subtopic": "calculations_kinetics_electrolysis",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
     "q": "Азот — основной элемент V группы, входящий в состав белков и удобрений. Несмотря на то что в атмосфере его около 78 %, растения почти не усваивают атмосферный N₂. Какова главная причина этого?",
     "o": [
       "N₂ мгновенно растворяется в воде и вымывается из почвы",
@@ -5819,25 +5667,6 @@
     "pairs": null,
     "passage_text": null,
     "source": "rephrased"
-  },
-  {
-    "q": "Какой объём водорода (н.у.) выделится при растворении 1,3 г цинка в избытке соляной кислоты?",
-    "o": [
-      "0,896 л",
-      "0,224 л",
-      "0,672 л",
-      "0,448 л"
-    ],
-    "c": 3,
-    "e": "Zn+2HCl→ZnCl₂+H₂. n(Zn)=1,3/65=0,02моль. V(H₂)=0,02×22,4=0,448 л.",
-    "type": "single",
-    "difficulty": "hard",
-    "topic": "chemistry_life",
-    "subtopic": "transition_metals_complexes",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
   },
   {
     "q": "Какова масса гидроксида натрия, необходимая для полной нейтрализации 60 г уксусной кислоты (CH₃COOH)? (M(CH₃COOH) = 60 г/моль)",
@@ -9963,25 +9792,6 @@
     "source": "generated"
   },
   {
-    "q": "Массовая доля кристаллогидрата CuSO₄·5H₂O в растворе, полученном растворением 25 г этой соли в 100 г воды, составляет:",
-    "o": [
-      "25,0%",
-      "16,0%",
-      "12,8%",
-      "20,0%"
-    ],
-    "c": 3,
-    "e": "Масса раствора=25+100=125 г. ω(CuSO₄·5H₂O)=25/125=0,20=20%.",
-    "type": "single",
-    "difficulty": "medium",
-    "topic": "calculations",
-    "subtopic": "calculations_kinetics_electrolysis",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
     "q": "Al₂O₃ растворяется и в HCl, и в NaOH. Какое свойство Al₂O₃ при этом проявляется?",
     "o": [
       "окислительная способность",
@@ -11842,25 +11652,6 @@
     "pairs": null,
     "passage_text": null,
     "source": "generated"
-  },
-  {
-    "q": "Степень окисления хрома в K₂Cr₂O₇:",
-    "o": [
-      "+2",
-      "+3",
-      "+7",
-      "+6"
-    ],
-    "c": 3,
-    "e": "K₂Cr₂O₇: 2(+1) + 2x + 7(−2) = 0 → 2x = 12 → x = +6. Хром в дихромате калия имеет степень окисления +6.",
-    "type": "single",
-    "difficulty": "medium",
-    "topic": "reaction_patterns",
-    "subtopic": "redox_electrolysis",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "static"
   },
   {
     "q": "Элемент с конфигурацией валентного слоя 4s²4p⁴:",
@@ -18214,25 +18005,6 @@
     "source": "generated"
   },
   {
-    "q": "Углеводород плотностью по водороду 39 при взаимодействии с хлором на свету образует единственное монохлорпроизводное. При действии спиртового раствора щелочи на это хлорпроизводное получается алкен, который при озонолизе дает только ацетон. Исходный углеводород:",
-    "o": [
-      "2,2-диметилпропан",
-      "2-метилпропан",
-      "2,2-диметилбутан",
-      "2-метилбутан"
-    ],
-    "c": 0,
-    "e": "M=78 не соответствует ни одному варианту. Озонолиз только ацетона → алкен симметричный (2,3-диметилбут-2-ен), получаемый из 2,3-диметилбутана (M=86≠78). Единственное монохлорпроизводное + озонолиз→только ацетон → неопентан C5H12 M=72≠78. Вопрос содержит противоречие в данных; 2,2-диметилпропан (неопентан) наилучший ответ по химическим признакам.",
-    "type": "single",
-    "difficulty": "medium",
-    "topic": "calculations",
-    "subtopic": "molecular_formula_calculations",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
     "q": "В каком случае повышение давления сместит равновесие в сторону продуктов?",
     "o": [
       "N₂ + 3H₂ ⇌ 2NH₃",
@@ -19327,6 +19099,25 @@
     "source": "generated"
   },
   {
+    "q": "При сгорании 0,74 г органического вещества получено 1,32 г CO₂ и 0,54 г H₂O. Относительная плотность паров по воздуху равна 2,55. Молекулярная формула:",
+    "o": [
+      "C₄H₈O₂",
+      "C₃H₆O₂",
+      "C₂H₄O₂",
+      "C₂H₆O₂"
+    ],
+    "c": 1,
+    "e": "M=2,55×29≈74 г/моль. n(C)=0,03; n(H)=0,06; m(O)=0,74−0,36−0,06=0,32 г → n(O)=0,02. C:H:O=3:6:2 → C₃H₆O₂ (M=74 ✓).",
+    "type": "single",
+    "difficulty": "medium",
+    "topic": "calculations",
+    "subtopic": "molecular_formula_calculations",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
     "q": "Какой комплексный ион образуется при растворении Cu(OH)₂ в избытке аммиака?",
     "o": [
       "[Cu(NH₃)₂(OH)₂] (зелёный)",
@@ -19346,6 +19137,44 @@
     "source": "generated"
   },
   {
+    "q": "Основной запасной полисахарид растений:",
+    "o": [
+      "Гликоген",
+      "Целлюлоза",
+      "Крахмал",
+      "Хитин"
+    ],
+    "c": 2,
+    "e": "Крахмал — запасной полисахарид растений (амилоза + амилопектин), накапливается в клубнях и зёрнах.",
+    "type": "single",
+    "difficulty": "easy",
+    "topic": "organic_chemistry",
+    "subtopic": "carbohydrates",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
+    "q": "Объём этилена (н.у.), необходимый для получения 1 кг полиэтилена при 100% выходе, равен:",
+    "o": [
+      "224 л",
+      "400 л",
+      "1600 л",
+      "800 л"
+    ],
+    "c": 3,
+    "e": "При полимеризации масса сохраняется: n(C₂H₄)=1000/28≈35,71 моль. V=35,71×22,4≈800 л.",
+    "type": "single",
+    "difficulty": "hard",
+    "topic": "organic_chemistry",
+    "subtopic": "polymers_petroleum",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
     "q": "При сплавлении Cr₂O₃ с щёлочью NaOH образуется:",
     "o": [
       "NaCrO₂ (хромит натрия)",
@@ -19359,6 +19188,158 @@
     "difficulty": "medium",
     "topic": "chemistry_life",
     "subtopic": "transition_metals_complexes",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
+    "q": "Формула муравьиной кислоты:",
+    "o": [
+      "HCl",
+      "CH₃COOH",
+      "C₂H₅COOH",
+      "HCOOH"
+    ],
+    "c": 3,
+    "e": "Муравьиная кислота — HCOOH (метановая кислота), простейшая карбоновая кислота.",
+    "type": "single",
+    "difficulty": "medium",
+    "topic": "organic_chemistry",
+    "subtopic": "oxygen_containing_organic",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "static"
+  },
+  {
+    "q": "При взаимодействии CaO с H₂O образуется:",
+    "o": [
+      "CaH₂",
+      "CaCO₃",
+      "CaSO₄",
+      "Ca(OH)₂"
+    ],
+    "c": 3,
+    "e": "CaO + H₂O → Ca(OH)₂ (гашёная известь). Основной оксид + вода = основание.",
+    "type": "single",
+    "difficulty": "medium",
+    "topic": "chemistry_life",
+    "subtopic": "group_1_2_3_elements",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "static"
+  },
+  {
+    "q": "Какой моносахарид является изомером глюкозы?",
+    "o": [
+      "Мальтоза",
+      "Сахароза",
+      "Фруктоза",
+      "Целлюлоза"
+    ],
+    "c": 2,
+    "e": "Фруктоза (C₆H₁₂O₆) — изомер глюкозы: глюкоза — альдогексоза (—CHO), фруктоза — кетогексоза (>C=O в цепи).",
+    "type": "single",
+    "difficulty": "easy",
+    "topic": "organic_chemistry",
+    "subtopic": "carbohydrates",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
+    "q": "Атом натрия имеет электронную конфигурацию:",
+    "o": [
+      "1s²2s²2p⁶3s²",
+      "1s²2s²2p⁶",
+      "1s²2s²2p⁵",
+      "1s²2s²2p⁶3s¹"
+    ],
+    "c": 3,
+    "e": "Na — 11-й элемент. Конфигурация: 1s²2s²2p⁶3s¹.",
+    "type": "single",
+    "difficulty": "medium",
+    "topic": "particle_structure",
+    "subtopic": "atom_structure_bonding",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "static"
+  },
+  {
+    "q": "Продукт взаимодействия CO₂ с избытком NaOH:",
+    "o": [
+      "Na₂O",
+      "NaHCO₃",
+      "NaOH",
+      "Na₂CO₃"
+    ],
+    "c": 3,
+    "e": "CO₂ + 2NaOH → Na₂CO₃ + H₂O (избыток NaOH → средняя соль). При избытке CO₂: CO₂ + NaOH → NaHCO₃.",
+    "type": "single",
+    "difficulty": "easy",
+    "topic": "chemistry_life",
+    "subtopic": "group_14_elements",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
+    "q": "Для получения кремния в промышленности используют реакцию восстановления SiO₂ углём в электропечах. Определите массу кремния, полученного из 120 кг песка (SiO₂), если выход составляет 80%.",
+    "o": [
+      "56 кг",
+      "44,8 кг",
+      "28 кг",
+      "112 кг"
+    ],
+    "c": 1,
+    "e": "SiO₂ + 2C → Si + 2CO. n(SiO₂) = 120/60 = 2 кмоль; m(Si)теор = 2×28 = 56 кг. С учётом выхода 80%: 56×0,8 = 44,8 кг.",
+    "type": "single",
+    "difficulty": "hard",
+    "topic": "calculations",
+    "subtopic": "calculations_kinetics_electrolysis",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
+    "q": "Какой объём водорода (н.у.) выделится при растворении 1,3 г цинка в избытке соляной кислоты?",
+    "o": [
+      "0,896 л",
+      "0,224 л",
+      "0,672 л",
+      "0,448 л"
+    ],
+    "c": 3,
+    "e": "Zn+2HCl→ZnCl₂+H₂. n(Zn)=1,3/65=0,02моль. V(H₂)=0,02×22,4=0,448 л.",
+    "type": "single",
+    "difficulty": "hard",
+    "topic": "chemistry_life",
+    "subtopic": "transition_metals_complexes",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
+    "q": "Какой галоген при обычных условиях является жидкостью?",
+    "o": [
+      "Йод (I₂)",
+      "Хлор (Cl₂)",
+      "Фтор (F₂)",
+      "Бром (Br₂)"
+    ],
+    "c": 3,
+    "e": "Бром Br₂ — единственный неметалл, при н.у. являющийся жидкостью. Красно-бурая жидкость с резким запахом.",
+    "type": "single",
+    "difficulty": "easy",
+    "topic": "chemistry_life",
+    "subtopic": "group_17_halogens",
     "correct_indices": null,
     "pairs": null,
     "passage_text": null,
@@ -19403,6 +19384,25 @@
     "source": "generated"
   },
   {
+    "q": "При дегидрировании н-гексана в процессе риформинга образуется:",
+    "o": [
+      "Циклогексан C₆H₁₂",
+      "Бензол C₆H₆",
+      "Гексен C₆H₁₂",
+      "Толуол C₇H₈"
+    ],
+    "c": 1,
+    "e": "C₆H₁₄→(кат.,t)C₆H₆+4H₂. При риформинге н-гексан циклизуется и дегидрируется до бензола — ароматизация.",
+    "type": "single",
+    "difficulty": "hard",
+    "topic": "organic_chemistry",
+    "subtopic": "polymers_petroleum",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
     "q": "KMnO₄ в кислой среде окисляет FeSO₄. Определите коэффициент перед FeSO₄ в уравнении реакции:",
     "o": [
       "10",
@@ -19416,6 +19416,25 @@
     "difficulty": "hard",
     "topic": "reaction_patterns",
     "subtopic": "redox_electrolysis",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
+    "q": "Массовая доля кристаллогидрата CuSO₄·5H₂O в растворе, полученном растворением 25 г этой соли в 100 г воды, составляет:",
+    "o": [
+      "25,0%",
+      "16,0%",
+      "12,8%",
+      "20,0%"
+    ],
+    "c": 3,
+    "e": "Масса раствора=25+100=125 г. ω(CuSO₄·5H₂O)=25/125=0,20=20%.",
+    "type": "single",
+    "difficulty": "medium",
+    "topic": "calculations",
+    "subtopic": "calculations_kinetics_electrolysis",
     "correct_indices": null,
     "pairs": null,
     "passage_text": null,
@@ -19726,6 +19745,25 @@
     "source": "generated"
   },
   {
+    "q": "Степень окисления хрома в K₂Cr₂O₇:",
+    "o": [
+      "+2",
+      "+3",
+      "+7",
+      "+6"
+    ],
+    "c": 3,
+    "e": "K₂Cr₂O₇: 2(+1) + 2x + 7(−2) = 0 → 2x = 12 → x = +6. Хром в дихромате калия имеет степень окисления +6.",
+    "type": "single",
+    "difficulty": "medium",
+    "topic": "reaction_patterns",
+    "subtopic": "redox_electrolysis",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "static"
+  },
+  {
     "q": "Какой металл относится к щелочноземельным элементам?",
     "o": [
       "Алюминий",
@@ -19743,6 +19781,82 @@
     "pairs": null,
     "passage_text": null,
     "source": "generated"
+  },
+  {
+    "q": "Сколько пептидных связей в тетрапептиде?",
+    "o": [
+      "2",
+      "4",
+      "3",
+      "5"
+    ],
+    "c": 2,
+    "e": "Тетрапептид содержит 4 аминокислотных остатка, соединённых (4−1)=3 пептидными связями.",
+    "type": "single",
+    "difficulty": "easy",
+    "topic": "organic_chemistry",
+    "subtopic": "nitrogen_containing_organic",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
+    "q": "Полиэтилен со степенью полимеризации 1400. Молекулярная масса приблизительно:",
+    "o": [
+      "42000 г/моль",
+      "28000 г/моль",
+      "39200 г/моль",
+      "35000 г/моль"
+    ],
+    "c": 2,
+    "e": "M(ПЭ) = n × M(мономера) = 1400 × 28 = 39200 г/моль.",
+    "type": "single",
+    "difficulty": "easy",
+    "topic": "calculations",
+    "subtopic": "polymers_petroleum",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
+    "q": "Определите объём CO₂ (н.у.), который выделится при действии избытка соляной кислоты на 50 г карбоната кальция (CaCO₃).",
+    "o": [
+      "33,6 л",
+      "22,4 л",
+      "5,6 л",
+      "11,2 л"
+    ],
+    "c": 3,
+    "e": "CaCO₃ + 2HCl → CaCl₂ + H₂O + CO₂↑. n(CaCO₃) = 50/100 = 0,5 моль. V(CO₂) = 0,5×22,4 = 11,2 л.",
+    "type": "single",
+    "difficulty": "hard",
+    "topic": "calculations",
+    "subtopic": "calculations_kinetics_electrolysis",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
+    "q": "В реакционной смеси при 600°C алюминий массой 5,4 г полностью прореагировал с оксидом железа(III). Рассчитайте массу железа, которое можно получить при данных условиях",
+    "o": [
+      "33,6 г",
+      "16,8 г",
+      "22,4 г",
+      "11,2 г"
+    ],
+    "c": 3,
+    "e": "2Al + Fe₂O₃ → Al₂O₃ + 2Fe. n(Al)=5,4/27=0,2 моль → n(Fe)=0,2 моль → m(Fe)=0,2×56=11,2 г.",
+    "type": "single",
+    "difficulty": "medium",
+    "topic": "calculations",
+    "subtopic": "calculations_kinetics_electrolysis",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "static"
   },
   {
     "q": "Общая формула аминов:",
@@ -19777,6 +19891,25 @@
     "difficulty": "easy",
     "topic": "organic_chemistry",
     "subtopic": "nitrogen_containing_organic",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
+    "q": "Формула глюкозы:",
+    "o": [
+      "(C₆H₁₀O₅)ₙ",
+      "C₁₂H₂₂O₁₁",
+      "C₆H₁₀O₅",
+      "C₆H₁₂O₆"
+    ],
+    "c": 3,
+    "e": "Глюкоза — моносахарид (альдогексоза), формула C₆H₁₂O₆.",
+    "type": "single",
+    "difficulty": "easy",
+    "topic": "organic_chemistry",
+    "subtopic": "carbohydrates",
     "correct_indices": null,
     "pairs": null,
     "passage_text": null,
@@ -19853,6 +19986,25 @@
     "difficulty": "hard",
     "topic": "organic_chemistry",
     "subtopic": "nitrogen_containing_organic",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
+    "q": "Какая реакция протекает при нагревании смеси концентрированной серной кислоты с хлоридом натрия?",
+    "o": [
+      "NaCl + H₂SO₄ → NaOH + HClSO₃",
+      "2NaCl + H₂SO₄ → Na₂SO₄ + 2HCl",
+      "NaCl + H₂SO₄ → NaHSO₄ + HCl",
+      "4NaCl + H₂SO₄ → 2Na₂O + SO₂ + 2Cl₂ + 2H₂O"
+    ],
+    "c": 2,
+    "e": "При нагревании: NaCl + H₂SO₄(конц.) → NaHSO₄ + HCl↑. Конц. H₂SO₄ вытесняет летучий HCl из соли.",
+    "type": "single",
+    "difficulty": "medium",
+    "topic": "chemistry_life",
+    "subtopic": "group_16_sulfuric_acid",
     "correct_indices": null,
     "pairs": null,
     "passage_text": null,
@@ -21471,25 +21623,6 @@
     "source": "generated"
   },
   {
-    "q": "Сколько пептидных связей в тетрапептиде?",
-    "o": [
-      "2",
-      "4",
-      "3",
-      "5"
-    ],
-    "c": 2,
-    "e": "Тетрапептид содержит 4 аминокислотных остатка, соединённых (4−1)=3 пептидными связями.",
-    "type": "single",
-    "difficulty": "easy",
-    "topic": "organic_chemistry",
-    "subtopic": "nitrogen_containing_organic",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
     "q": "В какой реакции хлор одновременно окисляется и восстанавливается?",
     "o": [
       "2HCl + Zn → ZnCl₂ + H₂",
@@ -21927,25 +22060,6 @@
     "source": "generated"
   },
   {
-    "q": "Какая масса осадка образуется при смешивании раствора 11,1 г CaCl₂ с раствором Na₂CO₃?",
-    "o": [
-      "5,0 г",
-      "20,0 г",
-      "10,0 г",
-      "15,0 г"
-    ],
-    "c": 2,
-    "e": "CaCl₂ + Na₂CO₃ → CaCO₃↓ + 2NaCl. n(CaCl₂)=11,1/111=0,1 моль → n(CaCO₃)=0,1 моль → m=10,0 г.",
-    "type": "single",
-    "difficulty": "easy",
-    "topic": "calculations",
-    "subtopic": "calculations_kinetics_electrolysis",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
     "q": "В реакции Zn + H₂SO₄(конц.) → ZnSO₄ + SO₂ + H₂O что происходит с серой кислоты?",
     "o": [
       "окисляется от +4 до +6",
@@ -22155,25 +22269,6 @@
     "source": "generated"
   },
   {
-    "q": "Полиэтилен со степенью полимеризации 1400. Молекулярная масса приблизительно:",
-    "o": [
-      "42000 г/моль",
-      "28000 г/моль",
-      "39200 г/моль",
-      "35000 г/моль"
-    ],
-    "c": 2,
-    "e": "M(ПЭ) = n × M(мономера) = 1400 × 28 = 39200 г/моль.",
-    "type": "single",
-    "difficulty": "easy",
-    "topic": "calculations",
-    "subtopic": "polymers_petroleum",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
     "q": "При взаимодействии 9,8 г H₂SO₄ с избытком цинка выделится водород объёмом (н.у.):",
     "o": [
       "4,48 л",
@@ -22307,25 +22402,6 @@
     "source": "generated"
   },
   {
-    "q": "Определите объём CO₂ (н.у.), который выделится при действии избытка соляной кислоты на 50 г карбоната кальция (CaCO₃).",
-    "o": [
-      "33,6 л",
-      "22,4 л",
-      "5,6 л",
-      "11,2 л"
-    ],
-    "c": 3,
-    "e": "CaCO₃ + 2HCl → CaCl₂ + H₂O + CO₂↑. n(CaCO₃) = 50/100 = 0,5 моль. V(CO₂) = 0,5×22,4 = 11,2 л.",
-    "type": "single",
-    "difficulty": "hard",
-    "topic": "calculations",
-    "subtopic": "calculations_kinetics_electrolysis",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
     "q": "Почему CO является ядовитым газом?",
     "o": [
       "Соединяется с водой в лёгких, образуя углекислоту",
@@ -22434,25 +22510,6 @@
     "difficulty": "hard",
     "topic": "chemistry_life",
     "subtopic": "group_14_elements",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
-    "q": "Формула глюкозы:",
-    "o": [
-      "(C₆H₁₀O₅)ₙ",
-      "C₁₂H₂₂O₁₁",
-      "C₆H₁₀O₅",
-      "C₆H₁₂O₆"
-    ],
-    "c": 3,
-    "e": "Глюкоза — моносахарид (альдогексоза), формула C₆H₁₂O₆.",
-    "type": "single",
-    "difficulty": "easy",
-    "topic": "organic_chemistry",
-    "subtopic": "carbohydrates",
     "correct_indices": null,
     "pairs": null,
     "passage_text": null,
@@ -23643,25 +23700,6 @@
     "difficulty": "medium",
     "topic": "reaction_energetics",
     "subtopic": "ionic_equilibria_hydrolysis",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "static"
-  },
-  {
-    "q": "В реакционной смеси при 600°C алюминий массой 5,4 г полностью прореагировал с оксидом железа(III). Рассчитайте массу железа, которое можно получить при данных условиях",
-    "o": [
-      "33,6 г",
-      "16,8 г",
-      "22,4 г",
-      "11,2 г"
-    ],
-    "c": 3,
-    "e": "2Al + Fe₂O₃ → Al₂O₃ + 2Fe. n(Al)=5,4/27=0,2 моль → n(Fe)=0,2 моль → m(Fe)=0,2×56=11,2 г.",
-    "type": "single",
-    "difficulty": "medium",
-    "topic": "calculations",
-    "subtopic": "calculations_kinetics_electrolysis",
     "correct_indices": null,
     "pairs": null,
     "passage_text": null,
@@ -26163,25 +26201,6 @@
     "source": "rephrased"
   },
   {
-    "q": "После кристаллизации 15 г KNO₃ из насыщенного раствора при охлаждении раствор:",
-    "o": [
-      "растворимость увеличилась",
-      "раствор стал насыщенным при новой температуре",
-      "концентрация не изменилась",
-      "раствор остался ненасыщенным"
-    ],
-    "c": 1,
-    "e": "Растворимость при охлаждении снижается. Избыток выпадает в осадок — оставшийся раствор насыщен при новой, пониженной температуре.",
-    "type": "single",
-    "difficulty": "medium",
-    "topic": "reaction_energetics",
-    "subtopic": "ionic_equilibria_hydrolysis",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "rephrased"
-  },
-  {
     "q": "Какие из веществ имеют молекулярное строение?",
     "o": [
       "Вода",
@@ -26663,25 +26682,6 @@
     "correct_indices": null,
     "pairs": null,
     "passage_text": "Коррозия железа представляет собой сложный электрохимический процесс, в котором металл подвергается окислению. На анодных участках поверхности железо окисляется по реакции Fe → Fe²⁺ + 2e⁻, теряя электроны. На катодных участках происходит восстановление кислорода: O₂ + 4H⁺ + 4e⁻ → 2H₂O в кислой среде или O₂ + 2H₂O + 4e⁻ → 4OH⁻ в нейтральной среде. Образующиеся ионы Fe²⁺ далее окисляются до Fe³⁺ и гидролизуются, образуя гидроксид железа, который превращается в ржавчину. Скорость коррозии значительно увеличивается при наличии влаги и кислорода одновременно.",
-    "source": "generated"
-  },
-  {
-    "q": "Какая реакция протекает на катоде при электролизе водного раствора сульфата натрия с инертными электродами?",
-    "o": [
-      "Na⁺ + e⁻ → Na",
-      "2H₂O + 2e⁻ → H₂ + 2OH⁻",
-      "SO₄²⁻ - 2e⁻ → SO₄",
-      "2H₂O - 4e⁻ → O₂ + 4H⁺"
-    ],
-    "c": 1,
-    "e": "Na⁺ стоит до H в ряду напряжений — не восстанавливается. На катоде: 2H₂O + 2e⁻ → H₂↑ + 2OH⁻.",
-    "type": "single",
-    "difficulty": "medium",
-    "topic": "reaction_patterns",
-    "subtopic": "redox_electrolysis",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
     "source": "generated"
   },
   {
@@ -27591,25 +27591,6 @@
     "difficulty": "medium",
     "topic": "calculations",
     "subtopic": "calculations_kinetics_electrolysis",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
-    "q": "Какая реакция протекает при нагревании смеси концентрированной серной кислоты с хлоридом натрия?",
-    "o": [
-      "NaCl + H₂SO₄ → NaOH + HClSO₃",
-      "2NaCl + H₂SO₄ → Na₂SO₄ + 2HCl",
-      "NaCl + H₂SO₄ → NaHSO₄ + HCl",
-      "4NaCl + H₂SO₄ → 2Na₂O + SO₂ + 2Cl₂ + 2H₂O"
-    ],
-    "c": 2,
-    "e": "При нагревании: NaCl + H₂SO₄(конц.) → NaHSO₄ + HCl↑. Конц. H₂SO₄ вытесняет летучий HCl из соли.",
-    "type": "single",
-    "difficulty": "medium",
-    "topic": "chemistry_life",
-    "subtopic": "group_16_sulfuric_acid",
     "correct_indices": null,
     "pairs": null,
     "passage_text": null,
@@ -39938,25 +39919,6 @@
     "source": "static"
   },
   {
-    "q": "Какой продукт образуется при взаимодействии хлора с раствором NaOH (на холоду)?",
-    "o": [
-      "NaCl + H₂O",
-      "NaCl + NaClO₃ + H₂O",
-      "Na₂O + HCl",
-      "NaCl + NaClO + H₂O"
-    ],
-    "c": 3,
-    "e": "Cl₂ + 2NaOH(хол.) → NaCl + NaClO + H₂O. При нагревании вместо NaClO образуется NaClO₃.",
-    "type": "single",
-    "difficulty": "medium",
-    "topic": "chemistry_life",
-    "subtopic": "group_17_halogens",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
     "q": "Атом скандия Sc (Z=21) в основном состоянии имеет электронную конфигурацию внешних уровней. Какая запись соответствует валентным электронам этого атома?",
     "o": [
       "3d³",
@@ -41718,6 +41680,25 @@
     "difficulty": "easy",
     "topic": "chemistry_life",
     "subtopic": "group_17_halogens",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
+    "q": "Какая реакция протекает на катоде при электролизе водного раствора сульфата натрия с инертными электродами?",
+    "o": [
+      "Na⁺ + e⁻ → Na",
+      "2H₂O + 2e⁻ → H₂ + 2OH⁻",
+      "SO₄²⁻ - 2e⁻ → SO₄",
+      "2H₂O - 4e⁻ → O₂ + 4H⁺"
+    ],
+    "c": 1,
+    "e": "Na⁺ стоит до H в ряду напряжений — не восстанавливается. На катоде: 2H₂O + 2e⁻ → H₂↑ + 2OH⁻.",
+    "type": "single",
+    "difficulty": "medium",
+    "topic": "reaction_patterns",
+    "subtopic": "redox_electrolysis",
     "correct_indices": null,
     "pairs": null,
     "passage_text": null,
@@ -46569,25 +46550,6 @@
     "source": "ai_gen_s2_2026-06"
   },
   {
-    "q": "Электронное строение атома C (№6) в основном состоянии:",
-    "o": [
-      "1s²2s¹2p³",
-      "1s²2s²2p⁴",
-      "1s²2s²2p⁶",
-      "1s²2s²2p²"
-    ],
-    "c": 3,
-    "e": "C имеет 6 электронов: 1s²2s²2p².",
-    "type": "single",
-    "difficulty": "easy",
-    "topic": "chemistry_life",
-    "subtopic": "group_14_elements",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
     "q": "Разбавленная азотная кислота реагирует с медью с образованием:",
     "o": [
       "Cu(NO₃)₂, NO₂ и H₂O",
@@ -46601,25 +46563,6 @@
     "difficulty": "medium",
     "topic": "chemistry_life",
     "subtopic": "group_15_elements",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
-    "q": "Какая степень окисления хлора в соединении HCl?",
-    "o": [
-      "+7",
-      "+1",
-      "0",
-      "−1"
-    ],
-    "c": 3,
-    "e": "В HCl: H = +1, Cl = −1. Хлор более электроотрицателен, чем водород, притягивает общую пару электронов.",
-    "type": "single",
-    "difficulty": "easy",
-    "topic": "chemistry_life",
-    "subtopic": "group_17_halogens",
     "correct_indices": null,
     "pairs": null,
     "passage_text": null,
@@ -46683,25 +46626,6 @@
     "source": "generated"
   },
   {
-    "q": "Определите массу полиэтилена, который теоретически можно получить из 5,6 л (н.у.) этилена:",
-    "o": [
-      "28 г",
-      "14 г",
-      "3,5 г",
-      "7 г"
-    ],
-    "c": 3,
-    "e": "n(C₂H₄)=5,6/22,4=0,25 моль. При полимеризации масса не теряется: m(ПЭ)=0,25×28=7 г.",
-    "type": "single",
-    "difficulty": "hard",
-    "topic": "organic_chemistry",
-    "subtopic": "polymers_petroleum",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
     "q": "Какой процесс характерен для йода при нагревании в обычных условиях:",
     "o": [
       "плавление",
@@ -46757,25 +46681,6 @@
     "pairs": null,
     "passage_text": null,
     "source": "rephrased"
-  },
-  {
-    "q": "К сильным электролитам относится:",
-    "o": [
-      "CH₃COOH",
-      "H₂O",
-      "NH₃",
-      "HCl"
-    ],
-    "c": 3,
-    "e": "HCl — сильная кислота, полностью диссоциирует: HCl → H⁺ + Cl⁻.",
-    "type": "single",
-    "difficulty": "medium",
-    "topic": "reaction_energetics",
-    "subtopic": "ionic_equilibria_hydrolysis",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "static"
   },
   {
     "q": "Какое количество электронов участвует в превращении Cr₂O₇²⁻ → 2Cr³⁺ в кислой среде?",
@@ -46943,25 +46848,6 @@
     "difficulty": "easy",
     "topic": "chemistry_life",
     "subtopic": "metals_nonmetals_general",
-    "correct_indices": null,
-    "pairs": null,
-    "passage_text": null,
-    "source": "generated"
-  },
-  {
-    "q": "При прокаливании 20 г технического CaCO₃ выделилось 3,36 л CO₂ (н.у.). Каково содержание примесей?",
-    "o": [
-      "45%",
-      "35%",
-      "25%",
-      "15%"
-    ],
-    "c": 2,
-    "e": "n(CO₂)=3,36/22,4=0,15 моль → m(CaCO₃)=0,15×100=15 г. Примеси=20-15=5 г → ω=5/20=25%.",
-    "type": "single",
-    "difficulty": "hard",
-    "topic": "calculations",
-    "subtopic": "calculations_kinetics_electrolysis",
     "correct_indices": null,
     "pairs": null,
     "passage_text": null,
@@ -48720,5 +48606,119 @@
     "pairs": null,
     "passage_text": null,
     "source": "ai_gen_s2_2026-06"
+  },
+  {
+    "q": "После кристаллизации 15 г KNO₃ из насыщенного раствора при охлаждении раствор:",
+    "o": [
+      "растворимость увеличилась",
+      "раствор стал насыщенным при новой температуре",
+      "концентрация не изменилась",
+      "раствор остался ненасыщенным"
+    ],
+    "c": 1,
+    "e": "Растворимость при охлаждении снижается. Избыток выпадает в осадок — оставшийся раствор насыщен при новой, пониженной температуре.",
+    "type": "single",
+    "difficulty": "medium",
+    "topic": "reaction_energetics",
+    "subtopic": "ionic_equilibria_hydrolysis",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "rephrased"
+  },
+  {
+    "q": "Углеводород плотностью по водороду 39 при взаимодействии с хлором на свету образует единственное монохлорпроизводное. При действии спиртового раствора щелочи на это хлорпроизводное получается алкен, который при озонолизе дает только ацетон. Исходный углеводород:",
+    "o": [
+      "2,2-диметилпропан",
+      "2-метилпропан",
+      "2,2-диметилбутан",
+      "2-метилбутан"
+    ],
+    "c": 0,
+    "e": "M=78 не соответствует ни одному варианту. Озонолиз только ацетона → алкен симметричный (2,3-диметилбут-2-ен), получаемый из 2,3-диметилбутана (M=86≠78). Единственное монохлорпроизводное + озонолиз→только ацетон → неопентан C5H12 M=72≠78. Вопрос содержит противоречие в данных; 2,2-диметилпропан (неопентан) наилучший ответ по химическим признакам.",
+    "type": "single",
+    "difficulty": "medium",
+    "topic": "calculations",
+    "subtopic": "molecular_formula_calculations",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
+    "q": "Какая масса осадка образуется при смешивании раствора 11,1 г CaCl₂ с раствором Na₂CO₃?",
+    "o": [
+      "5,0 г",
+      "20,0 г",
+      "10,0 г",
+      "15,0 г"
+    ],
+    "c": 2,
+    "e": "CaCl₂ + Na₂CO₃ → CaCO₃↓ + 2NaCl. n(CaCl₂)=11,1/111=0,1 моль → n(CaCO₃)=0,1 моль → m=10,0 г.",
+    "type": "single",
+    "difficulty": "easy",
+    "topic": "calculations",
+    "subtopic": "calculations_kinetics_electrolysis",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
+    "q": "Какой продукт образуется при взаимодействии хлора с раствором NaOH (на холоду)?",
+    "o": [
+      "NaCl + H₂O",
+      "NaCl + NaClO₃ + H₂O",
+      "Na₂O + HCl",
+      "NaCl + NaClO + H₂O"
+    ],
+    "c": 3,
+    "e": "Cl₂ + 2NaOH(хол.) → NaCl + NaClO + H₂O. При нагревании вместо NaClO образуется NaClO₃.",
+    "type": "single",
+    "difficulty": "medium",
+    "topic": "chemistry_life",
+    "subtopic": "group_17_halogens",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
+    "q": "Определите массу полиэтилена, который теоретически можно получить из 5,6 л (н.у.) этилена:",
+    "o": [
+      "28 г",
+      "14 г",
+      "3,5 г",
+      "7 г"
+    ],
+    "c": 3,
+    "e": "n(C₂H₄)=5,6/22,4=0,25 моль. При полимеризации масса не теряется: m(ПЭ)=0,25×28=7 г.",
+    "type": "single",
+    "difficulty": "hard",
+    "topic": "organic_chemistry",
+    "subtopic": "polymers_petroleum",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
+  },
+  {
+    "q": "Электронное строение атома C (№6) в основном состоянии:",
+    "o": [
+      "1s²2s¹2p³",
+      "1s²2s²2p⁴",
+      "1s²2s²2p⁶",
+      "1s²2s²2p²"
+    ],
+    "c": 3,
+    "e": "C имеет 6 электронов: 1s²2s²2p².",
+    "type": "single",
+    "difficulty": "easy",
+    "topic": "chemistry_life",
+    "subtopic": "group_14_elements",
+    "correct_indices": null,
+    "pairs": null,
+    "passage_text": null,
+    "source": "generated"
   }
 ]

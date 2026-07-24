@@ -45,11 +45,20 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     profile_subjects = serializers.SerializerMethodField()
+    avatar = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'role', 'full_name', 'school', 'profile_subjects')
+        fields = ('id', 'username', 'email', 'role', 'full_name', 'school', 'profile_subjects', 'avatar')
         read_only_fields = ('id', 'username', 'role')
+
+    def get_avatar(self, obj):
+        if obj.avatar:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.avatar.url)
+            return obj.avatar.url
+        return None
 
     def get_profile_subjects(self, obj):
         return list(obj.profile_subjects.values_list('id', flat=True))

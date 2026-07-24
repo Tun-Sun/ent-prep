@@ -52,4 +52,4 @@ if _assets_root.exists():
     ]
 
 # SPA — все пути, кроме api/ admin/ grappelli/ media/ static/ assets/
-urlpatterns.insert(0, re_path(r'^(?!(?:api|admin|grappelli|media|static|assets)/).*$', _serve_frontend))
+urlpatterns.insert(0, re_path(r'^(?!/?(?:api|admin|grappelli|media|static|assets)/).*$', _serve_frontend))

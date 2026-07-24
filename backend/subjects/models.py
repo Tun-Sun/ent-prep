@@ -32,9 +32,24 @@ class Subject(models.Model):
         return self.name
 
 
+class Variant(models.Model):
+    number = models.IntegerField(verbose_name='Номер варианта')
+    name = models.CharField(max_length=200, blank=True, default='', verbose_name='Название')
+    year = models.PositiveIntegerField(null=True, blank=True, verbose_name='Год')
+
+    class Meta:
+        verbose_name = 'Вариант'
+        verbose_name_plural = 'Варианты'
+        ordering = ['number']
+
+    def __str__(self):
+        return self.name or f'Вариант {self.number}'
+
+
 class Topic(models.Model):
     name = models.CharField(max_length=200, verbose_name='Название темы')
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='topics')
+    variant = models.ForeignKey(Variant, on_delete=models.SET_NULL, null=True, blank=True, related_name='topics')
 
     class Meta:
         verbose_name = 'Тема'

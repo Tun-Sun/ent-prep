@@ -9,11 +9,12 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
+from django.db import transaction
 
 from subjects.models import Question, Answer, Subject, Topic
 from subjects.serializers import QuestionDetailSerializer
 from subjects.permissions import IsTeacherOrAdmin
-from .models import TestSession, TestSectionResult, AnswerRecord
+from .models import TestSession, TestSessionQuestion, TestSectionResult, AnswerRecord
 from .serializers import (
     StartTestSerializer, StartEntSerializer, AnswerBulkSerializer,
     AnswerRecordCreateSerializer,
@@ -49,11 +50,15 @@ def _build_question_data(questions, request):
             'section': q.section,
             'topic': q.topic.name,
             'difficulty': q.difficulty,
-            'image': build_url(q.image) if q.image else None,
+            'image': build_url(q.image) if q.image else (q.image_ref if q.image_ref and '/' in q.image_ref else None),
             'answers': [
                 {'id': a.id, 'text': a.text, 'image': build_url(a.image) if a.image else None}
                 for a in answers
             ],
+            'matching_options': list(dict.fromkeys(
+                a.text.rsplit(' → ', 1)[1]
+                for a in answers if ' → ' in a.text
+            )) if q.question_type == 'matching' else [],
         })
     return result
 
@@ -78,16 +83,18 @@ def _score_multiple_choice(question, selected_ids):
 
 
 def _score_matching(question, pairs):
-    correct_ids = set(question.answers.filter(is_correct=True).values_list('id', flat=True))
-    total_pairs = max(len(pairs), max(correct_ids) if correct_ids else 0)
-    if total_pairs == 0:
+    correct_pairs = {
+        str(answer.id): answer.text.rsplit(' → ', 1)[1]
+        for answer in question.answers.filter(is_correct=True)
+        if ' → ' in answer.text
+    }
+    if not correct_pairs:
         return 0, question.points
-    correct_count = 0
-    for key, val in pairs.items():
-        expected = question.answers.filter(id=int(key), is_correct=True).first()
-        if expected:
-            correct_count += 1
-    earned = (correct_count / len(correct_ids)) * question.points if correct_ids else 0
+    correct_count = sum(
+        1 for left_id, right_text in pairs.items()
+        if correct_pairs.get(str(left_id)) == right_text
+    )
+    earned = (correct_count / len(correct_pairs)) * question.points
     return round(earned, 1), question.points
 
 
@@ -142,6 +149,10 @@ class StartTestView(APIView):
             total_questions=num_questions,
             time_limit=time_limit,
         )
+        TestSessionQuestion.objects.bulk_create([
+            TestSessionQuestion(session=session, question=question, position=position)
+            for position, question in enumerate(questions, start=1)
+        ])
 
         question_data = _build_question_data(questions, request)
 
@@ -170,6 +181,7 @@ class StartEntView(APIView):
             return Response({'error': 'Предмет не найден'}, status=status.HTTP_400_BAD_REQUEST)
 
         selected = {}
+        selected_question_ids = set()
         sections_order = ['history', 'reading', 'math_lit', 'profile1', 'profile2']
 
         # Фиксированные секции — предпочитаем verified, но берём любые
@@ -177,14 +189,15 @@ class StartEntView(APIView):
             qs = list(Question.objects.filter(
                 topic__subject__slug=cfg['subject_slug'],
                 verification_status='verified',
-            ).order_by('?')[:cfg['count']])
+            ).exclude(id__in=selected_question_ids).order_by('?')[:cfg['count']])
             if len(qs) < cfg['count']:
                 extra = cfg['count'] - len(qs)
                 extra_qs = Question.objects.filter(
                     topic__subject__slug=cfg['subject_slug'],
-                ).exclude(id__in=[q.id for q in qs]).order_by('?')[:extra]
+                ).exclude(id__in=selected_question_ids | {q.id for q in qs}).order_by('?')[:extra]
                 qs.extend(extra_qs)
             selected[sect] = qs
+            selected_question_ids.update(q.id for q in qs)
 
         # Профильные предметы
         for sect, subj_id, subj_obj in [
@@ -194,14 +207,15 @@ class StartEntView(APIView):
             qs = list(Question.objects.filter(
                 topic__subject_id=subj_id,
                 verification_status='verified',
-            ).order_by('?')[:40])
+            ).exclude(id__in=selected_question_ids).order_by('?')[:40])
             if len(qs) < 40:
                 extra = 40 - len(qs)
                 extra_qs = Question.objects.filter(
                     topic__subject_id=subj_id,
-                ).exclude(id__in=[q.id for q in qs]).order_by('?')[:extra]
+                ).exclude(id__in=selected_question_ids | {q.id for q in qs}).order_by('?')[:extra]
                 qs.extend(extra_qs)
             selected[sect] = qs
+            selected_question_ids.update(q.id for q in qs)
 
         # Проверка
         for sect, qs in selected.items():
@@ -227,6 +241,17 @@ class StartEntView(APIView):
                 'profile2': {'id': profile2_id, 'name': profile2_subj.name},
             },
         )
+        session_questions = []
+        position = 1
+        for sect in sections_order:
+            for question in selected[sect]:
+                session_questions.append(
+                    TestSessionQuestion(
+                        session=session, question=question, position=position, section=sect,
+                    )
+                )
+                position += 1
+        TestSessionQuestion.objects.bulk_create(session_questions)
 
         # Создаём section results
         for sect in sections_order:
@@ -287,7 +312,7 @@ def _save_answer_record(session, question, selected_answer=None, selected_answer
 
 
 def _recalc_session(session):
-    answers = session.answers.all()
+    answers = session.answers.select_related('question__topic__subject').all()
     correct_count = answers.filter(is_correct=True).count()
     earned = sum(a.points_earned for a in answers)
     total = sum(a.points_max for a in answers)
@@ -298,13 +323,69 @@ def _recalc_session(session):
     session.calculate_score()
 
     # Обновляем section results
+    legacy_sections = {}
+    if session.is_ent and not session.session_questions.exists():
+        profile1_id = session.ent_data.get('profile1', {}).get('id')
+        profile2_id = session.ent_data.get('profile2', {}).get('id')
+        for answer in answers:
+            subject = answer.question.topic.subject
+            if subject.slug == 'history':
+                section = 'history'
+            elif subject.slug == 'reading':
+                section = 'reading'
+            elif subject.slug == 'math_profile':
+                section = 'math_lit'
+            elif subject.id == profile1_id:
+                section = 'profile1'
+            elif subject.id == profile2_id:
+                section = 'profile2'
+            else:
+                continue
+            legacy_sections.setdefault(section, []).append(answer.id)
+
     for sr in session.section_results.all():
-        qs = answers.filter(question__section=sr.section)
+        if legacy_sections:
+            qs = answers.filter(id__in=legacy_sections.get(sr.section, []))
+        else:
+            question_ids = session.session_questions.filter(section=sr.section).values('question_id')
+            qs = answers.filter(question_id__in=question_ids)
         sr.answered = qs.count()
         sr.correct_answers = qs.filter(is_correct=True).count()
         sr.points_earned = sum(a.points_earned for a in qs)
         sr.points_max = sum(a.points_max for a in qs)
         sr.save()
+
+
+def _session_expired(session):
+    return timezone.now() >= session.started_at + timezone.timedelta(seconds=session.time_limit)
+
+
+def _expire_session(session):
+    _recalc_session(session)
+    session.completed_at = timezone.now()
+    session.is_completed = True
+    session.save()
+
+
+def _validate_answer_payload(question, selected_answer, selected_answers, matching_pairs):
+    answer_ids = set(question.answers.values_list('id', flat=True))
+    if selected_answer is not None and selected_answer not in answer_ids:
+        return 'Выбранный вариант не относится к вопросу'
+    if len(selected_answers) != len(set(selected_answers)) or not set(selected_answers).issubset(answer_ids):
+        return 'Выбранные варианты не относятся к вопросу'
+    if question.question_type == 'matching':
+        correct_pairs = {
+            str(answer.id): answer.text.rsplit(' → ', 1)[1]
+            for answer in question.answers.filter(is_correct=True)
+            if ' → ' in answer.text
+        }
+        allowed_right_values = set(correct_pairs.values())
+        if any(
+            str(left_id) not in correct_pairs or right_text not in allowed_right_values
+            for left_id, right_text in matching_pairs.items()
+        ):
+            return 'Пары не относятся к вопросу'
+    return None
 
 
 class SubmitAnswerView(APIView):
@@ -318,6 +399,9 @@ class SubmitAnswerView(APIView):
 
         if session.is_completed:
             return Response({'error': 'Тест уже завершён'}, status=status.HTTP_400_BAD_REQUEST)
+        if _session_expired(session):
+            _expire_session(session)
+            return Response({'error': 'Время теста истекло'}, status=status.HTTP_400_BAD_REQUEST)
 
         serializer = AnswerRecordCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -327,8 +411,17 @@ class SubmitAnswerView(APIView):
         selected_answers = serializer.validated_data.get('selected_answers', [])
         matching_pairs = serializer.validated_data.get('matching_pairs', {})
 
+        if not session.session_questions.filter(question=question).exists():
+            return Response({'error': 'Вопрос не относится к этой попытке'}, status=status.HTTP_400_BAD_REQUEST)
+
         if question.question_type == 'single_choice' and selected_answer:
             selected_answers = [selected_answer]
+
+        validation_error = _validate_answer_payload(
+            question, selected_answer, selected_answers, matching_pairs
+        )
+        if validation_error:
+            return Response({'error': validation_error}, status=status.HTTP_400_BAD_REQUEST)
 
         _save_answer_record(session, question, selected_answer, selected_answers, matching_pairs)
         _recalc_session(session)
@@ -352,16 +445,33 @@ class SubmitBulkAnswersView(APIView):
 
         if session.is_completed:
             return Response({'error': 'Тест уже завершён'}, status=status.HTTP_400_BAD_REQUEST)
+        if _session_expired(session):
+            _expire_session(session)
+            return Response({'error': 'Время теста истекло'}, status=status.HTTP_400_BAD_REQUEST)
 
         serializer = AnswerBulkSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        prepared_answers = []
         for ans_data in serializer.validated_data['answers']:
             question = ans_data['question']
             selected_answer = ans_data.get('selected_answer')
             selected_answers = ans_data.get('selected_answers', [])
             matching_pairs = ans_data.get('matching_pairs', {})
-            _save_answer_record(session, question, selected_answer, selected_answers, matching_pairs)
+            if question.question_type == 'single_choice' and selected_answer:
+                selected_answers = [selected_answer]
+            if not session.session_questions.filter(question=question).exists():
+                return Response({'error': 'Вопрос не относится к этой попытке'}, status=status.HTTP_400_BAD_REQUEST)
+            validation_error = _validate_answer_payload(
+                question, selected_answer, selected_answers, matching_pairs
+            )
+            if validation_error:
+                return Response({'error': validation_error}, status=status.HTTP_400_BAD_REQUEST)
+            prepared_answers.append((question, selected_answer, selected_answers, matching_pairs))
+
+        with transaction.atomic():
+            for question, selected_answer, selected_answers, matching_pairs in prepared_answers:
+                _save_answer_record(session, question, selected_answer, selected_answers, matching_pairs)
 
         _recalc_session(session)
 
@@ -384,6 +494,10 @@ class FinishTestView(APIView):
 
         if session.is_completed:
             return Response({'error': 'Тест уже завершён'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if _session_expired(session):
+            _expire_session(session)
+            return Response({'error': 'Время теста истекло'}, status=status.HTTP_400_BAD_REQUEST)
 
         _recalc_session(session)
         session.completed_at = timezone.now()
@@ -447,6 +561,10 @@ class TestResultView(APIView):
         except TestSession.DoesNotExist:
             return Response({'error': 'Сессия не найдена'}, status=status.HTTP_404_NOT_FOUND)
 
+        # Legacy ENT sessions predate the immutable section assignment.
+        if session.is_ent and not session.session_questions.exists():
+            _recalc_session(session)
+
         serializer = TestSessionDetailSerializer(session)
         return Response(serializer.data)
 
@@ -491,6 +609,9 @@ class TeacherTestResultView(APIView):
             session = TestSession.objects.get(id=session_id)
         except TestSession.DoesNotExist:
             return Response({'error': 'Сессия не найдена'}, status=status.HTTP_404_NOT_FOUND)
+
+        if session.is_ent and not session.session_questions.exists():
+            _recalc_session(session)
 
         serializer = TeacherTestSessionDetailSerializer(session)
         return Response(serializer.data)
@@ -540,11 +661,12 @@ class AuthorialTestListView(APIView):
     def get(self, request):
         from collections import defaultdict
         qs = Question.objects.filter(source_type='authorial').select_related('topic')
-        groups = defaultdict(lambda: {'topic': '', 'subject': '', 'count': 0, 'form_id': ''})
+        groups = defaultdict(lambda: {'topic': '', 'topic_id': 0, 'subject': '', 'count': 0, 'form_id': ''})
         for q in qs:
             parts = q.external_id.rsplit('/', 1)
             form_id = parts[0] if len(parts) > 1 else q.external_id
             groups[form_id]['topic'] = q.topic.name
+            groups[form_id]['topic_id'] = q.topic.id
             groups[form_id]['subject'] = q.topic.subject.name
             groups[form_id]['count'] += 1
             groups[form_id]['form_id'] = form_id

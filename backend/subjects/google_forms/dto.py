@@ -74,6 +74,7 @@ class FormPayload:
     topic_name: str
     language: str
     year: Optional[int]
+    variant_number: Optional[int] = None
     questions: List[QuestionDTO] = field(default_factory=list)
 
     def validate(self) -> None:

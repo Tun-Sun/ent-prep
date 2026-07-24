@@ -189,10 +189,10 @@ class Command(BaseCommand):
                 continue
             our_slug, our_name, our_icon = mapping
 
-            # Получаем/создаём Subject
+            visible = {'is_visible': False} if our_slug in ('literature_kazakh',) else {}
             subject, _ = Subject.objects.get_or_create(
                 slug=our_slug,
-                defaults={'name': our_name, 'icon': our_icon},
+                defaults={'name': our_name, 'icon': our_icon, **visible},
             )
             existing_q = Question.objects.filter(topic__subject=subject).count()
 

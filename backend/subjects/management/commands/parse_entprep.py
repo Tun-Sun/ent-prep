@@ -205,12 +205,11 @@ def count_subjects():
 # ---------------------------------------------------------------------------
 def build_question_text(row):
     """Формирует текст вопроса из JSON-строки."""
-    text = row.get('q', '')
+    text = row.get('q') or ''
     if not text:
         return ''
 
-    # Если есть passage_text — добавляем как контекст
-    passage = row.get('passage_text')
+    passage = row.get('passage_text') or ''
     if passage:
         text = f'<p><em>{passage}</em></p>\n<p>{text}</p>'
     else:
@@ -361,9 +360,10 @@ class Command(BaseCommand):
                 our_name = entprep_subject.replace('_', ' ').title()
                 our_icon = '📚'
 
+            visible = {'is_visible': False} if our_slug in ('literature_kazakh',) else {}
             subject, created = Subject.objects.get_or_create(
                 slug=our_slug,
-                defaults={'name': our_name, 'icon': our_icon},
+                defaults={'name': our_name, 'icon': our_icon, **visible},
             )
             if created:
                 self.stdout.write(f'  📌 Создан предмет: {subject.name}')
@@ -479,14 +479,12 @@ class Command(BaseCommand):
         explanation = build_explanation(row)
         difficulty = row.get('difficulty', 'medium') or 'medium'
 
-        # Проверка дубликата по тексту (первые 100 символов без HTML)
-        plain = re.sub(r'<[^>]+>', '', text).strip()
-        if len(plain) > 15 and Question.objects.filter(
-                text__icontains=plain[:100]).exists():
+        # Проверка дубликата по полному тексту (с HTML)
+        if Question.objects.filter(text__exact=text).exists():
             return 0
 
         # Тема
-        topic_name = get_topic_name(row.get('topic', ''), row.get('subtopic', ''))
+        topic_name = get_topic_name(row.get('topic') or '', row.get('subtopic') or '')
         topic, _ = Topic.objects.get_or_create(name=topic_name, subject=subject)
 
         question = Question.objects.create(
@@ -521,13 +519,11 @@ class Command(BaseCommand):
         explanation = build_explanation_multi(row)
         difficulty = row.get('difficulty', 'medium') or 'medium'
 
-        # Проверка дубликата
-        plain = re.sub(r'<[^>]+>', '', text).strip()
-        if len(plain) > 15 and Question.objects.filter(
-                text__icontains=plain[:100]).exists():
+        # Проверка дубликата по полному тексту
+        if Question.objects.filter(text__exact=text).exists():
             return 0
 
-        topic_name = get_topic_name(row.get('topic', ''), row.get('subtopic', ''))
+        topic_name = get_topic_name(row.get('topic') or '', row.get('subtopic') or '')
         topic, _ = Topic.objects.get_or_create(name=topic_name, subject=subject)
 
         question = Question.objects.create(
@@ -562,13 +558,11 @@ class Command(BaseCommand):
         explanation = build_explanation_matching(row)
         difficulty = row.get('difficulty', 'medium') or 'medium'
 
-        # Проверка дубликата
-        plain = re.sub(r'<[^>]+>', '', text).strip()
-        if len(plain) > 15 and Question.objects.filter(
-                text__icontains=plain[:100]).exists():
+        # Проверка дубликата по полному тексту
+        if Question.objects.filter(text__exact=text).exists():
             return 0
 
-        topic_name = get_topic_name(row.get('topic', ''), row.get('subtopic', ''))
+        topic_name = get_topic_name(row.get('topic') or '', row.get('subtopic') or '')
         topic, _ = Topic.objects.get_or_create(name=topic_name, subject=subject)
 
         question = Question.objects.create(
@@ -611,7 +605,7 @@ class Command(BaseCommand):
         for i, row in enumerate(rows[:10], 1):
             q_type = row.get('type', 'single')
             text = row.get('q', '')[:80]
-            topic_name = get_topic_name(row.get('topic', ''), row.get('subtopic', ''))
+            topic_name = get_topic_name(row.get('topic') or '', row.get('subtopic') or '')
             difficulty = row.get('difficulty', 'medium') or 'medium'
 
             type_badge = f'[{q_type}]'

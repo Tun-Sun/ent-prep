@@ -12,6 +12,7 @@ class User(AbstractUser):
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='student')
     full_name = models.CharField(max_length=150, blank=True)
     school = models.CharField(max_length=200, blank=True)
+    avatar = models.ImageField(upload_to='avatars/', blank=True, null=True, verbose_name='Аватар')
     dashboard_subjects = models.ManyToManyField('subjects.Subject', blank=True, verbose_name='Предметы на дашборде')
     profile_subjects = models.ManyToManyField('subjects.Subject', blank=True, related_name='students',
                                                verbose_name='Профильные предметы ученика')

@@ -27,6 +27,7 @@ import SettingsPage from './pages/student/SettingsPage'
 
 // Teacher
 import TeacherDashboardPage from './pages/teacher/DashboardPage'
+
 import StudentsPage from './pages/teacher/StudentsPage'
 import GroupsPage from './pages/teacher/GroupsPage'
 import AnalyticsPage from './pages/teacher/AnalyticsPage'
@@ -39,6 +40,7 @@ import TestPreviewPage from './pages/teacher/TestPreviewPage'
 import AuthorialTestsPage from './pages/teacher/AuthorialTestsPage'
 import AuthorialTestEditorPage from './pages/teacher/AuthorialTestEditorPage'
 import AdminPanelPage from './pages/teacher/AdminPanelPage'
+import TeacherSettingsPage from './pages/teacher/TeacherSettingsPage'
 
 function HomePage() {
   const { user, loading } = useAuth()
@@ -72,6 +74,7 @@ export default function App() {
         <Route path="teacher/questions" element={<TeacherRoute><QuestionsPage /></TeacherRoute>} />
         <Route path="teacher/import" element={<TeacherRoute><ImportPage /></TeacherRoute>} />
         <Route path="teacher/import/google-forms" element={<TeacherRoute><GoogleFormsImportPage /></TeacherRoute>} />
+
         <Route path="teacher/students" element={<TeacherRoute><StudentsPage /></TeacherRoute>} />
         <Route path="teacher/groups" element={<TeacherRoute><GroupsPage /></TeacherRoute>} />
         <Route path="teacher/analytics" element={<TeacherRoute><AnalyticsPage /></TeacherRoute>} />
@@ -80,6 +83,7 @@ export default function App() {
         <Route path="teacher/tests/authorial" element={<TeacherRoute><AuthorialTestsPage /></TeacherRoute>} />
         <Route path="teacher/tests" element={<TeacherRoute><TestHistoryPage /></TeacherRoute>} />
         <Route path="teacher/tests/:sessionId" element={<TeacherRoute><TestResultPage /></TeacherRoute>} />
+        <Route path="teacher/settings" element={<TeacherRoute><TeacherSettingsPage /></TeacherRoute>} />
         <Route path="admin" element={<TeacherRoute><AdminPanelPage /></TeacherRoute>} />
       </Route>
 

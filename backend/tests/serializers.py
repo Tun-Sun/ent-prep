@@ -7,7 +7,7 @@ from subjects.models import Question
 class AnswerRecordSerializer(serializers.ModelSerializer):
     question_text = serializers.CharField(source='question.text', read_only=True)
     question_type = serializers.CharField(source='question.question_type', read_only=True)
-    question_image = serializers.ImageField(source='question.image', read_only=True)
+    question_image = serializers.SerializerMethodField()
     selected_answer_text = serializers.SerializerMethodField()
     correct_answer_text = serializers.SerializerMethodField()
     matching_pairs = serializers.JSONField(read_only=True)
@@ -30,6 +30,17 @@ class AnswerRecordSerializer(serializers.ModelSerializer):
             return '; '.join(f'{k}→{v}' for k, v in obj.matching_pairs.items()) if obj.matching_pairs else '—'
         return '—'
 
+    def get_question_image(self, obj):
+        q = obj.question
+        if q.image:
+            try:
+                return q.image.url
+            except Exception:
+                pass
+        if q.image_ref and '/' in q.image_ref:
+            return q.image_ref
+        return None
+
     def get_correct_answer_text(self, obj):
         q = obj.question
         correct = q.answers.filter(is_correct=True)
@@ -46,7 +57,10 @@ class AnswerRecordSerializer(serializers.ModelSerializer):
 
 class AnswerRecordCreateSerializer(serializers.ModelSerializer):
     selected_answer = serializers.IntegerField(required=False, allow_null=True)
-    selected_answers = serializers.ListField(child=serializers.IntegerField(), required=False, default=list, label='Выбранные ответы')
+    selected_answers = serializers.ListField(
+        child=serializers.IntegerField(), required=False, default=list,
+        max_length=2, label='Выбранные ответы',
+    )
     matching_pairs = serializers.JSONField(required=False, default=dict, label='Пары соответствия')
     question = serializers.IntegerField()
 

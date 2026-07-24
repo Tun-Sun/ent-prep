@@ -44,7 +44,15 @@ export const authAPI = {
   login: (data) => api.post('/auth/login/', data),
   register: (data) => api.post('/auth/register/', data),
   profile: () => api.get('/auth/profile/'),
+  updateProfile: (data) => api.patch('/auth/profile/', data),
+  uploadAvatar: (file) => {
+    const fd = new FormData()
+    fd.append('avatar', file)
+    return api.patch('/auth/profile/', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
   updateProfileSubjects: (subjectIds) => api.put('/auth/profile/subjects/', { profile_subjects: subjectIds }),
+  clearHistory: () => api.delete('/auth/profile/history/'),
+  deleteAccount: (password) => api.delete('/auth/profile/account/', { data: { password } }),
 }
 
 // Subjects

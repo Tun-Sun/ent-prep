@@ -17,6 +17,15 @@ from .dto import AnswerDTO, FormPayload, QuestionDTO
 # Типы, которые мы поддерживаем (из scraper/fetcher)
 _SUPPORTED_SCRAPER_TYPES = {'multiple_choice', 'list', 'checkbox'}
 
+# Паттерны для фильтрации личных/мета-вопросов (ФИО, email, класс и т.п.)
+_META_PATTERNS = [
+    'фио', 'ф.и.о', 'фамилия', 'имя', 'отчество',
+    'email', 'e-mail', 'почта',
+    'телефон', 'phone', 'номер',
+    'класс', 'школа', 'группа',
+    'ученик', 'учащийся', 'студент',
+]
+
 
 class ParseError(ValueError):
     """Некорректный JSON или структура — импорт невозможен."""
@@ -40,6 +49,11 @@ def parse_dict(data: dict) -> FormPayload:
 
         for i, q_raw in enumerate(questions_raw):
             try:
+                q_type = str(q_raw.get('type', ''))
+                if q_type not in _SUPPORTED_SCRAPER_TYPES:
+                    continue
+                if _is_meta_question(q_raw):
+                    continue
                 questions.append(_parse_question(q_raw))
             except (KeyError, ValueError, TypeError) as e:
                 raise ParseError(
@@ -96,6 +110,21 @@ def parse_json(text: str) -> FormPayload:
 
 # === Внутренние хелперы =====================================================
 
+def _is_meta_question(raw: dict) -> bool:
+    """True если вопрос похож на личные/мета-данные (ФИО, класс и т.п.)."""
+    title = (raw.get('title') or '').strip().lower()
+    if not title:
+        return False
+    for pattern in _META_PATTERNS:
+        if pattern in title:
+            return True
+    answers = raw.get('answers') or []
+    texts = {a.get('text', '').strip() for a in answers if a.get('text', '').strip()}
+    if len(texts) < 2:
+        return True
+    return False
+
+
 def _parse_question(raw: dict) -> QuestionDTO:
     answers_raw = raw.get('answers') or []
     answers = [_parse_answer(a) for a in answers_raw]
@@ -138,6 +167,7 @@ def raw_to_payload(
     topic_name: str = '',
     language: str = 'ru',
     year: int | None = None,
+    variant_number: int | None = None,
 ) -> FormPayload:
     """
     Конвертирует нормализованный dict от fetcher.py в FormPayload.
@@ -175,7 +205,9 @@ def raw_to_payload(
         try:
             q_type = str(q_raw.get('type', 'multiple_choice'))
             if q_type not in _SUPPORTED_SCRAPER_TYPES:
-                continue  # пропускаем неподдерживаемый тип
+                continue
+            if _is_meta_question(q_raw):
+                continue
 
             answers = []
             for a in q_raw.get('answers', []):
@@ -187,10 +219,11 @@ def raw_to_payload(
             if len(answers) < 2:
                 continue
 
-            image_ref = None
-            img_urls = q_raw.get('image_urls', [])
-            if isinstance(img_urls, list) and img_urls:
-                image_ref = img_urls[0]
+            image_ref = q_raw.get('image_ref') or None
+            if image_ref is None:
+                img_urls = q_raw.get('image_urls', [])
+                if isinstance(img_urls, list) and img_urls:
+                    image_ref = img_urls[0]
 
             questions.append(QuestionDTO(
                 external_id=str(q_raw.get('external_id', f'fetched_{i}')),
@@ -219,6 +252,7 @@ def raw_to_payload(
         topic_name=topic_name,
         language=language,
         year=year,
+        variant_number=variant_number,
         questions=questions,
     )
 

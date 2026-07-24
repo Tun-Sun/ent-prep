@@ -12,6 +12,10 @@ export default function AuthorialTestsPage() {
   const [viewing, setViewing] = useState(null)
   const [questions, setQuestions] = useState([])
   const [questionsLoading, setQuestionsLoading] = useState(false)
+  const [renaming, setRenaming] = useState(null)
+  const [renameValue, setRenameValue] = useState('')
+
+  const authHeaders = { Authorization: `Bearer ${localStorage.getItem('access_token')}` }
 
   const load = () => {
     setLoading(true)
@@ -40,6 +44,26 @@ export default function AuthorialTestsPage() {
       .finally(() => setQuestionsLoading(false))
   }
 
+  const startRename = (t) => {
+    setRenaming(t.form_id)
+    setRenameValue(t.topic)
+  }
+
+  const saveRename = async () => {
+    if (!renameValue.trim() || !renaming) return
+    const t = tests.find(x => x.form_id === renaming)
+    if (!t) return
+    try {
+      await fetch(`/api/topics/${t.topic_id}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({ name: renameValue.trim() }),
+      })
+      setRenaming(null)
+      load()
+    } catch { alert('Ошибка сохранения') }
+  }
+
   return (
     <div>
       <div className="page-header">
@@ -64,13 +88,33 @@ export default function AuthorialTestsPage() {
               justifyContent: 'space-between',
               alignItems: 'center',
             }}>
-              <div>
-                <div style={{ fontWeight: 600 }}>{t.subject} — {t.topic}</div>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
-                  {t.count} вопросов
+              {renaming === t.form_id ? (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flex: 1 }}>
+                  <input className="form-input" style={{ flex: 1, maxWidth: 400 }}
+                    value={renameValue} autoFocus
+                    onChange={e => setRenameValue(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') saveRename()
+                      if (e.key === 'Escape') setRenaming(null)
+                    }} />
+                  <button className="btn btn-primary btn-sm" onClick={saveRename}>OK</button>
+                  <button className="btn btn-outline btn-sm" onClick={() => setRenaming(null)}>✕</button>
                 </div>
-              </div>
+              ) : (
+                <div>
+                  <div style={{ fontWeight: 600 }}>{t.subject} — {t.topic}</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
+                    {t.count} вопросов
+                  </div>
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 8 }}>
+                {renaming !== t.form_id && (
+                  <button className="btn btn-outline" style={{ padding: '8px 12px' }}
+                    onClick={() => startRename(t)} title="Переименовать">
+                    ✏️
+                  </button>
+                )}
                 <button
                   className="btn btn-outline"
                   style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 4 }}

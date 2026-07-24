@@ -20,7 +20,7 @@ from typing import List, Optional
 
 from django.db import transaction
 
-from subjects.models import Answer, Question, Subject, Topic
+from subjects.models import Answer, Question, Subject, Topic, Variant
 
 from .dto import FormPayload, QuestionDTO
 
@@ -78,7 +78,7 @@ def import_payload(
     try:
         with transaction.atomic():
             subject = _resolve_subject(payload)
-            topic = _resolve_topic(subject, payload.topic_name)
+            topic = _resolve_topic(subject, payload.topic_name, payload)
             result.subject = subject.name
             result.topic = topic.name
 
@@ -118,12 +118,22 @@ def _resolve_subject(payload: FormPayload) -> Subject:
     )
 
 
-def _resolve_topic(subject: Subject, topic_name: str) -> Topic:
+def _resolve_topic(subject: Subject, topic_name: str, payload: FormPayload) -> Topic:
     """Тема создаётся автоматически, если её ещё нет — в отличие от предмета."""
     topic, _created = Topic.objects.get_or_create(
         subject=subject,
         name=topic_name,
     )
+    if payload.variant_number is not None and topic.variant_id is None:
+        variant, _ = Variant.objects.get_or_create(
+            number=payload.variant_number,
+            defaults={
+                'name': f'Вариант {payload.variant_number}',
+                'year': payload.year,
+            },
+        )
+        topic.variant = variant
+        topic.save(update_fields=['variant'])
     return topic
 
 

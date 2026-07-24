@@ -15,6 +15,7 @@ from .serializers import (
 
 class SubjectViewSet(viewsets.ModelViewSet):
     queryset = Subject.objects.all()
+    lookup_value_regex = r'\d+'  # prevent actions shadowed by detail route
 
     def get_serializer_class(self):
         if self.action in ('minimal', 'for_registration'):

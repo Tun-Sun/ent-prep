@@ -2,13 +2,14 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Avg, Count, Max, Q
+from django.db.models import Avg, Count, Max, Prefetch, Q
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 from datetime import timedelta
 
 from users.models import User
 from subjects.models import Subject
+from subjects.permissions import IsTeacherOrAdmin
 from tests.models import TestSession
 
 
@@ -156,12 +157,9 @@ class TeacherDashboardView(APIView):
 
 
 class TeacherStudentsView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsTeacherOrAdmin]
 
     def get(self, request):
-        if request.user.role != 'teacher':
-            return Response({'error': 'Доступ только для учителей'}, status=403)
-
         # Filters
         group_id = request.query_params.get('group_id')
         subject_id = request.query_params.get('subject_id')
@@ -184,28 +182,31 @@ class TeacherStudentsView(APIView):
         if date_to:
             session_filter &= Q(test_sessions__started_at__date__lte=date_to)
 
+        student_sessions = TestSession.objects.filter(
+            is_completed=True
+        ).select_related('subject')
+        if subject_id:
+            student_sessions = student_sessions.filter(subject_id=subject_id)
+        if date_from:
+            student_sessions = student_sessions.filter(started_at__date__gte=date_from)
+        if date_to:
+            student_sessions = student_sessions.filter(started_at__date__lte=date_to)
+
         students = students.annotate(
             total_tests=Count('test_sessions', filter=session_filter),
             avg_score=Avg('test_sessions__score_percent', filter=session_filter),
+        ).prefetch_related(
+            Prefetch('test_sessions', queryset=student_sessions, to_attr='filtered_sessions'),
+            'student_groups',
+            'profile_subjects',
         ).order_by('-avg_score')
 
         data = []
         for s in students:
-            # Apply same filters to individual session queries
-            sess_filter = Q(is_completed=True)
-            if subject_id:
-                sess_filter &= Q(subject_id=subject_id)
-            if date_from:
-                sess_filter &= Q(started_at__date__gte=date_from)
-            if date_to:
-                sess_filter &= Q(started_at__date__lte=date_to)
-
-            sessions = TestSession.objects.filter(
-                sess_filter, student=s
-            ).select_related('subject')
-
             by_subject = {}
-            for sess in sessions:
+            for sess in s.filtered_sessions:
+                if not sess.subject:
+                    continue
                 if sess.subject.name not in by_subject:
                     by_subject[sess.subject.name] = []
                 by_subject[sess.subject.name].append(sess.score_percent)
@@ -215,9 +216,7 @@ class TeacherStudentsView(APIView):
                 for name, scores in by_subject.items()
             }
 
-            groups_info = list(
-                s.student_groups.values('id', 'name')
-            )
+            groups_info = [{'id': group.id, 'name': group.name} for group in s.student_groups.all()]
 
             data.append({
                 'id': s.id,
@@ -228,7 +227,7 @@ class TeacherStudentsView(APIView):
                 'avg_score': round(s.avg_score or 0, 1),
                 'subject_progress': subject_progress,
                 'groups': groups_info,
-                'profile_subjects': list(s.profile_subjects.values_list('id', flat=True)),
+                'profile_subjects': [subject.id for subject in s.profile_subjects.all()],
             })
 
         return Response(data)

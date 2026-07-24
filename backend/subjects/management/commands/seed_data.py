@@ -40,9 +40,9 @@ class Command(BaseCommand):
 
         self._create_users()
         self._create_groups()
-        if not options['keep_subjects']:
-            self._create_subjects()
+        self._create_subjects()
         self._create_test_sessions()
+        self._create_authorial_tests()
         self.stdout.write(self.style.SUCCESS('Mock data loaded!'))
 
     def _create_users(self):
@@ -98,54 +98,115 @@ class Command(BaseCommand):
             {
                 'name': 'История Казахстана', 'slug': 'history',
                 'icon': '🏛', 'subject_type': 'mandatory',
-                'question_count': 20, 'time_limit': 30,
+                'question_count': 20, 'time_limit': 1800,
                 'topics': ['Древняя история', 'Средневековье', 'Новейшая история'],
             },
             {
                 'name': 'Грамотность чтения', 'slug': 'reading',
                 'icon': '📖', 'subject_type': 'mandatory',
-                'question_count': 10, 'time_limit': 15,
+                'question_count': 10, 'time_limit': 900,
                 'topics': ['Понимание текста', 'Анализ текста'],
             },
             {
                 'name': 'Математическая грамотность', 'slug': 'math_profile',
                 'icon': '📐', 'subject_type': 'mandatory',
-                'question_count': 10, 'time_limit': 15,
+                'question_count': 10, 'time_limit': 900,
                 'topics': ['Арифметика', 'Геометрия', 'Логика'],
             },
             {
                 'name': 'Физика', 'slug': 'physics',
                 'icon': '⚡', 'subject_type': 'profile',
-                'question_count': 40, 'time_limit': 40,
+                'question_count': 40, 'time_limit': 2400,
                 'topics': ['Механика', 'Термодинамика', 'Электричество'],
             },
             {
                 'name': 'Биология', 'slug': 'biology',
                 'icon': '🧬', 'subject_type': 'profile',
-                'question_count': 40, 'time_limit': 40,
+                'question_count': 40, 'time_limit': 2400,
                 'topics': ['Ботаника', 'Зоология', 'Анатомия'],
             },
             {
                 'name': 'Информатика', 'slug': 'informatics',
                 'icon': '💻', 'subject_type': 'profile',
-                'question_count': 40, 'time_limit': 40,
+                'question_count': 40, 'time_limit': 2400,
                 'topics': ['Алгоритмы', 'Программирование', 'Сети'],
+            },
+            {
+                'name': 'Математика', 'slug': 'math',
+                'icon': '📐', 'subject_type': 'profile',
+                'question_count': 40, 'time_limit': 2400,
+                'topics': ['Алгебра', 'Геометрия', 'Тригонометрия'],
+            },
+            {
+                'name': 'Химия', 'slug': 'chemistry',
+                'icon': '🧪', 'subject_type': 'profile',
+                'question_count': 40, 'time_limit': 2400,
+                'topics': ['Общая химия', 'Органическая химия'],
+            },
+            {
+                'name': 'География', 'slug': 'geography',
+                'icon': '🌍', 'subject_type': 'profile',
+                'question_count': 40, 'time_limit': 2400,
+                'topics': ['Физическая география', 'Экономическая география'],
+            },
+            {
+                'name': 'Всемирная история', 'slug': 'world_history',
+                'icon': '🏛️', 'subject_type': 'profile',
+                'question_count': 40, 'time_limit': 2400,
+                'topics': ['Древний мир', 'Новое время'],
+            },
+            {
+                'name': 'Английский язык', 'slug': 'english',
+                'icon': '🇬🇧', 'subject_type': 'profile',
+                'question_count': 40, 'time_limit': 2400,
+                'topics': ['Грамматика', 'Лексика', 'Чтение'],
+            },
+            {
+                'name': 'Основы права', 'slug': 'law',
+                'icon': '⚖️', 'subject_type': 'profile',
+                'question_count': 40, 'time_limit': 2400,
+                'topics': ['Конституционное право', 'Уголовное право'],
+            },
+            {
+                'name': 'Русская литература', 'slug': 'literature',
+                'icon': '📚', 'subject_type': 'profile',
+                'question_count': 40, 'time_limit': 2400,
+                'topics': ['Классицизм', 'Реализм', 'Современная литература'],
+            },
+            {
+                'name': 'Казахская литература', 'slug': 'literature_kazakh',
+                'icon': '📖', 'subject_type': 'profile',
+                'question_count': 40, 'time_limit': 2400,
+                'topics': ['Абай', 'Жамбыл', 'Современная литература'],
+                'is_visible': False,
+            },
+            {
+                'name': 'Русская литература (ЕНТ)', 'slug': 'literature_russian',
+                'icon': '✍️', 'subject_type': 'profile',
+                'question_count': 40, 'time_limit': 2400,
+                'topics': ['Поэзия', 'Проза'],
             },
         ]
 
         for s in subjects_data:
-            subject = Subject.objects.create(
-                name=s['name'], slug=s['slug'], icon=s['icon'],
-                subject_type=s['subject_type'],
-                question_count=s['question_count'],
-                time_limit=s['time_limit'],
+            slug = s['slug']
+            defaults = {
+                'name': s['name'], 'icon': s['icon'],
+                'subject_type': s['subject_type'],
+                'question_count': s['question_count'],
+                'time_limit': s['time_limit'],
+            }
+            if 'is_visible' in s:
+                defaults['is_visible'] = s['is_visible']
+            subject, created = Subject.objects.update_or_create(
+                slug=slug, defaults=defaults,
             )
-            for tname in s['topics']:
-                Topic.objects.create(name=tname, subject=subject)
+            if created:
+                for tname in s['topics']:
+                    Topic.objects.create(name=tname, subject=subject)
+                self._add_questions(subject)
 
-            self._add_questions(subject)
-
-        self.stdout.write(f'   Создано {len(subjects_data)} предметов')
+        self.stdout.write(f'   Создано/обновлено {len(subjects_data)} предметов')
 
     def _add_questions(self, subject):
         difficulties = ['easy', 'easy', 'medium', 'medium', 'hard']
@@ -199,8 +260,6 @@ class Command(BaseCommand):
             for _ in range(num_sessions):
                 subject = random.choice(subjects)
                 num_q = random.choice([5, 10, 10, 15, 20])
-                max_points = num_q * 1  # приблизительно
-
                 days_ago = random.randint(0, 60)
                 started = now - timedelta(days=days_ago, hours=random.randint(0, 5))
                 completed = started + timedelta(minutes=random.randint(5, 45))
@@ -217,26 +276,41 @@ class Command(BaseCommand):
                 skill = base_skill + random.uniform(-0.15, 0.15)
                 skill = max(0.2, min(0.98, skill))
 
-                correct = max(1, int(num_q * skill))
+                # Answer records
+                questions = list(Question.objects.filter(
+                    topic__subject=subject
+                ).order_by('?')[:num_q])
+
+                total_points = sum(q.points for q in questions)
+                earned = 0
+                correct = 0
+
+                for q in questions:
+                    all_answers = list(q.answers.all())
+                    if random.random() < skill:
+                        chosen = random.choice([a for a in all_answers if a.is_correct] or all_answers)
+                        is_correct = chosen.is_correct
+                    else:
+                        wrong = [a for a in all_answers if not a.is_correct]
+                        chosen = random.choice(wrong) if wrong else random.choice(all_answers)
+                        is_correct = False
+                    if is_correct:
+                        correct += 1
+                        earned += q.points
 
                 session = TestSession.objects.create(
                     student=student,
                     subject=subject,
                     total_questions=num_q,
                     correct_answers=correct,
-                    total_points=float(max_points),
-                    earned_points=round(max_points * skill, 1),
-                    score_percent=round((correct / num_q) * 100, 1),
+                    total_points=float(total_points),
+                    earned_points=round(earned, 1),
+                    score_percent=round((earned / total_points) * 100, 1) if total_points else 0,
                     started_at=started,
                     completed_at=completed,
                     is_completed=True,
                     is_ent=False,
                 )
-
-                # Answer records
-                questions = list(Question.objects.filter(
-                    topic__subject=subject
-                ).order_by('?')[:num_q])
 
                 for q in questions:
                     all_answers = list(q.answers.all())
@@ -260,3 +334,35 @@ class Command(BaseCommand):
 
         total_sessions = TestSession.objects.filter(is_completed=True).count()
         self.stdout.write(f'   Создано {total_sessions} тестовых сессий')
+
+    def _create_authorial_tests(self):
+        self.stdout.write('Создаём авторские тесты...')
+        from subjects.models import Question, Answer, Topic as T
+        topics = list(T.objects.filter(subject__slug__in=['physics', 'biology']))
+        authorial_forms = [
+            {'form_id': 'mock-form-physics-001', 'subject_slug': 'physics', 'count': 5},
+            {'form_id': 'mock-form-biology-001', 'subject_slug': 'biology', 'count': 5},
+        ]
+        total_q = 0
+        for form in authorial_forms:
+            form_topics = [t for t in topics if t.subject.slug == form['subject_slug']]
+            if not form_topics:
+                continue
+            for i in range(form['count']):
+                topic = random.choice(form_topics)
+                q = Question.objects.create(
+                    text=f'Авторский вопрос #{i + 1} по {topic.name}',
+                    topic=topic,
+                    difficulty=random.choice(['easy', 'medium', 'hard']),
+                    question_type='single_choice',
+                    points=random.choice([1, 1, 2]),
+                    source_type='authorial',
+                    verification_status='verified',
+                    external_id=f"{form['form_id']}/{i + 1}",
+                )
+                Answer.objects.create(question=q, text='Правильный ответ', is_correct=True)
+                Answer.objects.create(question=q, text='Неправильный А', is_correct=False)
+                Answer.objects.create(question=q, text='Неправильный Б', is_correct=False)
+                Answer.objects.create(question=q, text='Неправильный В', is_correct=False)
+                total_q += 1
+        self.stdout.write(f'   Создано {len(authorial_forms)} форм, {total_q} вопросов')

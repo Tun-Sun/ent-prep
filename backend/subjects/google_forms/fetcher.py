@@ -247,7 +247,7 @@ def _parse_entry_flat(entry: list) -> Optional[dict]:
     if not isinstance(type_code, int):
         return None
 
-    if type_code not in (0, 2, 1):
+    if type_code not in (0, 2, 1, 4):
         return None
 
     item_id = str(entry[0]) if entry[0] is not None else None
@@ -265,8 +265,8 @@ def _parse_entry_flat(entry: list) -> Optional[dict]:
         result['options'] = []
         return result
 
-    if type_code in (1, 2):
-        qtype_map = {1: 'checkbox', 2: 'multiple_choice'}
+    if type_code in (1, 2, 4):
+        qtype_map = {1: 'checkbox', 2: 'multiple_choice', 4: 'checkbox'}
         result['qtype'] = qtype_map.get(type_code, 'multiple_choice')
 
         # Извлекаем варианты ответов

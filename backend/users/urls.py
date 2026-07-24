@@ -1,6 +1,7 @@
 from django.urls import path
 from .views import (
     RegisterView, ProfileView, UpdateProfileSubjectsView,
+    ClearTestHistoryView, DeleteOwnAccountView,
     UpdateStudentSubjectsView,
     StudyGroupListCreateView, StudyGroupDetailView,
     StudyGroupAddStudentsView, CreateStudentView, StudentListView,
@@ -12,6 +13,8 @@ urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),
     path('profile/', ProfileView.as_view(), name='profile'),
     path('profile/subjects/', UpdateProfileSubjectsView.as_view(), name='profile-subjects'),
+    path('profile/history/', ClearTestHistoryView.as_view(), name='profile-history'),
+    path('profile/account/', DeleteOwnAccountView.as_view(), name='profile-account'),
     # Groups
     path('groups/', StudyGroupListCreateView.as_view(), name='study-groups'),
     path('groups/<int:pk>/', StudyGroupDetailView.as_view(), name='study-group-detail'),

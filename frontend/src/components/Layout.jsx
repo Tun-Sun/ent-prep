@@ -9,6 +9,7 @@ const iconMap = {
   'grant-calc': Wallet,
   'history': Clock,
   'teacher-dashboard': LayoutDashboard,
+  'topics': Layers,
   'questions': HelpCircle,
   'authorial': FileEdit,
   'import': Download,
@@ -31,7 +32,9 @@ const studentLinks = [
 
 const teacherLinks = [
   { to: '/teacher', label: 'Дашборд', icon: 'teacher-dashboard' },
+  { to: '/teacher/settings', label: 'Профиль', icon: 'profile' },
   { to: '/subjects', label: 'Предметы', icon: 'subjects' },
+
   { to: '/teacher/questions', label: 'Вопросы', icon: 'questions' },
   { to: '/teacher/tests/authorial', label: 'Авторские', icon: 'authorial' },
   { to: '/teacher/import/google-forms', label: 'Импорт', icon: 'import' },
@@ -95,7 +98,7 @@ export default function Layout() {
         </nav>
         <div className="sidebar-footer">
           <div className="sidebar-user">
-            <div className="sidebar-avatar">{initials}</div>
+            <div className="sidebar-avatar" style={{ overflow: 'hidden' }}>{user?.avatar ? <img src={user.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initials}</div>
             <div>
               <div className="sidebar-username">{user?.full_name || user?.username}</div>
               <div className="sidebar-role">{roleLabel}</div>

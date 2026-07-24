@@ -105,7 +105,7 @@ export default function AnalyticsPage() {
   const ChartTooltip = ({ active, payload, label }) => {
     if (!active || !payload) return null
     return (
-      <div style={{ background: '#fff', border: '2px solid #1B1B1B', borderRadius: 12, padding: '10px 14px', fontSize: 13, boxShadow: '3px 3px 0 0 rgba(0,0,0,0.08)' }}>
+      <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px 14px', fontSize: 13, boxShadow: 'var(--shadow)' }}>
         <div style={{ fontWeight: 700, marginBottom: 6 }}>{label}</div>
         {payload.map((p, i) => (
           <div key={i} style={{ color: p.color, fontWeight: 500 }}>{p.name}: {p.value}{p.name === 'Средний балл' || p.name === 'Макс. балл' ? '%' : ''}</div>
@@ -117,7 +117,7 @@ export default function AnalyticsPage() {
   return (
     <div className="dashboard">
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
-        <div style={{ width: 48, height: 48, borderRadius: 16, background: '#111', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, border: '2px solid #1B1B1B', boxShadow: '0 3px 0 0 var(--primary)' }}>
+        <div style={{ width: 48, height: 48, borderRadius: 16, background: 'linear-gradient(135deg, var(--primary), #6366F1)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, boxShadow: '0 8px 20px rgba(99,102,241,0.2)' }}>
           📊
         </div>
         <h1 style={{ fontSize: 32, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Аналитика</h1>
@@ -168,7 +168,7 @@ export default function AnalyticsPage() {
               )}
             </div>
             {showDropdown && studentSearch.length >= 2 && studentResults.length > 0 && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: '#fff', border: '2px solid #1B1B1B', borderRadius: 12, marginTop: 4, maxHeight: 200, overflowY: 'auto', boxShadow: '3px 3px 0 0 rgba(0,0,0,0.08)' }}>
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, marginTop: 4, maxHeight: 200, overflowY: 'auto', boxShadow: 'var(--shadow-lg)' }}>
                 {studentResults.map(st => (
                   <div key={st.id} style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #f0f0f0', fontSize: 14 }}
                     onMouseDown={() => { setSelectedStudent(st); setStudentSearch(st.full_name || st.username); setShowDropdown(false) }}>
@@ -261,7 +261,7 @@ export default function AnalyticsPage() {
 
           {/* Results table */}
           <div className="d-card" style={{ padding: 0, overflow: 'hidden', marginBottom: 20 }}>
-            <div style={{ padding: '16px 20px', borderBottom: '2px solid #1B1B1B', fontSize: 16, fontWeight: 700 }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1.5px solid var(--border)', fontSize: 16, fontWeight: 700 }}>
               Результаты тестов
               <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)', marginLeft: 8 }}>({data.total_count} записей)</span>
             </div>
@@ -349,7 +349,7 @@ export default function AnalyticsPage() {
 function BelowAboveTable({ title, data, color }) {
   return (
     <div className="d-card" style={{ padding: 0, overflow: 'hidden' }}>
-      <div style={{ padding: '12px 16px', borderBottom: '2px solid #1B1B1B', fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ padding: '12px 16px', borderBottom: '1.5px solid var(--border)', fontSize: 14, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
         <div style={{ width: 10, height: 10, borderRadius: 3, background: color }} />
         {title} <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)' }}>({data.length})</span>
       </div>

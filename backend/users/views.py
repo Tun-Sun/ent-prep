@@ -1,3 +1,4 @@
+import re
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -79,6 +80,32 @@ class ProfileView(APIView):
         }
         return Response(data)
 
+    def patch(self, request):
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        update_fields = []
+        if 'avatar' in request.FILES:
+            request.user.avatar = request.FILES['avatar']
+            update_fields.append('avatar')
+        if 'username' in request.data:
+            username = request.data.get('username', '').strip()
+            if not username:
+                return Response({'error': 'Никнейм не может быть пустым'}, status=400)
+            if not re.match(r'^[a-zA-Z0-9_]+$', username):
+                return Response({'error': 'Только латиница, цифры и _'}, status=400)
+            if User.objects.exclude(pk=request.user.pk).filter(username=username).exists():
+                return Response({'error': 'Этот никнейм занят'}, status=400)
+            request.user.username = username
+            update_fields.append('username')
+        if 'full_name' in request.data:
+            full_name = request.data.get('full_name', '').strip()
+            request.user.full_name = full_name
+            update_fields.append('full_name')
+        if update_fields:
+            request.user.save(update_fields=update_fields)
+        serializer = UserSerializer(request.user, context={'request': request})
+        return Response(serializer.data)
+
 
 class UpdateProfileSubjectsView(APIView):
     permission_classes = [IsAuthenticated]
@@ -91,6 +118,30 @@ class UpdateProfileSubjectsView(APIView):
         subjects = Subject.objects.filter(id__in=subject_ids)
         request.user.profile_subjects.set(subjects)
         return Response({'profile_subjects': list(subjects.values_list('id', flat=True))})
+
+
+class ClearTestHistoryView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request):
+        from tests.models import TestSession
+
+        sessions = TestSession.objects.filter(student=request.user)
+        deleted = sessions.count()
+        sessions.delete()
+        return Response({'deleted': deleted})
+
+
+class DeleteOwnAccountView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request):
+        password = request.data.get('password', '')
+        if not request.user.check_password(password):
+            return Response({'error': 'Неверный пароль'}, status=status.HTTP_400_BAD_REQUEST)
+
+        request.user.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class UpdateStudentSubjectsView(APIView):

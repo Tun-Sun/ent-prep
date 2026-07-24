@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { dashboardAPI, groupsAPI, subjectsAPI } from '../../api'
-import { X, Users, Plus, Check, BookOpen, Search, Filter } from 'lucide-react'
+import { X, Users, Plus, Check, BookOpen, Search, Filter, GraduationCap, School, BarChart3, Trophy } from 'lucide-react'
 
 export default function StudentsPage() {
   const [students, setStudents] = useState([])
@@ -8,13 +8,11 @@ export default function StudentsPage() {
   const [allSubjects, setAllSubjects] = useState([])
   const [loading, setLoading] = useState(true)
 
-  // Filters
   const [filterGroupId, setFilterGroupId] = useState('')
   const [filterSubjectId, setFilterSubjectId] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
 
-  // UI state
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState('avg_score')
   const [assignStudent, setAssignStudent] = useState(null)
@@ -84,9 +82,6 @@ export default function StudentsPage() {
     setFilterGroupId(''); setFilterSubjectId(''); setDateFrom(''); setDateTo('')
   }
 
-  const modalOverlay = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }
-  const modalContent = { background: '#F4EEDC', border: '2px solid #1B1B1B', borderRadius: 26, padding: 28, width: '100%', maxWidth: 400, boxShadow: '6px 6px 0 0 rgba(0,0,0,0.1)' }
-
   if (loading) return <div className="text-center mt-8"><div className="spinner"></div></div>
 
   const filtered = students
@@ -109,128 +104,144 @@ export default function StudentsPage() {
         <p className="page-subtitle">Все ученики, их группы и прогресс по предметам</p>
       </div>
 
-      {/* Filters */}
-      <div className="card" style={{ padding: '16px 20px', marginBottom: 20 }}>
+      <div className="card" style={{ padding: 16, marginBottom: 20 }}>
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>Группа</div>
-            <select className="form-select" style={{ height: 38, fontSize: 13, minWidth: 150 }}
-              value={filterGroupId} onChange={e => setFilterGroupId(e.target.value)}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <Filter size={12} strokeWidth={1.5} style={{ display: 'inline', marginRight: 4, verticalAlign: -1 }} />
+              Группа
+            </div>
+            <select value={filterGroupId} onChange={e => setFilterGroupId(e.target.value)}
+              style={{ height: 38, borderRadius: 10, border: '1px solid var(--border)', padding: '0 12px', fontSize: 13, background: '#fff', cursor: 'pointer', minWidth: 150 }}>
               <option value="">Все группы</option>
               {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
           </div>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>Предмет</div>
-            <select className="form-select" style={{ height: 38, fontSize: 13, minWidth: 150 }}
-              value={filterSubjectId} onChange={e => setFilterSubjectId(e.target.value)}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <BookOpen size={12} strokeWidth={1.5} style={{ display: 'inline', marginRight: 4, verticalAlign: -1 }} />
+              Предмет
+            </div>
+            <select value={filterSubjectId} onChange={e => setFilterSubjectId(e.target.value)}
+              style={{ height: 38, borderRadius: 10, border: '1px solid var(--border)', padding: '0 12px', fontSize: 13, background: '#fff', cursor: 'pointer', minWidth: 150 }}>
               <option value="">Все предметы</option>
               {allSubjects.map(s => <option key={s.id} value={s.id}>{s.icon} {s.name}</option>)}
             </select>
           </div>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>От</div>
-            <input type="date" className="form-input" style={{ height: 38, fontSize: 13 }}
-              value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>От</div>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              style={{ height: 38, borderRadius: 10, border: '1px solid var(--border)', padding: '0 12px', fontSize: 13, background: '#fff' }} />
           </div>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>До</div>
-            <input type="date" className="form-input" style={{ height: 38, fontSize: 13 }}
-              value={dateTo} onChange={e => setDateTo(e.target.value)} />
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>До</div>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              style={{ height: 38, borderRadius: 10, border: '1px solid var(--border)', padding: '0 12px', fontSize: 13, background: '#fff' }} />
           </div>
           {hasFilters && (
-            <button className="btn btn-outline" style={{ height: 38, fontSize: 13, padding: '0 14px' }}
-              onClick={clearFilters}>
-              <X size={14} style={{ marginRight: 4 }} /> Сбросить
+            <button onClick={clearFilters}
+              style={{ height: 38, borderRadius: 10, border: '1px solid var(--border)', background: '#fff', padding: '0 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <X size={14} /> Сбросить
             </button>
           )}
         </div>
       </div>
 
-      <div className="card">
-        <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
-          <input
-            className="form-input"
-            style={{ maxWidth: 300 }}
-            placeholder="Поиск по имени или школе..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-          <select
-            className="form-select"
-            style={{ maxWidth: 200 }}
-            value={sortBy}
-            onChange={e => setSortBy(e.target.value)}
-          >
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 12 }}>
+          <div style={{ position: 'relative', flex: 1, maxWidth: 280 }}>
+            <Search size={14} style={{ position: 'absolute', left: 12, top: 12, color: 'var(--text-secondary)' }} />
+            <input type="text" placeholder="Поиск по имени или школе..." value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{ width: '100%', height: 38, borderRadius: 10, border: '1px solid var(--border)', padding: '0 12px 0 34px', fontSize: 13, background: '#fff' }} />
+          </div>
+          <select value={sortBy} onChange={e => setSortBy(e.target.value)}
+            style={{ height: 38, borderRadius: 10, border: '1px solid var(--border)', padding: '0 12px', fontSize: 13, background: '#fff', cursor: 'pointer', maxWidth: 200 }}>
             <option value="avg_score">По среднему баллу</option>
             <option value="total_tests">По кол-ву тестов</option>
             <option value="name">По имени</option>
           </select>
         </div>
 
-        <div className="table-container">
-          <table>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr>
-                <th>Ученик</th>
-                <th>Школа</th>
-                <th>Группы</th>
-                <th>Предметы</th>
-                <th>Тестов</th>
-                <th>Средний балл</th>
-                <th>Прогресс по предметам</th>
-                <th></th>
+              <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                <th style={{ textAlign: 'left', padding: '12px 16px', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ученик</th>
+                <th style={{ textAlign: 'left', padding: '12px 8px', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Школа</th>
+                <th style={{ textAlign: 'left', padding: '12px 8px', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Группы</th>
+                <th style={{ textAlign: 'center', padding: '12px 8px', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Предметы</th>
+                <th style={{ textAlign: 'center', padding: '12px 8px', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Тестов</th>
+                <th style={{ textAlign: 'center', padding: '12px 8px', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Средний балл</th>
+                <th style={{ textAlign: 'left', padding: '12px 8px', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Прогресс</th>
+                <th style={{ textAlign: 'right', padding: '12px 16px', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}></th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map(s => (
-                <tr key={s.id}>
-                  <td style={{ fontWeight: 600 }}>{s.full_name || s.username}</td>
-                  <td style={{ color: 'var(--text-secondary)' }}>{s.school || '—'}</td>
-                  <td>
+              {filtered.map((s, i) => (
+                <tr key={s.id} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? '#fff' : 'rgba(0,0,0,0.02)' }}>
+                  <td style={{ padding: '14px 16px', fontWeight: 600, fontSize: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <GraduationCap size={16} strokeWidth={1.5} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
+                      {s.full_name || s.username}
+                    </div>
+                  </td>
+                  <td style={{ padding: '14px 8px', color: 'var(--text-secondary)', fontSize: 13 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <School size={14} strokeWidth={1.5} style={{ flexShrink: 0 }} />
+                      {s.school || '—'}
+                    </div>
+                  </td>
+                  <td style={{ padding: '14px 8px' }}>
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
                       {(s.groups || []).map(g => (
                         <span key={g.id} style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                          display: 'inline-flex', alignItems: 'center', gap: 3,
                           padding: '2px 8px', borderRadius: 6, fontSize: 12,
-                          background: '#EEF2FF', color: '#4338CA', fontWeight: 500,
+                          background: 'rgba(99,102,241,0.06)', color: 'var(--primary)', fontWeight: 500,
                         }}>
                           <Users size={11} />
                           {g.name}
-                          <X size={11} style={{ cursor: 'pointer', opacity: 0.6 }} onClick={() => handleRemoveFromGroup(s.id, g.id)} />
+                          <X size={11} style={{ cursor: 'pointer', opacity: 0.5 }}
+                            onClick={() => handleRemoveFromGroup(s.id, g.id)} />
                         </span>
                       ))}
                       <button style={{
                         width: 22, height: 22, borderRadius: 6, border: '1px dashed var(--text-secondary)',
                         background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center',
-                        justifyContent: 'center', opacity: 0.6,
+                        justifyContent: 'center', opacity: 0.5,
                       }} onClick={() => setAssignStudent(s.id)} title="Добавить в группу">
                         <Plus size={12} />
                       </button>
                     </div>
                   </td>
-                  <td>
-                    <button className="btn btn-outline" style={{ fontSize: 12, padding: '4px 10px' }}
-                      onClick={() => openSubjects(s)}>
-                      <BookOpen size={12} style={{ marginRight: 4 }} />
-                      {(s.profile_subjects?.length || 0)} шт
+                  <td style={{ textAlign: 'center', padding: '14px 8px' }}>
+                    <button onClick={() => openSubjects(s)}
+                      style={{
+                        padding: '4px 12px', borderRadius: 8, border: '1px solid var(--border)',
+                        fontSize: 12, fontWeight: 600, cursor: 'pointer', background: '#fff', color: 'var(--text)',
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                      }}>
+                      <BookOpen size={12} strokeWidth={1.5} />
+                      {s.profile_subjects?.length || 0} шт
                     </button>
                   </td>
-                  <td>{s.total_tests}</td>
-                  <td>
-                    <span className={`badge badge-${s.avg_score >= 70 ? 'easy' : s.avg_score >= 40 ? 'medium' : 'hard'}`}>
+                  <td style={{ textAlign: 'center', padding: '14px 8px', fontSize: 14 }}>{s.total_tests}</td>
+                  <td style={{ textAlign: 'center', padding: '14px 8px' }}>
+                    <span style={{
+                      padding: '3px 10px', borderRadius: 100, fontSize: 13, fontWeight: 700,
+                      background: s.avg_score >= 70 ? 'rgba(16,185,129,0.1)' : s.avg_score >= 40 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)',
+                      color: s.avg_score >= 70 ? '#065F46' : s.avg_score >= 40 ? '#92400E' : '#991B1B',
+                    }}>
                       {s.avg_score}%
                     </span>
                   </td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <td style={{ padding: '14px 8px' }}>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       {Object.entries(s.subject_progress || {}).map(([name, score]) => (
                         <span key={name} style={{
-                          padding: '4px 10px',
-                          borderRadius: 6,
-                          fontSize: 12,
-                          fontWeight: 600,
-                          background: score >= 70 ? '#D1FAE5' : score >= 40 ? '#FEF3C7' : '#FEE2E2',
+                          padding: '3px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                          background: score >= 70 ? 'rgba(16,185,129,0.1)' : score >= 40 ? 'rgba(245,158,11,0.1)' : 'rgba(239,68,68,0.1)',
                           color: score >= 70 ? '#065F46' : score >= 40 ? '#92400E' : '#991B1B',
                         }}>
                           {name}: {score}%
@@ -238,8 +249,11 @@ export default function StudentsPage() {
                       ))}
                     </div>
                   </td>
-                  <td style={{ textAlign: 'right' }}>
-                    <a href={`/teacher/tests?student=${s.id}`} style={{ fontSize: 13, color: 'var(--primary)', fontWeight: 600 }}>Результаты</a>
+                  <td style={{ textAlign: 'right', padding: '14px 16px' }}>
+                    <a href={`/teacher/tests?student=${s.id}`}
+                      style={{ fontSize: 13, color: 'var(--primary)', fontWeight: 600, textDecoration: 'none' }}>
+                      Результаты
+                    </a>
                   </td>
                 </tr>
               ))}
@@ -253,68 +267,77 @@ export default function StudentsPage() {
         </div>
       </div>
 
-      {/* Assign to group modal */}
       {assignStudent && (
-        <div style={modalOverlay} onClick={() => setAssignStudent(null)}>
-          <div style={modalContent} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <div style={{ fontSize: 18, fontWeight: 700 }}>Добавить в группу</div>
-              <X size={20} style={{ cursor: 'pointer' }} onClick={() => setAssignStudent(null)} />
+        <div className="modal-overlay" onClick={() => setAssignStudent(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}
+            style={{ maxWidth: 400, borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)' }}>
+            <div className="modal-header">
+              <h3 style={{ fontSize: 18, fontWeight: 800 }}>Добавить в группу</h3>
+              <button className="btn btn-sm" onClick={() => setAssignStudent(null)}
+                style={{ borderRadius: 8, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <X size={16} />
+              </button>
             </div>
-            <select value={selectedGroup} onChange={e => setSelectedGroup(e.target.value)}
-              style={{ width: '100%', height: 44, borderRadius: 14, border: '2px solid #1B1B1B', padding: '0 14px', fontSize: 15, background: '#fff', marginBottom: 14 }}>
-              <option value="">Выберите группу</option>
-              {groups.filter(g => !students.find(s => s.id === assignStudent)?.groups?.find(gg => gg.id === g.id)).map(g => (
-                <option key={g.id} value={g.id}>{g.name}</option>
-              ))}
-            </select>
-            <button className="btn btn-primary" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-              onClick={handleAssign} disabled={!selectedGroup}>
-              <Check size={16} /> Добавить
-            </button>
+            <div style={{ padding: '12px 20px' }}>
+              <select value={selectedGroup} onChange={e => setSelectedGroup(e.target.value)}
+                style={{ width: '100%', height: 42, borderRadius: 10, border: '1px solid var(--border)', padding: '0 14px', fontSize: 14, background: '#fff', cursor: 'pointer', marginBottom: 14 }}>
+                <option value="">Выберите группу</option>
+                {groups.filter(g => !students.find(s => s.id === assignStudent)?.groups?.find(gg => gg.id === g.id)).map(g => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+              <button className="btn btn-primary" onClick={handleAssign} disabled={!selectedGroup}
+                style={{ width: '100%', borderRadius: 12, padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: !selectedGroup ? 0.5 : 1 }}>
+                <Check size={16} /> Добавить
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Subjects modal */}
       {subjectsStudent && (
-        <div style={modalOverlay} onClick={() => setSubjectsStudent(null)}>
-          <div style={{ ...modalContent, maxWidth: 480 }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: 18, fontWeight: 700 }}>
-                Предметы: {subjectsStudent.full_name || subjectsStudent.username}
+        <div className="modal-overlay" onClick={() => setSubjectsStudent(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}
+            style={{ maxWidth: 480, borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)' }}>
+            <div className="modal-header">
+              <h3 style={{ fontSize: 18, fontWeight: 800 }}>Предметы: {subjectsStudent.full_name || subjectsStudent.username}</h3>
+              <button className="btn btn-sm" onClick={() => setSubjectsStudent(null)}
+                style={{ borderRadius: 8, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <X size={16} />
+              </button>
+            </div>
+            <div style={{ padding: '12px 20px' }}>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 14 }}>
+                Обязательные предметы всегда включены. Выберите профильные.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto', marginBottom: 16 }}>
+                {allSubjects.map(s => {
+                  const isMandatory = s.subject_type === 'mandatory'
+                  const isSelected = selectedSubjects.includes(s.id)
+                  return (
+                    <label key={s.id} style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+                      borderRadius: 10, cursor: 'pointer',
+                      border: isSelected ? '1.5px solid var(--primary)' : '1px solid var(--border)',
+                      background: isSelected ? 'rgba(36,59,130,0.04)' : '#fff',
+                      opacity: isMandatory ? 0.7 : 1,
+                    }}>
+                      <input type="checkbox" checked={isSelected || isMandatory}
+                        disabled={isMandatory}
+                        onChange={() => toggleSubject(s.id)}
+                        style={{ width: 18, height: 18, cursor: isMandatory ? 'not-allowed' : 'pointer', accentColor: 'var(--primary)' }} />
+                      <span style={{ fontSize: 18 }}>{s.icon}</span>
+                      <span style={{ fontWeight: 500, fontSize: 14, flex: 1 }}>{s.name}</span>
+                      {isMandatory && <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>обязательный</span>}
+                    </label>
+                  )
+                })}
               </div>
-              <X size={20} style={{ cursor: 'pointer' }} onClick={() => setSubjectsStudent(null)} />
+              <button className="btn btn-primary" onClick={saveSubjects}
+                style={{ width: '100%', borderRadius: 12, padding: '10px' }}>
+                Сохранить
+              </button>
             </div>
-            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 14 }}>
-              Обязательные предметы всегда включены. Выберите профильные.
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto', marginBottom: 16 }}>
-              {allSubjects.map(s => {
-                const isMandatory = s.subject_type === 'mandatory'
-                const isSelected = selectedSubjects.includes(s.id)
-                return (
-                  <label key={s.id} style={{
-                    display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-                    borderRadius: 10, cursor: 'pointer',
-                    border: isSelected ? '2px solid var(--primary)' : '1px solid var(--border)',
-                    background: isSelected ? '#eef2ff' : '#fafafa',
-                    opacity: isMandatory ? 0.7 : 1,
-                  }}>
-                    <input type="checkbox" checked={isSelected || isMandatory}
-                      disabled={isMandatory}
-                      onChange={() => toggleSubject(s.id)}
-                      style={{ width: 18, height: 18, cursor: isMandatory ? 'not-allowed' : 'pointer' }} />
-                    <span style={{ fontSize: 18 }}>{s.icon}</span>
-                    <span style={{ fontWeight: 500, fontSize: 14, flex: 1 }}>{s.name}</span>
-                    {isMandatory && <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>обязательный</span>}
-                  </label>
-                )
-              })}
-            </div>
-            <button className="btn btn-primary" style={{ width: '100%' }} onClick={saveSubjects}>
-              Сохранить
-            </button>
           </div>
         </div>
       )}
