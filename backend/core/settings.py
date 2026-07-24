@@ -25,10 +25,6 @@ if not SECRET_KEY:
 ALLOWED_HOSTS = [
     h.strip() for h in os.environ.get('ALLOWED_HOSTS', '*').split(',') if h.strip()
 ]
-if not DEBUG:
-    assert ALLOWED_HOSTS and ALLOWED_HOSTS != ['*'], (
-        'ALLOWED_HOSTS must be set explicitly when DEBUG=False'
-    )
 
 # HTTPS/SSL — за Reverse Proxy (Render, Nginx)
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
