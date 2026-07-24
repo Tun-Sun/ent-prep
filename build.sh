@@ -21,7 +21,12 @@ mkdir -p backend/staticfiles
 cp -r frontend/dist/* backend/staticfiles/
 ls -la backend/staticfiles/
 
-# ── 3. Собираем статику Django ──
+# ── 3. Устанавливаем Python-зависимости ──
+echo ""
+echo "=== Installing Python dependencies ==="
+pip install -r requirements.txt
+
+# ── 4. Собираем статику Django ──
 echo ""
 echo "=== Collecting Django static files ==="
 cd backend
