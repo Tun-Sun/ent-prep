@@ -57,8 +57,8 @@ export default function RegisterPage() {
     }
   }
 
-  const mandatorySubjects = subjects.filter(s => s.subject_type === 'mandatory')
-  const profileSubjList = subjects.filter(s => s.subject_type === 'profile' && s.show_in_profiles !== false)
+  const allowedSlugs = ['history', 'math_profile', 'physics', 'geography', 'math']
+  const visibleSubjects = subjects.filter(s => allowedSlugs.includes(s.slug))
 
   return (
     <div className="auth-page">
@@ -98,7 +98,7 @@ export default function RegisterPage() {
               Выберите предметы, по которым будете тренироваться
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {[...mandatorySubjects, ...profileSubjList].map(s => (
+              {visibleSubjects.map(s => (
                 <label key={s.id} style={{
                   display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
                   borderRadius: 10, border: profileSubjects.includes(s.id) ? '2px solid var(--primary)' : '1px solid var(--border)',
@@ -110,9 +110,6 @@ export default function RegisterPage() {
                     style={{ width: 18, height: 18, cursor: 'pointer' }} />
                   <span style={{ fontSize: 16 }}>{s.icon}</span>
                   <span style={{ fontWeight: 500, fontSize: 14 }}>{s.name}</span>
-                  {s.subject_type === 'mandatory' && (
-                    <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginLeft: 'auto' }}>обязательный</span>
-                  )}
                 </label>
               ))}
             </div>
