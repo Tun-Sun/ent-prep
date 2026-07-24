@@ -48,7 +48,7 @@ class Command(BaseCommand):
     def _create_users(self):
         self.stdout.write('Создаём пользователей...')
         users_data = [
-            ('teacher1', 'Айнура Касымовна', 'Школа-лицей №1', 'teacher'),
+            ('teacher', 'Айнура Касымовна', 'Школа-лицей №1', 'teacher'),
             ('student1',  'Алихан Нурланов',      'Школа-лицей №1', 'student'),
             ('student2',  'Дарья Смирнова',        'Школа-лицей №1', 'student'),
             ('student3',  'Бауыржан Жумабаев',     'Школа-лицей №1', 'student'),
@@ -65,10 +65,11 @@ class Command(BaseCommand):
         ]
         created_users = []
         for username, full_name, school, role in users_data:
+            pwd = 'teacher123' if role == 'teacher' else 'password123'
             user = User.objects.create_user(
                 username=username,
                 email=f'{username}@entprep.test',
-                password='password123',
+                password=pwd,
                 full_name=full_name,
                 school=school,
                 role=role,

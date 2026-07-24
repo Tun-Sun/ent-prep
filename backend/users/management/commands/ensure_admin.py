@@ -26,7 +26,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--username', default=os.environ.get('ADMIN_USERNAME', 'admin'))
         parser.add_argument('--email', default=os.environ.get('ADMIN_EMAIL', 'admin@example.com'))
-        parser.add_argument('--password', default=os.environ.get('ADMIN_PASSWORD', 'admin12345'))
+        parser.add_argument('--password', default=os.environ.get('ADMIN_PASSWORD', 'admin123'))
 
     def handle(self, *args, **options):
         username = options['username']
