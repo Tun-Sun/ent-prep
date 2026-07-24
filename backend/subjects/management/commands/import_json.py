@@ -31,21 +31,21 @@ from subjects.models import Subject, Topic, Question, Answer
 # Маппинг: entprep_slug → (наш slug, русское название, иконка)
 # ---------------------------------------------------------------------------
 SUBJECT_MAP = {
-    'math':                ('math',                'Математика',                 '📐'),
-    'math_profile':        ('math_profile',        'Математическая грамотность', '📊'),
-    'physics':             ('physics',             'Физика',                     '⚡'),
-    'chemistry':           ('chemistry',           'Химия',                      '🧪'),
-    'biology':             ('biology',             'Биология',                   '🧬'),
-    'geography':           ('geography',           'География',                  '🌍'),
-    'history':             ('history',             'История Казахстана',         '📜'),
-    'world_history':       ('world_history',       'Всемирная история',          '🏛️'),
-    'english':             ('english',             'Английский язык',            '🇬🇧'),
-    'reading':             ('reading',             'Грамотность чтения',         '📖'),
-    'informatics':         ('informatics',         'Информатика',                '💻'),
-    'law':                 ('law',                 'Основы права',               '⚖️'),
-    'literature':          ('literature',          'Русская литература',         '📚'),
-    'literature_kazakh':   ('literature_kazakh',   'Казахская литература',       '📖'),
-    'literature_russian':  ('literature_russian',  'Русская литература (ЕНТ)',   '✍️'),
+    'math':                ('math',                'Математика',                 '📐',   40, 2400),
+    'math_profile':        ('math_profile',        'Математическая грамотность', '📊',   10, 900),
+    'physics':             ('physics',             'Физика',                     '⚡',   40, 2400),
+    'chemistry':           ('chemistry',           'Химия',                      '🧪',   40, 2400),
+    'biology':             ('biology',             'Биология',                   '🧬',   40, 2400),
+    'geography':           ('geography',           'География',                  '🌍',   40, 2400),
+    'history':             ('history',             'История Казахстана',         '📜',   20, 1800),
+    'world_history':       ('world_history',       'Всемирная история',          '🏛️',   40, 2400),
+    'english':             ('english',             'Английский язык',            '🇬🇧',   40, 2400),
+    'reading':             ('reading',             'Грамотность чтения',         '📖',   10, 900),
+    'informatics':         ('informatics',         'Информатика',                '💻',   40, 2400),
+    'law':                 ('law',                 'Основы права',               '⚖️',   40, 2400),
+    'literature':          ('literature',          'Русская литература',         '📚',   40, 2400),
+    'literature_kazakh':   ('literature_kazakh',   'Казахская литература',       '📖',   40, 2400),
+    'literature_russian':  ('literature_russian',  'Русская литература (ЕНТ)',   '✍️',   40, 2400),
 }
 
 TOPIC_NAMES = {
@@ -187,12 +187,12 @@ class Command(BaseCommand):
             if not mapping:
                 self.stdout.write(f'  ⚠ Пропуск {entprep_slug} — нет маппинга')
                 continue
-            our_slug, our_name, our_icon = mapping
+            our_slug, our_name, our_icon, q_count, t_limit = mapping
 
             visible = {'is_visible': False} if our_slug in ('literature_kazakh',) else {}
-            subject, _ = Subject.objects.get_or_create(
+            subject, _ = Subject.objects.update_or_create(
                 slug=our_slug,
-                defaults={'name': our_name, 'icon': our_icon, **visible},
+                defaults={'name': our_name, 'icon': our_icon, 'question_count': q_count, 'time_limit': t_limit, **visible},
             )
             existing_q = Question.objects.filter(topic__subject=subject).count()
 
