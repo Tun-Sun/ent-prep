@@ -29,6 +29,7 @@ python3 -m pip install -r requirements.txt --upgrade
 # ── 4. Собираем статику Django ──
 echo ""
 echo "=== Collecting Django static files ==="
+export ALLOWED_HOSTS=*
 cd backend
 python manage.py collectstatic --noinput
 
