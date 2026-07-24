@@ -216,6 +216,26 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
+          {/* Subject ENT info */}
+          {data.subject_distribution?.length > 0 && (
+            <div className="d-card" style={{ padding: 20, marginBottom: 20 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>Параметры ЕНТ по предметам</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                {data.subject_distribution.filter(s => s.ent_question_count).map(s => (
+                  <div key={s.id} className="d-card" style={{ flex: '1 0 180px', padding: '14px 16px', background: '#F9FAFB' }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>{s.name}</div>
+                    <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+                      <div>Вопросов: <strong>{s.ent_question_count}</strong></div>
+                      <div>Макс. балл: <strong>{s.ent_max_score}</strong></div>
+                      <div>Порог: <strong>{s.ent_threshold}</strong></div>
+                      <div>Средний: <strong>{s.avg_score}%</strong></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Charts row */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
             {/* Combo chart: daily stats */}

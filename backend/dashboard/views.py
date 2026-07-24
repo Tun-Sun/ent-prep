@@ -267,6 +267,9 @@ class TeacherAnalyticsView(APIView):
                 'max_score': s.total_points,
                 'score_percent': s.score_percent,
                 'is_ent': s.is_ent,
+                'ent_question_count': s.subject.ent_question_count if s.subject else None,
+                'ent_max_score': s.subject.ent_max_score if s.subject else None,
+                'ent_threshold': s.subject.ent_threshold if s.subject else None,
             })
 
         # Ежедневная статистика (для графика)
@@ -289,24 +292,42 @@ class TeacherAnalyticsView(APIView):
         ]
 
         # Распределение по предметам (для круговой диаграммы)
-        subject_dist = qs.values('subject__name').annotate(
-            count=Count('id')
+        subject_dist = qs.values('subject__id', 'subject__name', 'subject__slug').annotate(
+            count=Count('id'),
+            avg_score=Avg('score_percent'),
         ).order_by('-count')
 
         total = sum(d['count'] for d in subject_dist) or 1
-        subject_data = [
-            {
+        subject_qs = Subject.objects.all()
+        ent_map = {s.slug: s for s in subject_qs}
+        subject_data = []
+        for d in subject_dist:
+            slug = d.get('subject__slug')
+            info = ent_map.get(slug)
+            subject_data.append({
+                'id': d['subject__id'],
                 'name': d['subject__name'] or 'Без предмета',
                 'count': d['count'],
                 'percentage': round(d['count'] / total * 100, 1),
-            }
-            for d in subject_dist
-        ]
+                'avg_score': round(d['avg_score'] or 0, 1),
+                'ent_question_count': info.ent_question_count if info else None,
+                'ent_max_score': info.ent_max_score if info else None,
+                'ent_threshold': info.ent_threshold if info else None,
+            })
 
-        # Ниже/выше среднего
+        # Средний балл по каждому предмету
+        subject_avgs = dict(
+            qs.values('subject__slug', 'subject__name').annotate(
+                avg=Avg('score_percent')
+            ).values_list('subject__slug', 'avg')
+        )
+
+        # Ниже/выше среднего — сравниваем со средним баллом по предмету
         below = []
         above = []
         for s in qs.select_related('student', 'subject'):
+            slug = s.subject.slug if s.subject else None
+            subj_avg = subject_avgs.get(slug, avg_score)
             item = {
                 'id': s.id,
                 'timestamp': s.started_at.strftime('%Y-%m-%d %H:%M'),
@@ -316,7 +337,7 @@ class TeacherAnalyticsView(APIView):
                 'score': s.earned_points,
                 'max_score': s.total_points,
             }
-            if s.score_percent < avg_score:
+            if s.score_percent < subj_avg:
                 below.append(item)
             else:
                 above.append(item)

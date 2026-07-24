@@ -30,22 +30,23 @@ from subjects.models import Subject, Topic, Question, Answer
 # ---------------------------------------------------------------------------
 # Маппинг: entprep_slug → (наш slug, русское название, иконка)
 # ---------------------------------------------------------------------------
+# (slug, name, icon, q_count, time_limit, ent_q, ent_max, ent_thresh)
 SUBJECT_MAP = {
-    'math':                ('math',                'Математика',                 '📐',   40, 2400),
-    'math_profile':        ('math_profile',        'Математическая грамотность', '📊',   10, 900),
-    'physics':             ('physics',             'Физика',                     '⚡',   40, 2400),
-    'chemistry':           ('chemistry',           'Химия',                      '🧪',   40, 2400),
-    'biology':             ('biology',             'Биология',                   '🧬',   40, 2400),
-    'geography':           ('geography',           'География',                  '🌍',   40, 2400),
-    'history':             ('history',             'История Казахстана',         '📜',   20, 1800),
-    'world_history':       ('world_history',       'Всемирная история',          '🏛️',   40, 2400),
-    'english':             ('english',             'Английский язык',            '🇬🇧',   40, 2400),
-    'reading':             ('reading',             'Грамотность чтения',         '📖',   10, 900),
-    'informatics':         ('informatics',         'Информатика',                '💻',   40, 2400),
-    'law':                 ('law',                 'Основы права',               '⚖️',   40, 2400),
-    'literature':          ('literature',          'Русская литература',         '📚',   40, 2400),
-    'literature_kazakh':   ('literature_kazakh',   'Казахская литература',       '📖',   40, 2400),
-    'literature_russian':  ('literature_russian',  'Русская литература (ЕНТ)',   '✍️',   40, 2400),
+    'math':                ('math',                'Математика',                 '📐',   40, 2400, 40, 50, 5),
+    'math_profile':        ('math_profile',        'Математическая грамотность', '📊',   10, 900,  10, 10, 3),
+    'physics':             ('physics',             'Физика',                     '⚡',   40, 2400, 40, 50, 5),
+    'chemistry':           ('chemistry',           'Химия',                      '🧪',   40, 2400, 40, 50, 5),
+    'biology':             ('biology',             'Биология',                   '🧬',   40, 2400, 40, 50, 5),
+    'geography':           ('geography',           'География',                  '🌍',   40, 2400, 40, 50, 5),
+    'history':             ('history',             'История Казахстана',         '📜',   20, 1800, 20, 20, 5),
+    'world_history':       ('world_history',       'Всемирная история',          '🏛️',   40, 2400, 40, 50, 5),
+    'english':             ('english',             'Английский язык',            '🇬🇧',   40, 2400, 40, 50, 5),
+    'reading':             ('reading',             'Грамотность чтения',         '📖',   10, 900,  10, 10, 3),
+    'informatics':         ('informatics',         'Информатика',                '💻',   40, 2400, 40, 50, 5),
+    'law':                 ('law',                 'Основы права',               '⚖️',   40, 2400, 40, 50, 5),
+    'literature':          ('literature',          'Русская литература',         '📚',   40, 2400, 40, 50, 5),
+    'literature_kazakh':   ('literature_kazakh',   'Казахская литература',       '📖',   40, 2400, 40, 50, 5),
+    'literature_russian':  ('literature_russian',  'Русская литература (ЕНТ)',   '✍️',   40, 2400, 40, 50, 5),
 }
 
 TOPIC_NAMES = {
@@ -187,12 +188,18 @@ class Command(BaseCommand):
             if not mapping:
                 self.stdout.write(f'  ⚠ Пропуск {entprep_slug} — нет маппинга')
                 continue
-            our_slug, our_name, our_icon, q_count, t_limit = mapping
+            our_slug, our_name, our_icon, q_count, t_limit, ent_q, ent_max, ent_thresh = mapping
 
             visible = {'is_visible': False} if our_slug in ('literature_kazakh',) else {}
             subject, _ = Subject.objects.update_or_create(
                 slug=our_slug,
-                defaults={'name': our_name, 'icon': our_icon, 'question_count': q_count, 'time_limit': t_limit, **visible},
+                defaults={
+                    'name': our_name, 'icon': our_icon,
+                    'question_count': q_count, 'time_limit': t_limit,
+                    'ent_question_count': ent_q, 'ent_max_score': ent_max,
+                    'ent_threshold': ent_thresh,
+                    **visible,
+                },
             )
             existing_q = Question.objects.filter(topic__subject=subject).count()
 

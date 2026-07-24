@@ -22,6 +22,9 @@ class Subject(models.Model):
     question_count = models.IntegerField(default=10, verbose_name='Кол-во вопросов')
     time_limit = models.IntegerField(default=600, verbose_name='Лимит времени (сек)')
     show_in_profiles = models.BooleanField(default=True, verbose_name='Показывать в выборе профилей')
+    ent_question_count = models.IntegerField(default=40, verbose_name='Вопросов на ЕНТ')
+    ent_max_score = models.FloatField(default=50, verbose_name='Макс. баллов на ЕНТ')
+    ent_threshold = models.FloatField(default=5, verbose_name='Пороговый балл ЕНТ')
 
     class Meta:
         verbose_name = 'Предмет'
