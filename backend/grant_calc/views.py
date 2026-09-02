@@ -11,7 +11,7 @@ class GrantCalcView(APIView):
 
     def get(self, request):
         score_param = request.query_params.get('score', '')
-        search = request.query_params.get('search', '').strip().lower()
+        search = request.query_params.get('search', '').strip()
         uni_type = request.query_params.get('uni_type', 'all')
 
         qs = University.objects.all()

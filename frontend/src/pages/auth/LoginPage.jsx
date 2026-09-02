@@ -64,11 +64,18 @@ export default function LoginPage() {
           Нет аккаунта? <Link to="/register">Зарегистрироваться</Link>
         </div>
 
-        <div style={{ marginTop: 24, padding: '16px', background: '#F0F9FF', borderRadius: 8, fontSize: 13, color: '#6B7280' }}>
-          <strong>Тестовые аккаунты:</strong><br />
-          Ученик: <code>student1</code> / <code>password123</code><br />
-          Учитель: <code>teacher</code> / <code>teacher123</code><br />
-          Админ: <code>admin</code> / <code>admin123</code>
+        <div style={{ marginTop: 24, padding: '16px 18px', background: '#F0F6FF', borderRadius: 12, fontSize: 13, color: '#4B5563', lineHeight: 1.6 }}>
+          <div style={{ fontWeight: 700, color: 'var(--primary)', marginBottom: 6 }}>
+            Подготовка к ЕНТ 2026
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <span>📚 34 000+ вопросов по 15 предметам</span>
+            <span>🎯 Симуляция ЕНТ в реальном формате — 120 вопросов, 5 предметов</span>
+            <span>🤖 AI-разбор ошибок после каждого теста</span>
+          </div>
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(36,59,130,0.12)', fontSize: 12, color: '#6B7280' }}>
+            Забыли пароль? Обратитесь к своему преподавателю — он его сбросит.
+          </div>
         </div>
       </div>
     </div>

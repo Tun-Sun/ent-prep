@@ -27,9 +27,20 @@ export default function GrantCalcPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState('all')
+  const [typeLabels, setTypeLabels] = useState({})
   const [favorites, setFavorites] = useState(() => {
     try { return JSON.parse(localStorage.getItem('grant_favs') || '[]') } catch { return [] }
   })
+
+  useEffect(() => {
+    grantCalcAPI.types()
+      .then(res => {
+        const map = {}
+        for (const t of res.data) map[t.id] = t.label
+        setTypeLabels(map)
+      })
+      .catch(() => {})
+  }, [])
 
   const toggleFav = (name) => {
     setFavorites(prev => {
@@ -140,7 +151,7 @@ export default function GrantCalcPage() {
             key={type}
             className={`btn btn-sm ${filterType === type ? 'btn-primary' : 'btn-outline'}`}
             onClick={() => setFilterType(type)}
-          >{icon} {type}</button>
+          >{icon} {typeLabels[type] || type}</button>
         ))}
       </div>
 
@@ -151,6 +162,14 @@ export default function GrantCalcPage() {
 
       {loading ? (
         <div className="text-center mt-8"><div className="spinner"></div></div>
+      ) : universities.length === 0 ? (
+        <div className="card" style={{ textAlign: 'center', padding: 48 }}>
+          <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
+            {search || filterType !== 'all'
+              ? 'По вашему запросу вузы не найдены. Попробуйте изменить фильтры.'
+              : 'Список вузов пока пуст.'}
+          </p>
+        </div>
       ) : (
         <div className="calc-uni-grid">
           {universities.map(u => {
