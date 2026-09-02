@@ -1,11 +1,22 @@
 #!/usr/bin/env bash
 # ENT Prep — обновление продакшена на сервере (109.235.116.114, /opt/entprep)
-# Использование: /opt/entprep/deploy/update.sh
+# Использование:
+#   bash deploy/update.sh                # git pull с GitHub
+#   bash deploy/update.sh file.bundle    # обновление из git-bundle (если GitHub требует auth)
 set -e
 cd /opt/entprep
 
-echo "=== 1/6 git pull ==="
-git pull --ff-only origin main
+BUNDLE="${1:-}"
+
+echo "=== 1/6 git update ==="
+if [ -n "$BUNDLE" ] && [ -f "$BUNDLE" ]; then
+  echo "Updating from bundle: $BUNDLE"
+  git fetch -q "$BUNDLE" main
+  git reset --hard -q FETCH_HEAD
+else
+  git pull --ff-only origin main
+fi
+git log --oneline -1
 
 echo "=== 2/6 python deps ==="
 ./venv/bin/pip install -r requirements.txt --quiet
