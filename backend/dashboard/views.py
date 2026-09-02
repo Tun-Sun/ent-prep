@@ -2,15 +2,17 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Avg, Count, Max, Prefetch, Q
+from django.db.models import Avg, Count, Max, Prefetch, Q, Sum
+from django.db.models import Case, When, F, FloatField
 from django.db.models.functions import TruncDate
+from django.http import HttpResponse
 from django.utils import timezone
 from datetime import timedelta
 
 from users.models import User
 from subjects.models import Subject
 from subjects.permissions import IsTeacherOrAdmin
-from tests.models import TestSession
+from tests.models import TestSession, TestSectionResult, AnswerRecord
 
 
 class StudentDashboardView(APIView):
@@ -454,3 +456,290 @@ class DashboardSubjectsView(APIView):
         subjects = Subject.objects.filter(id__in=subject_ids)
         request.user.dashboard_subjects.set(subjects)
         return Response({'dashboard_subject_ids': list(subjects.values_list('id', flat=True))})
+
+
+# ─── Слабые темы ──────────────────────────────────────────────────────────
+
+def _student_subjects(student):
+    subjects = Subject.objects.filter(is_visible=True)
+    profile_ids = list(student.profile_subjects.values_list('id', flat=True))
+    if profile_ids:
+        subjects = subjects.filter(Q(subject_type='mandatory') | Q(id__in=profile_ids))
+    return subjects
+
+
+def _weak_topics_for(student, limit=10, min_answers=3, max_accuracy=50.0):
+    """Темы с точностью ниже порога, отсортированные по худшей точности."""
+    subjects = _student_subjects(student)
+    rows = (
+        AnswerRecord.objects
+        .filter(
+            session__student=student,
+            session__is_completed=True,
+            session__is_ent=False,
+            question__topic__subject__in=subjects,
+        )
+        .values(
+            'question__topic_id',
+            'question__topic__name',
+            'question__topic__subject_id',
+            'question__topic__subject__name',
+            'question__topic__subject__icon',
+        )
+        .annotate(
+            total=Count('id'),
+            correct=Sum(Case(When(is_correct=True, then=1), default=0)),
+        )
+        .filter(total__gte=min_answers)
+    )
+    topics = []
+    for r in rows:
+        accuracy = round(r['correct'] / r['total'] * 100, 1)
+        if accuracy < max_accuracy:
+            topics.append({
+                'topic_id': r['question__topic_id'],
+                'topic': r['question__topic__name'],
+                'subject_id': r['question__topic__subject_id'],
+                'subject': r['question__topic__subject__name'],
+                'icon': r['question__topic__subject__icon'],
+                'total': r['total'],
+                'correct': r['correct'],
+                'accuracy': accuracy,
+            })
+    topics.sort(key=lambda t: (t['accuracy'], -t['total']))
+    return topics[:limit]
+
+
+class WeakTopicsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        topics = _weak_topics_for(request.user, limit=int(request.query_params.get('limit', 10)))
+        by_subject = {}
+        for t in topics:
+            key = (t['subject_id'], t['subject'], t['icon'])
+            by_subject.setdefault(key, []).append(t)
+        grouped = [
+            {
+                'subject_id': key[0],
+                'subject': key[1],
+                'icon': key[2],
+                'topics': [
+                    {'topic_id': t['topic_id'], 'topic': t['topic'],
+                     'accuracy': t['accuracy'], 'total': t['total']}
+                    for t in items
+                ],
+                'topic_ids': [t['topic_id'] for t in items],
+            }
+            for key, items in by_subject.items()
+        ]
+        return Response({'groups': grouped})
+
+
+# ─── Прогноз балла ЕНТ ────────────────────────────────────────────────────
+
+def _ent_forecast_for(student):
+    """Прогноз по шкале ЕНТ: 20+10+10+50+50 = 140.
+
+    Считается по завершённым симуляциям ЕНТ (каждая секция масштабируется
+    к максимуму шкалы). Если симуляций нет — оценка по средним предметным
+    тестам.
+    """
+    ent_sessions = (
+        TestSession.objects
+        .filter(student=student, is_ent=True, is_completed=True)
+        .prefetch_related('section_results__subject')
+        .order_by('completed_at')
+    )
+
+    SECTION_MAX = {'history': 20.0, 'reading': 10.0, 'math_lit': 10.0}
+
+    history = []
+    for s in ent_sessions:
+        total = 0.0
+        has_data = False
+        for sr in s.section_results.all():
+            if sr.points_max and sr.points_max > 0:
+                if sr.section in SECTION_MAX:
+                    scale = SECTION_MAX[sr.section]
+                elif sr.section.startswith('profile') and sr.subject:
+                    scale = float(sr.subject.ent_max_score)
+                else:
+                    continue
+                total += float(sr.points_earned) / float(sr.points_max) * scale
+                has_data = True
+        if has_data:
+            history.append(round(total, 1))
+
+    result = {
+        'has_ent_sessions': bool(history),
+        'max_score': 140,
+        'history': [],
+        'score': None,
+        'trend': None,
+        'sections': [],
+    }
+
+    if history:
+        # Даты для графика
+        dates = [
+            s.completed_at.strftime('%d.%m') for s in ent_sessions
+            if s.section_results.exists()
+        ]
+        result['history'] = [
+            {'date': d, 'score': h} for d, h in zip(dates, history)
+        ]
+        if len(history) >= 4:
+            recent, prev = history[-3:], history[:-3]
+        elif len(history) >= 2:
+            recent, prev = history[-1:], history[:-1]
+        else:
+            recent, prev = history, []
+        result['score'] = round(sum(recent) / len(recent), 1)
+        if prev:
+            delta = sum(recent) / len(recent) - sum(prev) / len(prev)
+            result['trend'] = 'rising' if delta >= 2 else ('falling' if delta <= -2 else 'stable')
+
+        # Разбивка по секциям последней симуляции
+        last = ent_sessions.last()
+        sections = []
+        for sr in last.section_results.all().select_related('subject'):
+            if not sr.points_max:
+                continue
+            if sr.section in SECTION_MAX:
+                scale, name = SECTION_MAX[sr.section], sr.get_section_display()
+                threshold = None
+            elif sr.subject:
+                scale = float(sr.subject.ent_max_score)
+                name = sr.subject.name
+                threshold = float(sr.subject.ent_threshold)
+            else:
+                continue
+            score = round(float(sr.points_earned) / float(sr.points_max) * scale, 1)
+            sections.append({
+                'name': name,
+                'score': score,
+                'max': scale,
+                'threshold': threshold,
+                'passes': (threshold is None) or score >= threshold,
+            })
+        result['sections'] = sections
+        return result
+
+    # Оценка по предметным тестам, если симуляций нет
+    subjects = _student_subjects(student)
+    profile_ids = list(student.profile_subjects.values_list('id', flat=True))
+    estimate = 0.0
+    sections = []
+    has_any = False
+    for subj in subjects:
+        sessions = TestSession.objects.filter(
+            student=student, subject=subj, is_completed=True, is_ent=False,
+        )
+        count = sessions.count()
+        if not count:
+            continue
+        avg = sessions.aggregate(a=Avg('score_percent'))['a'] or 0
+        scale = float(subj.ent_max_score) if subj.subject_type == 'profile' else (
+            SECTION_MAX.get(
+                'history' if subj.slug == 'history'
+                else 'reading' if subj.slug == 'reading'
+                else 'math_lit' if subj.slug == 'math_profile'
+                else None, 10.0
+            )
+        )
+        score = round(avg / 100 * scale, 1)
+        if profile_ids and subj.id in profile_ids or subj.subject_type == 'mandatory':
+            estimate += score
+            has_any = True
+        sections.append({
+            'name': subj.name,
+            'score': score,
+            'max': scale,
+            'threshold': float(subj.ent_threshold) if subj.subject_type == 'profile' else None,
+            'passes': (subj.subject_type != 'profile') or score >= float(subj.ent_threshold),
+        })
+    if has_any:
+        result['score'] = round(min(estimate, 140), 1)
+        result['sections'] = sections
+    return result
+
+
+class EntForecastView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(_ent_forecast_for(request.user))
+
+
+# ─── PDF-отчёт по ученику ─────────────────────────────────────────────────
+
+class StudentReportView(APIView):
+    permission_classes = [IsAuthenticated, IsTeacherOrAdmin]
+
+    def get(self, request, student_id):
+        try:
+            student = User.objects.get(id=student_id, role='student')
+        except User.DoesNotExist:
+            return Response({'error': 'Ученик не найден'}, status=404)
+
+        from .reports import build_student_report
+        from gamification.services import get_streak
+
+        sessions = TestSession.objects.filter(
+            student=student, is_completed=True,
+        ).select_related('subject')
+
+        total_tests = sessions.count()
+        avg_score = sessions.aggregate(a=Avg('score_percent'))['a'] or 0
+        best_score = sessions.aggregate(m=Max('score_percent'))['m'] or 0
+
+        subjects = []
+        for subj in Subject.objects.filter(test_sessions__in=sessions).distinct():
+            ss = sessions.filter(subject=subj)
+            subjects.append({
+                'name': subj.name,
+                'tests': ss.count(),
+                'avg': round(ss.aggregate(a=Avg('score_percent'))['a'] or 0, 1),
+                'best': round(ss.aggregate(m=Max('score_percent'))['m'] or 0, 1),
+            })
+        subjects.sort(key=lambda s: -s['avg'])
+
+        weak_topics = _weak_topics_for(student, limit=5)
+        forecast = _ent_forecast_for(student)
+        if not forecast.get('score'):
+            forecast = None
+        else:
+            forecast = {'score': forecast['score'], 'trend': forecast['trend'],
+                        'max_score': forecast['max_score'],
+                        'sections': forecast.get('sections', [])}
+
+        recent = [
+            {
+                'date': s.completed_at.strftime('%d.%m.%Y') if s.completed_at else '—',
+                'label': ('Симуляция ЕНТ' if s.is_ent
+                          else s.subject.name if s.subject
+                          else {'rush': 'Question Rush', 'duel': 'Дуэль'}.get(s.mode, 'Тест')),
+                'score': f"{round(s.score_percent, 1)}%"
+                         + (f" ({round(s.earned_points, 1)}/{round(s.total_points, 1)} б.)"
+                            if s.is_ent else ''),
+            }
+            for s in sessions.order_by('-completed_at')[:10]
+        ]
+
+        stats = {
+            'total_tests': total_tests,
+            'avg_score': round(avg_score, 1),
+            'best_score': round(best_score, 1),
+            'streak': get_streak(student)['current'],
+        }
+
+        try:
+            pdf_bytes = build_student_report(student, stats, subjects, weak_topics, forecast, recent)
+        except RuntimeError as e:
+            return Response({'error': str(e)}, status=500)
+
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        filename = f"report_{student.username}_{timezone.localdate().strftime('%Y%m%d')}.pdf"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response

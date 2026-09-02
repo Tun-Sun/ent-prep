@@ -15,11 +15,14 @@ const SECTION_LABELS = {
 }
 
 export default function TestPage() {
-  const { subjectId } = useParams()
+  const { subjectId, duelId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
   const isEnt = location.pathname === '/test/ent'
+  const isRush = location.pathname === '/test/rush'
+  const isDuel = location.pathname.startsWith('/test/duel/')
   const entProfileIds = location.state || {}
+  const topicIds = location.state?.topicIds || []
 
   const [questions, setQuestions] = useState([])
   const [sections, setSections] = useState([])
@@ -45,8 +48,18 @@ export default function TestPage() {
             profile1_id: entProfileIds.profile1Id,
             profile2_id: entProfileIds.profile2Id,
           })
+        } else if (isRush) {
+          res = await testsAPI.start({ mode: 'rush' })
+        } else if (isDuel) {
+          res = await testsAPI.startDuel(duelId)
+          if (res.data?.already_completed) {
+            navigate('/duels', { replace: true })
+            return
+          }
         } else {
-          res = await testsAPI.start({ subject_id: parseInt(subjectId) })
+          const payload = { subject_id: parseInt(subjectId) }
+          if (topicIds.length > 0) payload.topic_ids = topicIds
+          res = await testsAPI.start(payload)
         }
         const data = res.data
         setSessionId(data.session_id)
@@ -61,7 +74,7 @@ export default function TestPage() {
       }
     }
     startTest()
-  }, [subjectId, isEnt])
+  }, [subjectId, isEnt, isRush, isDuel, duelId])
 
   const current = questions[currentIdx]
 
@@ -180,7 +193,11 @@ export default function TestPage() {
     try {
       await saveCurrentAnswers()
       await testsAPI.finish(sessionId)
-      navigate(`/test/result/${sessionId}`)
+      if (isDuel) {
+        navigate('/duels', { replace: true })
+      } else {
+        navigate(`/test/result/${sessionId}`)
+      }
     } catch (err) {
       setError(err.response?.data?.error || 'Ошибка завершения теста')
     } finally {
@@ -213,7 +230,7 @@ export default function TestPage() {
         <div className="test-header-left">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
-              {isEnt ? 'ЕНТ симуляция' : 'Тренировка'}
+              {isEnt ? 'ЕНТ симуляция' : isRush ? '⚡ Question Rush' : isDuel ? '⚔️ Дуэль' : 'Тренировка'}
             </span>
             <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
               Вопрос {currentIdx + 1} из {questions.length}

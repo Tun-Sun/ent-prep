@@ -75,6 +75,7 @@ INSTALLED_APPS = [
     'tests',
     'dashboard',
     'grant_calc',
+    'gamification',
 ]
 
 MIDDLEWARE = [
@@ -157,6 +158,11 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticatedOrReadOnly',
     ),
+    'DEFAULT_THROTTLE_RATES': {
+        'login': '10/min',
+        'register': '5/hour',
+        'ai_explain': '20/day',
+    },
 }
 
 # JWT settings

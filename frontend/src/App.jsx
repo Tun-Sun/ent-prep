@@ -24,6 +24,7 @@ import HistoryPage from './pages/student/HistoryPage'
 import GrantCalcPage from './pages/student/GrantCalcPage'
 import LeaderboardPage from './pages/student/LeaderboardPage'
 import SettingsPage from './pages/student/SettingsPage'
+import DuelsPage from './pages/student/DuelsPage'
 
 // Teacher
 import TeacherDashboardPage from './pages/teacher/DashboardPage'
@@ -65,8 +66,11 @@ export default function App() {
         <Route path="grant-calc" element={<GrantCalcPage />} />
         <Route path="leaderboard" element={<LeaderboardPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="duels" element={<DuelsPage />} />
         <Route path="test/start/:subjectId" element={<TestPage />} />
         <Route path="test/ent" element={<TestPage />} />
+        <Route path="test/rush" element={<TestPage />} />
+        <Route path="test/duel/:duelId" element={<TestPage />} />
         <Route path="test/result/:sessionId" element={<ResultsPage />} />
 
         {/* Teacher / Admin */}

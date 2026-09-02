@@ -154,6 +154,23 @@ export default function SubjectListPage() {
         }}>Начать</span>
       </div>
 
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 28 }}>
+        <div className="card" style={{ padding: '16px 18px', cursor: 'pointer' }} onClick={() => navigate('/test/rush')}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <span style={{ fontSize: 22 }}>⚡</span>
+            <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Question Rush</span>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>30 вопросов за 5 минут. Успеешь?</div>
+        </div>
+        <div className="card" style={{ padding: '16px 18px', cursor: 'pointer' }} onClick={() => navigate('/duels')}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <span style={{ fontSize: 22 }}>⚔️</span>
+            <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Дуэли</span>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Вызови одноклассника на битву</div>
+        </div>
+      </div>
+
       {mandatory.length > 0 && (
         <div style={{ marginBottom: 28 }}>
           <div style={{

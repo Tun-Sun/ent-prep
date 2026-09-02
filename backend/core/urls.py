@@ -24,6 +24,8 @@ urlpatterns = [
     path('api/dashboard/', include('dashboard.urls')),
     # Grant Calculator
     path('api/grant-calc/', include('grant_calc.urls')),
+    # Gamification (achievements, duels)
+    path('api/gamification/', include('gamification.urls')),
 ]
 
 

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { authAPI, subjectsAPI } from '../../api'
 import { useAuth } from '../../context/AuthContext'
-import { ArrowLeft, User, Camera, LogOut, Trash2, BookOpen, BarChart3, Settings, AlertTriangle, Tag } from 'lucide-react'
+import { ArrowLeft, User, Camera, LogOut, Trash2, BookOpen, BarChart3, Settings, AlertTriangle, Tag, KeyRound, Check, Eye, EyeOff } from 'lucide-react'
 
 export default function SettingsPage() {
   const navigate = useNavigate()
@@ -13,6 +13,13 @@ export default function SettingsPage() {
   const [selectedSubjects, setSelectedSubjects] = useState([])
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+
+  const [oldPassword, setOldPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPasswords, setShowPasswords] = useState(false)
+  const [changingPassword, setChangingPassword] = useState(false)
+  const [passwordMessage, setPasswordMessage] = useState(null)
 
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const fileInputRef = useRef(null)
@@ -47,6 +54,24 @@ export default function SettingsPage() {
   const handleLogout = () => {
     logout()
     navigate('/login')
+  }
+
+  const changePassword = async () => {
+    setPasswordMessage(null)
+    if (newPassword !== confirmPassword) {
+      setPasswordMessage({ type: 'error', text: 'Новые пароли не совпадают' })
+      return
+    }
+    setChangingPassword(true)
+    try {
+      await authAPI.changePassword(oldPassword, newPassword)
+      setPasswordMessage({ type: 'success', text: 'Пароль изменён' })
+      setOldPassword(''); setNewPassword(''); setConfirmPassword('')
+    } catch (error) {
+      setPasswordMessage({ type: 'error', text: error.response?.data?.error || 'Ошибка смены пароля' })
+    } finally {
+      setChangingPassword(false)
+    }
   }
 
   const clearHistory = async () => {
@@ -189,6 +214,70 @@ export default function SettingsPage() {
           </div>
         </>
       )}
+
+      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: 10, paddingLeft: 4 }}>
+        <KeyRound size={14} strokeWidth={1.5} style={{ display: 'inline', marginRight: 6, verticalAlign: -2 }} />
+        Безопасность
+      </div>
+
+      <div className="card" style={{ padding: 24, marginBottom: 28 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Смена пароля</div>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
+          Используйте пароль длиной не менее 8 символов
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
+          {[
+            { value: oldPassword, set: setOldPassword, placeholder: 'Текущий пароль' },
+            { value: newPassword, set: setNewPassword, placeholder: 'Новый пароль' },
+            { value: confirmPassword, set: setConfirmPassword, placeholder: 'Повторите новый пароль' },
+          ].map((f, i) => (
+            <div key={i} style={{ position: 'relative' }}>
+              <input
+                type={showPasswords ? 'text' : 'password'}
+                value={f.value}
+                onChange={e => f.set(e.target.value)}
+                placeholder={f.placeholder}
+                autoComplete={i === 0 ? 'current-password' : 'new-password'}
+                style={{
+                  width: '100%', height: 44, borderRadius: 12, border: '1px solid var(--border)',
+                  padding: '0 44px 0 14px', fontSize: 14, background: '#fff', outline: 'none',
+                }}
+              />
+              {i === 0 && (
+                <button onClick={() => setShowPasswords(v => !v)} type="button"
+                  style={{
+                    position: 'absolute', right: 8, top: 8, width: 28, height: 28, borderRadius: 8,
+                    border: 'none', background: 'transparent', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: 'var(--text-secondary)',
+                  }}>
+                  {showPasswords ? <EyeOff size={16} strokeWidth={1.5} /> : <Eye size={16} strokeWidth={1.5} />}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+        {passwordMessage && (
+          <div style={{
+            padding: '10px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, marginBottom: 12,
+            background: passwordMessage.type === 'success' ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)',
+            color: passwordMessage.type === 'success' ? '#059669' : '#DC2626',
+          }}>
+            {passwordMessage.text}
+          </div>
+        )}
+        <button onClick={changePassword} disabled={changingPassword || !oldPassword || !newPassword || !confirmPassword}
+          className="btn btn-primary"
+          style={{
+            width: '100%', borderRadius: 12, padding: '11px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            opacity: (changingPassword || !oldPassword || !newPassword || !confirmPassword) ? 0.5 : 1,
+            cursor: (changingPassword || !oldPassword || !newPassword || !confirmPassword) ? 'not-allowed' : 'pointer',
+          }}>
+          <Check size={16} strokeWidth={2} />
+          {changingPassword ? 'Сохраняем...' : 'Сменить пароль'}
+        </button>
+      </div>
 
       <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: 10, paddingLeft: 4 }}>
         <BarChart3 size={14} strokeWidth={1.5} style={{ display: 'inline', marginRight: 6, verticalAlign: -2 }} />

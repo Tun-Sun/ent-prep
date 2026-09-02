@@ -96,6 +96,76 @@ class TestSessionApiTest(TestCase):
         self.assertEqual(AnswerRecord.objects.count(), 0)
 
 
+class StartTestModesTest(TestCase):
+    def setUp(self):
+        self.student = User.objects.create_user(username='modes-student', password='password', role='student')
+        self.client = APIClient()
+        self.client.force_authenticate(self.student)
+        self.subject = Subject.objects.create(
+            name='Физика', slug='physics-modes', is_visible=True,
+            subject_type='profile', question_count=10, time_limit=600,
+        )
+        self.topic_a = Topic.objects.create(name='Механика', subject=self.subject)
+        self.topic_b = Topic.objects.create(name='Оптика', subject=self.subject)
+        for topic in (self.topic_a, self.topic_b):
+            for i in range(8):
+                q = Question.objects.create(
+                    text=f'{topic.name} вопрос {i}', topic=topic,
+                    question_type='single_choice', verification_status='verified',
+                )
+                Answer.objects.create(question=q, text='Верно', is_correct=True)
+                Answer.objects.create(question=q, text='Неверно', is_correct=False)
+
+    def test_start_with_topic_ids_filters_questions(self):
+        response = self.client.post('/api/tests/start/', {
+            'subject_id': self.subject.id,
+            'topic_ids': [self.topic_a.id],
+        }, format='json')
+        self.assertEqual(response.status_code, 200)
+        session = TestSession.objects.get(id=response.data['session_id'])
+        topic_ids = set(session.session_questions.values_list('question__topic_id', flat=True))
+        self.assertEqual(topic_ids, {self.topic_a.id})
+
+    def test_rush_mode(self):
+        # Недостаточно вопросов в одном предмете — Rush берёт из всех видимых
+        other = Subject.objects.create(
+            name='Химия', slug='chemistry-modes', is_visible=True,
+            subject_type='mandatory', question_count=10, time_limit=600,
+        )
+        other_topic = Topic.objects.create(name='Органика', subject=other)
+        for i in range(30):
+            q = Question.objects.create(
+                text=f'Химия вопрос {i}', topic=other_topic,
+                question_type='single_choice', verification_status='verified',
+            )
+            Answer.objects.create(question=q, text='Верно', is_correct=True)
+            Answer.objects.create(question=q, text='Неверно', is_correct=False)
+
+        response = self.client.post('/api/tests/start/', {'mode': 'rush'}, format='json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['mode'], 'rush')
+        self.assertEqual(response.data['total_questions'], 30)
+        self.assertEqual(response.data['time_limit'], 300)
+        session = TestSession.objects.get(id=response.data['session_id'])
+        self.assertEqual(session.mode, 'rush')
+        self.assertFalse(
+            session.session_questions.filter(question__question_type='matching').exists()
+        )
+
+    def test_finish_awards_first_achievement(self):
+        from gamification.models import UserAchievement
+        response = self.client.post('/api/tests/start/', {
+            'subject_id': self.subject.id,
+            'num_questions': 5,
+        }, format='json')
+        session_id = response.data['session_id']
+        response = self.client.post(f'/api/tests/{session_id}/finish/')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            UserAchievement.objects.filter(user=self.student, code='first_test').exists()
+        )
+
+
 class MatchingScoreTest(TestCase):
     def test_matching_scores_only_exact_right_side(self):
         subject = Subject.objects.create(name='История', slug='history-test')

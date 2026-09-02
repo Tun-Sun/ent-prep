@@ -10,6 +10,7 @@ from rest_framework import status
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from django.db import transaction
+from django.db.models import Q
 
 from subjects.models import Question, Answer, Subject, Topic
 from subjects.serializers import QuestionDetailSerializer
@@ -108,6 +109,21 @@ def _score_question(question, selected_answer=None, selected_answers=None, match
     return 0, question.points
 
 
+RUSH_QUESTIONS = 30
+RUSH_TIME_LIMIT = 300  # 5 минут
+
+
+def _pick_questions(base_qs, num_questions):
+    """Предпочитаем проверенные вопросы; если их мало — добираем остальные."""
+    questions = list(base_qs.filter(verification_status='verified').order_by('?')[:num_questions])
+    if len(questions) < num_questions:
+        extra = num_questions - len(questions)
+        questions.extend(
+            base_qs.exclude(id__in=[q.id for q in questions]).order_by('?')[:extra]
+        )
+    return questions
+
+
 class StartTestView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -115,7 +131,13 @@ class StartTestView(APIView):
         serializer = StartTestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        subject_id = serializer.validated_data['subject_id']
+        mode = serializer.validated_data.get('mode', 'standard')
+        topic_ids = serializer.validated_data.get('topic_ids') or []
+
+        if mode == 'rush':
+            return self._start_rush(request)
+
+        subject_id = serializer.validated_data.get('subject_id')
         subject = get_object_or_404(Subject, id=subject_id)
 
         # Ученики не стартуют скрытые предметы (учителя/админы — могут для проверки)
@@ -128,25 +150,25 @@ class StartTestView(APIView):
         num_questions = serializer.validated_data.get('num_questions') or subject.question_count
         time_limit = subject.time_limit
 
-        # Предпочитаем проверенные вопросы; если их мало — добираем остальные
         base_qs = Question.objects.filter(topic__subject_id=subject_id)
-        questions = list(base_qs.filter(verification_status='verified').order_by('?')[:num_questions])
-        if len(questions) < num_questions:
-            extra = num_questions - len(questions)
-            questions.extend(
-                base_qs.exclude(id__in=[q.id for q in questions]).order_by('?')[:extra]
-            )
+        if topic_ids:
+            base_qs = base_qs.filter(topic_id__in=topic_ids)
+            # При тренировке по темам разрешаем больше вопросов, чем в предмете по умолчанию
+            if not serializer.validated_data.get('num_questions'):
+                num_questions = min(max(len(topic_ids) * 5, 10), 40)
 
-        if len(questions) < num_questions:
+        questions = _pick_questions(base_qs, num_questions)
+
+        if not questions:
             return Response(
-                {'error': f'Недостаточно вопросов. Доступно: {len(questions)}'},
+                {'error': 'По выбранным темам нет вопросов'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         session = TestSession.objects.create(
             student=request.user,
             subject_id=subject_id,
-            total_questions=num_questions,
+            total_questions=len(questions),
             time_limit=time_limit,
         )
         TestSessionQuestion.objects.bulk_create([
@@ -158,9 +180,55 @@ class StartTestView(APIView):
 
         return Response({
             'session_id': session.id,
-            'total_questions': num_questions,
+            'total_questions': len(questions),
             'questions': question_data,
             'time_limit': time_limit,
+        })
+
+    def _start_rush(self, request):
+        """Question Rush: 30 быстрых вопросов за 5 минут, без matching."""
+        user = request.user
+        if getattr(user, 'role', '') == 'student':
+            profile_ids = list(user.profile_subjects.values_list('id', flat=True))
+            subjects = Subject.objects.filter(is_visible=True)
+            if profile_ids:
+                subjects = subjects.filter(
+                    Q(subject_type='mandatory') | Q(id__in=profile_ids)
+                )
+            subject_ids = list(subjects.values_list('id', flat=True))
+        else:
+            subject_ids = list(
+                Subject.objects.filter(is_visible=True).values_list('id', flat=True)
+            )
+
+        base_qs = Question.objects.filter(
+            topic__subject_id__in=subject_ids,
+        ).exclude(question_type='matching')
+
+        questions = _pick_questions(base_qs, RUSH_QUESTIONS)
+        if len(questions) < RUSH_QUESTIONS:
+            return Response(
+                {'error': f'Недостаточно вопросов для Rush. Доступно: {len(questions)}'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        session = TestSession.objects.create(
+            student=request.user,
+            total_questions=RUSH_QUESTIONS,
+            time_limit=RUSH_TIME_LIMIT,
+            mode='rush',
+        )
+        TestSessionQuestion.objects.bulk_create([
+            TestSessionQuestion(session=session, question=question, position=position)
+            for position, question in enumerate(questions, start=1)
+        ])
+
+        return Response({
+            'session_id': session.id,
+            'mode': 'rush',
+            'total_questions': RUSH_QUESTIONS,
+            'questions': _build_question_data(questions, request),
+            'time_limit': RUSH_TIME_LIMIT,
         })
 
 
@@ -365,6 +433,19 @@ def _expire_session(session):
     session.completed_at = timezone.now()
     session.is_completed = True
     session.save()
+    _on_session_completed(session)
+
+
+def _on_session_completed(session):
+    """Пост-обработка завершённой сессии: достижения и дуэли."""
+    try:
+        from gamification.services import check_achievements, resolve_user_duels
+        check_achievements(session.student)
+        resolve_user_duels(session.student)
+    except Exception:
+        # Геймификация не должна ломать завершение теста
+        import logging
+        logging.getLogger(__name__).exception('gamification post-processing failed')
 
 
 def _validate_answer_payload(question, selected_answer, selected_answers, matching_pairs):
@@ -503,6 +584,7 @@ class FinishTestView(APIView):
         session.completed_at = timezone.now()
         session.is_completed = True
         session.save()
+        _on_session_completed(session)
 
         return Response({
             'session_id': session.id,
@@ -718,6 +800,10 @@ class AuthorialTestDeleteView(APIView):
 
 class AIExplainView(APIView):
     permission_classes = [IsAuthenticated]
+    # Лимит AI-запросов в сутки (для авторизованных — по пользователю)
+    from rest_framework.throttling import ScopedRateThrottle
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'ai_explain'
 
     def post(self, request, session_id):
         answer_id = request.data.get('answer_record_id')

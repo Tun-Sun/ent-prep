@@ -1,7 +1,10 @@
 import re
+import secrets
+import string
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.utils import timezone
@@ -21,6 +24,10 @@ User = get_user_model()
 
 
 class LoginView(TokenObtainPairView):
+    # Защита от перебора паролей
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'login'
+
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
         if response.status_code == 200:
@@ -38,6 +45,8 @@ class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'register'
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -161,6 +170,56 @@ class UpdateStudentSubjectsView(APIView):
         subjects = Subject.objects.filter(id__in=subject_ids)
         student.profile_subjects.set(subjects)
         return Response({'profile_subjects': list(subjects.values_list('id', flat=True))})
+
+
+class ChangePasswordView(APIView):
+    """Смена собственного пароля (все роли)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        old_password = request.data.get('old_password', '')
+        new_password = request.data.get('new_password', '')
+        if not request.user.check_password(old_password):
+            return Response({'error': 'Неверный текущий пароль'}, status=400)
+        if len(new_password) < 8:
+            return Response({'error': 'Новый пароль — минимум 8 символов'}, status=400)
+        if old_password == new_password:
+            return Response({'error': 'Новый пароль совпадает с текущим'}, status=400)
+        request.user.set_password(new_password)
+        request.user.save(update_fields=['password'])
+        return Response({'message': 'Пароль изменён'})
+
+
+class ResetStudentPasswordView(APIView):
+    """Сброс пароля ученика учителем/админом.
+
+    Возвращает новый пароль ровно один раз — показать ученику и попросить
+    сменить в настройках.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, student_id):
+        if request.user.role not in ('teacher', 'admin'):
+            return Response({'error': 'Доступ только для учителей'}, status=403)
+        try:
+            student = User.objects.get(id=student_id, role='student')
+        except User.DoesNotExist:
+            return Response({'error': 'Ученик не найден'}, status=404)
+
+        password = (request.data.get('password') or '').strip()
+        if not password:
+            alphabet = string.ascii_letters + string.digits
+            password = ''.join(secrets.choice(alphabet) for _ in range(10))
+        if len(password) < 8:
+            return Response({'error': 'Пароль — минимум 8 символов'}, status=400)
+
+        student.set_password(password)
+        student.save(update_fields=['password'])
+        return Response({
+            'username': student.username,
+            'full_name': student.full_name,
+            'new_password': password,
+        })
 
 
 # ─── Study Groups ──────────────────────────────────────────────────────

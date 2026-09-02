@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { dashboardAPI, groupsAPI, subjectsAPI } from '../../api'
-import { X, Users, Plus, Check, BookOpen, Search, Filter, GraduationCap, School, BarChart3, Trophy } from 'lucide-react'
+import { dashboardAPI, groupsAPI, subjectsAPI, authAPI } from '../../api'
+import { X, Users, Plus, Check, BookOpen, Search, Filter, GraduationCap, School, BarChart3, Trophy, FileDown, KeyRound } from 'lucide-react'
 
 export default function StudentsPage() {
   const [students, setStudents] = useState([])
@@ -19,6 +19,9 @@ export default function StudentsPage() {
   const [selectedGroup, setSelectedGroup] = useState('')
   const [subjectsStudent, setSubjectsStudent] = useState(null)
   const [selectedSubjects, setSelectedSubjects] = useState([])
+  const [resetStudent, setResetStudent] = useState(null)
+  const [resetResult, setResetResult] = useState(null)
+  const [resetting, setResetting] = useState(false)
 
   const loadData = () => {
     setLoading(true)
@@ -80,6 +83,34 @@ export default function StudentsPage() {
 
   const clearFilters = () => {
     setFilterGroupId(''); setFilterSubjectId(''); setDateFrom(''); setDateTo('')
+  }
+
+  const downloadReport = async (student) => {
+    try {
+      const res = await dashboardAPI.studentReportPdf(student.id)
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `report_${student.username || student.id}.pdf`
+      a.click()
+      window.URL.revokeObjectURL(url)
+    } catch {
+      alert('Не удалось сформировать PDF-отчёт')
+    }
+  }
+
+  const doResetPassword = async () => {
+    if (!resetStudent || resetting) return
+    setResetting(true)
+    try {
+      const res = await authAPI.resetStudentPassword(resetStudent.id)
+      setResetResult(res.data)
+    } catch (err) {
+      alert(err.response?.data?.error || 'Ошибка сброса пароля')
+      setResetStudent(null)
+    } finally {
+      setResetting(false)
+    }
   }
 
   if (loading) return <div className="text-center mt-8"><div className="spinner"></div></div>
@@ -249,7 +280,23 @@ export default function StudentsPage() {
                       ))}
                     </div>
                   </td>
-                  <td style={{ textAlign: 'right', padding: '14px 16px' }}>
+                  <td style={{ textAlign: 'right', padding: '14px 16px', whiteSpace: 'nowrap' }}>
+                    <button onClick={() => downloadReport(s)} title="PDF-отчёт для родителей"
+                      style={{
+                        border: 'none', background: 'transparent', cursor: 'pointer',
+                        color: 'var(--primary)', marginRight: 10, verticalAlign: 'middle',
+                        display: 'inline-flex', alignItems: 'center',
+                      }}>
+                      <FileDown size={16} strokeWidth={1.8} />
+                    </button>
+                    <button onClick={() => { setResetStudent(s); setResetResult(null) }} title="Сбросить пароль"
+                      style={{
+                        border: 'none', background: 'transparent', cursor: 'pointer',
+                        color: 'var(--text-secondary)', marginRight: 10, verticalAlign: 'middle',
+                        display: 'inline-flex', alignItems: 'center',
+                      }}>
+                      <KeyRound size={16} strokeWidth={1.8} />
+                    </button>
                     <a href={`/teacher/tests?student=${s.id}`}
                       style={{ fontSize: 13, color: 'var(--primary)', fontWeight: 600, textDecoration: 'none' }}>
                       Результаты
@@ -337,6 +384,60 @@ export default function StudentsPage() {
                 style={{ width: '100%', borderRadius: 12, padding: '10px' }}>
                 Сохранить
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {resetStudent && (
+        <div className="modal-overlay" onClick={() => { setResetStudent(null); setResetResult(null) }}>
+          <div className="modal" onClick={e => e.stopPropagation()}
+            style={{ maxWidth: 420, borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)' }}>
+            <div className="modal-header">
+              <h3 style={{ fontSize: 18, fontWeight: 800 }}>Сброс пароля</h3>
+              <button className="btn btn-sm" onClick={() => { setResetStudent(null); setResetResult(null) }}
+                style={{ borderRadius: 8, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <X size={16} />
+              </button>
+            </div>
+            <div style={{ padding: '12px 20px' }}>
+              {resetResult ? (
+                <>
+                  <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 12 }}>
+                    Новый пароль для <b>{resetResult.full_name || resetResult.username}</b> (@{resetResult.username}):
+                  </p>
+                  <div style={{
+                    background: 'rgba(36,59,130,0.06)', borderRadius: 12, padding: '14px 18px',
+                    fontSize: 20, fontWeight: 800, fontFamily: 'monospace', textAlign: 'center',
+                    letterSpacing: 2, marginBottom: 12, userSelect: 'all',
+                  }}>
+                    {resetResult.new_password}
+                  </div>
+                  <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 14 }}>
+                    Пароль показан только один раз — передайте его ученику и попросите сменить в настройках.
+                  </p>
+                  <button className="btn btn-primary"
+                    onClick={() => { navigator.clipboard?.writeText(resetResult.new_password); }}
+                    style={{ width: '100%', borderRadius: 12, padding: '10px', marginBottom: 8 }}>
+                    Скопировать
+                  </button>
+                  <button className="btn btn-outline"
+                    onClick={() => { setResetStudent(null); setResetResult(null) }}
+                    style={{ width: '100%', borderRadius: 12, padding: '10px' }}>
+                    Готово
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 16 }}>
+                    Сгенерировать новый пароль для <b>{resetStudent.full_name || resetStudent.username}</b>?
+                    Текущий пароль перестанет работать.
+                  </p>
+                  <button className="btn btn-primary" onClick={doResetPassword} disabled={resetting}
+                    style={{ width: '100%', borderRadius: 12, padding: '10px', opacity: resetting ? 0.6 : 1 }}>
+                    {resetting ? 'Генерируем...' : 'Сгенерировать пароль'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

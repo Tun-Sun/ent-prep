@@ -16,6 +16,9 @@ dj-database-url>=2.2
 python-dotenv>=1.0
 Pillow>=10.0
 
+# PDF reports
+reportlab>=4.0
+
 # Error monitoring
 sentry-sdk>=2.0
 

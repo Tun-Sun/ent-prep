@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { TrendingUp, Trophy, Wallet, Settings, FileText, BookOpen, Zap, Award, Target, Flame, Star } from 'lucide-react'
-import { dashboardAPI } from '../../api'
+import { TrendingUp, Trophy, Wallet, Settings, FileText, BookOpen, Zap, Award, Target, Flame, Star, Swords, TrendingDown, Minus } from 'lucide-react'
+import { dashboardAPI, gamificationAPI } from '../../api'
 import { useAuth } from '../../context/AuthContext'
 import ProgressRing from '../../components/ProgressRing'
 
@@ -10,11 +10,18 @@ const iconSize = 20
 
 const menuItems = [
   { icon: <TrendingUp size={iconSize} strokeWidth={1.5} />, iconClass: 'purple', label: 'Прогресс', sub: 'Последний тест и динамика', to: '/progress' },
-  { icon: <Trophy size={iconSize} strokeWidth={1.5} />, iconClass: 'yellow', label: 'Таблица лидеров', sub: 'Соревнуйся с другими', to: '/leaderboard' },
+  { icon: <Swords size={iconSize} strokeWidth={1.5} />, iconClass: 'red', label: 'Дуэли', sub: 'Соревнуйся с одноклассниками', to: '/duels' },
+  { icon: <Trophy size={iconSize} strokeWidth={1.5} />, iconClass: 'yellow', label: 'Таблица лидеров', sub: 'Соревнуйся со всеми', to: '/leaderboard' },
   { icon: <BookOpen size={iconSize} strokeWidth={1.5} />, iconClass: 'green', label: 'Предметы', sub: 'Выбери предмет для теста', to: '/subjects' },
   { icon: <Wallet size={iconSize} strokeWidth={1.5} />, iconClass: 'red', label: 'Калькулятор грантов', sub: 'Узнай свои шансы', to: '/grant-calc' },
   { icon: <Settings size={iconSize} strokeWidth={1.5} />, iconClass: 'gray', label: 'Настройки', sub: 'Аккаунт и уведомления', to: '/settings' },
 ]
+
+const TREND_META = {
+  rising: { label: 'растёт', icon: <TrendingUp size={15} strokeWidth={2} />, color: '#10B981' },
+  falling: { label: 'снижается', icon: <TrendingDown size={15} strokeWidth={2} />, color: '#EF4444' },
+  stable: { label: 'стабильно', icon: <Minus size={15} strokeWidth={2} />, color: '#6B7280' },
+}
 
 export default function StudentDashboardPage() {
   const { user } = useAuth()
@@ -22,6 +29,9 @@ export default function StudentDashboardPage() {
   const isProgress = location.pathname === '/progress'
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [achievementsData, setAchievementsData] = useState(null)
+  const [forecast, setForecast] = useState(null)
+  const [weakTopics, setWeakTopics] = useState([])
   const [leaderboard, setLeaderboard] = useState(null)
   const [lbLoading, setLbLoading] = useState(false)
   const [lbSubject, setLbSubject] = useState('all')
@@ -29,8 +39,12 @@ export default function StudentDashboardPage() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    dashboardAPI.student()
-      .then(res => setData(res.data))
+    Promise.all([
+      dashboardAPI.student().then(res => setData(res.data)),
+      gamificationAPI.achievements().then(res => setAchievementsData(res.data)).catch(() => {}),
+      dashboardAPI.entForecast().then(res => setForecast(res.data)).catch(() => {}),
+      dashboardAPI.weakTopics().then(res => setWeakTopics(res.data.groups || [])).catch(() => {}),
+    ])
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
@@ -79,12 +93,11 @@ export default function StudentDashboardPage() {
 
   const xpPercent = Math.min(Math.floor((testCount % 10) / 10 * 100), 100)
 
-  const achievements = [
-    { icon: '🏅', label: 'Первая\nсотка', unlocked: bestScore >= 100 },
-    { icon: '⭐', label: '5 тестов\nподряд', unlocked: testCount >= 5 },
-    { icon: '🔥', label: '7 дней без\nпропусков', unlocked: false },
-    { icon: '🎯', label: 'Лучший\nрезультат', unlocked: bestScore >= 90 },
-  ]
+  const achievements = (achievementsData?.achievements || []).slice(0, 6).map(a => ({
+    icon: a.icon,
+    label: a.title,
+    unlocked: a.unlocked,
+  }))
 
   if (!isProgress) {
     return (
@@ -162,14 +175,102 @@ export default function StudentDashboardPage() {
           ))}
         </div>
 
-        <div className="d-achievements">
-          {achievements.map((ach, i) => (
-            <div key={i} className={`d-card d-achievement ${ach.unlocked ? 'unlocked' : 'locked'}`}>
+        <div className="d-achievements" style={{ position: 'relative' }}>
+          <div style={{ position: 'absolute', top: -26, left: 4, fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Award size={14} strokeWidth={1.8} />
+            Достижения · {achievementsData?.unlocked_count || 0}/{achievementsData?.total_count || 0}
+          </div>
+          {achievements.length > 0 ? achievements.map((ach, i) => (
+            <div key={i} className={`d-card d-achievement ${ach.unlocked ? 'unlocked' : 'locked'}`}
+              title={ach.unlocked ? 'Получено' : 'Ещё не получено'}>
               <div className="d-achievement-icon">{ach.icon}</div>
               <div className="d-achievement-label">{ach.label.split('\n').map((l, j) => <span key={j}>{l}<br /></span>)}</div>
             </div>
-          ))}
+          )) : (
+            <div className="d-card d-achievement unlocked" onClick={() => navigate('/test/rush')}>
+              <div className="d-achievement-icon">⚡</div>
+              <div className="d-achievement-label">Пройди первый<br />тест — получи 🎯</div>
+            </div>
+          )}
         </div>
+
+        {forecast?.score != null && (
+          <div className="d-card" style={{ padding: 20, cursor: 'pointer' }} onClick={() => navigate('/test/ent')}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div className="d-menu-icon purple" style={{ width: 42, height: 42 }}><Target size={20} strokeWidth={1.5} /></div>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700 }}>Прогноз балла ЕНТ</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                    {forecast.has_ent_sessions ? 'по симуляциям ЕНТ' : 'оценка по предметным тестам'}
+                  </div>
+                </div>
+              </div>
+              {TREND_META[forecast.trend] && (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700,
+                  padding: '5px 12px', borderRadius: 100,
+                  background: `${TREND_META[forecast.trend].color}18`,
+                  color: TREND_META[forecast.trend].color,
+                }}>
+                  {TREND_META[forecast.trend].icon} {TREND_META[forecast.trend].label}
+                </span>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 12 }}>
+              <span style={{ fontSize: 40, fontWeight: 800, color: 'var(--primary)' }}>{forecast.score}</span>
+              <span style={{ fontSize: 15, color: 'var(--text-secondary)' }}>/ {forecast.max_score} баллов</span>
+            </div>
+            <div style={{ height: 8, background: 'var(--border)', borderRadius: 4, overflow: 'hidden', marginBottom: 4 }}>
+              <div style={{
+                width: `${Math.min(forecast.score / forecast.max_score * 100, 100)}%`, height: '100%',
+                background: 'linear-gradient(90deg, #243B82, #3B82F6)', borderRadius: 4,
+              }} />
+            </div>
+            {forecast.sections?.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                {forecast.sections.map((s, i) => (
+                  <span key={i} style={{
+                    fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 100,
+                    background: s.passes ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                    color: s.passes ? '#059669' : '#DC2626',
+                  }}>
+                    {s.name}: {s.score}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {weakTopics.length > 0 && (
+          <div>
+            <div className="d-subj-header">
+              <div className="d-subj-title">Слабые темы — подтяни их</div>
+            </div>
+            {weakTopics.map(g => (
+              <div key={g.subject_id} className="d-card" style={{ padding: '16px 18px', marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700 }}>{g.icon} {g.subject}</div>
+                  <button className="btn btn-primary btn-sm" style={{ borderRadius: 10, display: 'flex', alignItems: 'center', gap: 6 }}
+                    onClick={() => navigate(`/test/start/${g.subject_id}`, { state: { topicIds: g.topic_ids } })}>
+                    <Zap size={13} strokeWidth={2} /> Тренировать
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {g.topics.map(t => (
+                    <span key={t.topic_id} style={{
+                      fontSize: 12, padding: '5px 10px', borderRadius: 100,
+                      background: 'rgba(239,68,68,0.08)', color: '#DC2626', fontWeight: 600,
+                    }}>
+                      {t.topic} · {t.accuracy}%
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {data.subject_progress.length > 0 && (
           <div>

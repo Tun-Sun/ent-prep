@@ -7,6 +7,12 @@ from subjects.models import Question
 
 
 class TestSession(models.Model):
+    MODE_CHOICES = [
+        ('standard', 'Обычный тест'),
+        ('rush', 'Question Rush'),
+        ('duel', 'Дуэль'),
+    ]
+
     student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='test_sessions')
     subject = models.ForeignKey('subjects.Subject', on_delete=models.CASCADE, related_name='test_sessions', null=True, blank=True)
     started_at = models.DateTimeField(default=timezone.now)
@@ -20,6 +26,14 @@ class TestSession(models.Model):
     earned_points = models.FloatField(default=0, verbose_name='Набрано баллов')
     is_ent = models.BooleanField(default=False, verbose_name='ЕНТ тест')
     ent_data = models.JSONField(default=dict, blank=True, verbose_name='Данные ЕНТ (секции, предметы)')
+    mode = models.CharField(
+        max_length=10, choices=MODE_CHOICES, default='standard',
+        verbose_name='Режим теста',
+    )
+    duel = models.ForeignKey(
+        'gamification.Duel', on_delete=models.SET_NULL,
+        related_name='sessions', null=True, blank=True, verbose_name='Дуэль',
+    )
 
     class Meta:
         verbose_name = 'Тестовая сессия'

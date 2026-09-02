@@ -53,6 +53,8 @@ export const authAPI = {
   updateProfileSubjects: (subjectIds) => api.put('/auth/profile/subjects/', { profile_subjects: subjectIds }),
   clearHistory: () => api.delete('/auth/profile/history/'),
   deleteAccount: (password) => api.delete('/auth/profile/account/', { data: { password } }),
+  changePassword: (oldPassword, newPassword) => api.post('/auth/login/change-password/', { old_password: oldPassword, new_password: newPassword }),
+  resetStudentPassword: (studentId, password) => api.post(`/auth/students/${studentId}/reset-password/`, password ? { password } : {}),
 }
 
 // Subjects
@@ -116,6 +118,7 @@ export const testsAPI = {
   authorialTests: () => api.get('/tests/authorial-tests/'),
   authorialTestQuestions: (formId) => api.get(`/tests/authorial-tests/${formId}/questions/`),
   deleteAuthorialTest: (formId) => api.delete(`/tests/authorial-tests/${formId}/`),
+  startDuel: (duelId) => api.post(`/gamification/duels/${duelId}/play/`),
 }
 
 // Dashboard
@@ -127,6 +130,18 @@ export const dashboardAPI = {
   leaderboard: (params) => api.get('/dashboard/leaderboard/', { params }),
   dashboardSubjects: () => api.get('/dashboard/teacher/dashboard-subjects/'),
   updateDashboardSubjects: (subjectIds) => api.put('/dashboard/teacher/dashboard-subjects/', { subject_ids: subjectIds }),
+  weakTopics: () => api.get('/dashboard/student/weak-topics/'),
+  entForecast: () => api.get('/dashboard/student/ent-forecast/'),
+  studentReportPdf: (studentId) => api.get(`/dashboard/teacher/students/${studentId}/report.pdf/`, { responseType: 'blob' }),
+}
+
+// Gamification
+export const gamificationAPI = {
+  achievements: () => api.get('/gamification/achievements/'),
+  duels: () => api.get('/gamification/duels/'),
+  createDuel: (data) => api.post('/gamification/duels/', data),
+  respondDuel: (duelId, action) => api.post(`/gamification/duels/${duelId}/respond/`, { action }),
+  duelOpponents: (search) => api.get('/gamification/duels/opponents/', { params: search ? { search } : {} }),
 }
 
 export const grantCalcAPI = {

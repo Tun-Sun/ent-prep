@@ -125,8 +125,13 @@ class TestSessionDetailSerializer(serializers.ModelSerializer):
 
 
 class StartTestSerializer(serializers.Serializer):
-    subject_id = serializers.IntegerField()
+    subject_id = serializers.IntegerField(required=False, allow_null=True)
     num_questions = serializers.IntegerField(required=False, min_value=1, max_value=40)
+    topic_ids = serializers.ListField(
+        child=serializers.IntegerField(), required=False, default=list,
+        label='ID тем (тренировка по темам)',
+    )
+    mode = serializers.ChoiceField(choices=['standard', 'rush'], default='standard')
 
 
 class StartEntSerializer(serializers.Serializer):

@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     RegisterView, ProfileView, UpdateProfileSubjectsView,
     ClearTestHistoryView, DeleteOwnAccountView,
-    UpdateStudentSubjectsView,
+    UpdateStudentSubjectsView, ChangePasswordView, ResetStudentPasswordView,
     StudyGroupListCreateView, StudyGroupDetailView,
     StudyGroupAddStudentsView, CreateStudentView, StudentListView,
     AdminUserListView, AdminUserDetailView, AdminUserDeleteView,
@@ -11,6 +11,7 @@ from .views import (
 
 urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),
+    path('login/change-password/', ChangePasswordView.as_view(), name='change-password'),
     path('profile/', ProfileView.as_view(), name='profile'),
     path('profile/subjects/', UpdateProfileSubjectsView.as_view(), name='profile-subjects'),
     path('profile/history/', ClearTestHistoryView.as_view(), name='profile-history'),
@@ -22,6 +23,7 @@ urlpatterns = [
     path('students/create/', CreateStudentView.as_view(), name='student-create'),
     path('students/search/', StudentListView.as_view(), name='student-search'),
     path('students/<int:student_id>/subjects/', UpdateStudentSubjectsView.as_view(), name='student-subjects'),
+    path('students/<int:student_id>/reset-password/', ResetStudentPasswordView.as_view(), name='student-reset-password'),
     # Admin panel
     path('admin/users/', AdminUserListView.as_view(), name='admin-users'),
     path('admin/users/<int:pk>/', AdminUserDetailView.as_view(), name='admin-user-detail'),

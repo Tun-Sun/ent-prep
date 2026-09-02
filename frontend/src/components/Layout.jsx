@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { User, TrendingUp, BookOpen, Wallet, Clock, LayoutDashboard, HelpCircle, FileEdit, Download, Users, BarChart3, Settings, Layers } from 'lucide-react'
+import { User, TrendingUp, BookOpen, Wallet, Clock, LayoutDashboard, HelpCircle, FileEdit, Download, Users, BarChart3, Settings, Layers, Swords } from 'lucide-react'
 
 const iconMap = {
   'profile': User,
@@ -8,6 +8,7 @@ const iconMap = {
   'subjects': BookOpen,
   'grant-calc': Wallet,
   'history': Clock,
+  'duels': Swords,
   'teacher-dashboard': LayoutDashboard,
   'topics': Layers,
   'questions': HelpCircle,
@@ -26,6 +27,7 @@ const studentLinks = [
   { to: '/', label: 'Профиль', icon: 'profile' },
   { to: '/progress', label: 'Прогресс', icon: 'progress' },
   { to: '/subjects', label: 'Предметы', icon: 'subjects' },
+  { to: '/duels', label: 'Дуэли', icon: 'duels' },
   { to: '/grant-calc', label: 'Гранты', icon: 'grant-calc' },
   { to: '/history', label: 'История', icon: 'history' },
 ]
