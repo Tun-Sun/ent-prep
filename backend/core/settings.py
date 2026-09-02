@@ -158,6 +158,9 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticatedOrReadOnly',
     ),
+    # За nginx: определяем реальный IP клиента из X-Forwarded-For
+    # (иначе все ученики делят общий лимит логина с адреса 127.0.0.1)
+    'NUM_PROXIES': 1,
     'DEFAULT_THROTTLE_RATES': {
         'login': '10/min',
         'register': '5/hour',
