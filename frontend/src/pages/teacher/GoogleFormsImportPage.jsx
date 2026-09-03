@@ -171,7 +171,7 @@ export default function GoogleFormsImportPage() {
           )}
           {preview.meta.used_scrape && !preview.meta.used_api && (
             <div className="alert" style={{ background: '#FEF3C7', marginBottom: 16, padding: 12, borderRadius: 8 }}>
-              ⚠ Правильные ответы не получены (серверный аккаунт не настроен). Все вопросы будут импортированы как <em>черновики</em> — ответы нужно будет отметить вручную.
+              ⚠ Правильные ответы не получены — вопросы будут импортированы как <em>черновики</em>. Причина и что делать — в предупреждениях ниже.
             </div>
           )}
           {preview.meta.warnings?.length > 0 && (

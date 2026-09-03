@@ -187,3 +187,6 @@ GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
 # Без этого настройки импорт по ссылке работает только через скрапинг
 # (вопросы + картинки, но без правильных ответов).
 GOOGLE_SERVICE_ACCOUNT_FILE = os.environ.get('GOOGLE_SERVICE_ACCOUNT_FILE', '')
+if GOOGLE_SERVICE_ACCOUNT_FILE and not os.path.isabs(GOOGLE_SERVICE_ACCOUNT_FILE):
+    # Относительный путь резолвим от BASE_DIR, а не от CWD процесса
+    GOOGLE_SERVICE_ACCOUNT_FILE = str(BASE_DIR / GOOGLE_SERVICE_ACCOUNT_FILE)

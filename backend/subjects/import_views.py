@@ -14,7 +14,13 @@ from .permissions import IsTeacherOrAdmin
 from .google_forms.parser import ParseError, parse_dict, raw_to_payload
 from .google_forms.importer import ImporterError, import_payload
 from .google_forms.fetcher import FetcherError, fetch_form
-from .google_forms.answers import is_available as forms_api_available, get_form_quiz_data, merge_into_questions
+from .google_forms.answers import (
+    is_available as forms_api_available,
+    get_form_quiz_data,
+    get_service_account_email,
+    merge_into_questions,
+    resolve_form_id,
+)
 
 
 class ExcelTemplateView(APIView):
@@ -323,6 +329,14 @@ def import_from_google_form(
     api_form_id, form_url = _resolve_form_id(form_id)
     source = f'id:{api_form_id}'
 
+    # 0. Публичный responder-ID (ссылка /d/e/1FAIpQLS...) Forms API не
+    #    принимает — находим внутренний ID среди форм, расшаренных на
+    #    сервисный аккаунт (точный матчинг по responderUri).
+    if api_form_id.startswith('1FAIpQLS') and forms_api_available():
+        internal_id = resolve_form_id(api_form_id)
+        if internal_id != api_form_id:
+            api_form_id = internal_id
+
     # 1. Скрапинг (только если есть form_url)
     if form_url:
         try:
@@ -330,27 +344,59 @@ def import_from_google_form(
         except FetcherError as e:
             return {'ok': False, 'error': str(e)}
         source = f'url:{form_url[:80]}'
+
+        # Нормализуем form_id/external_id к внутреннему ID: дедупликация
+        # совпадает с импортами по /edit-ссылке, баллы из Forms API
+        # матчятся по external_id.
+        if fetch_result.form_id and fetch_result.form_id != api_form_id:
+            old_prefix = fetch_result.form_id + '/'
+            for q in fetch_result.questions:
+                eid = q.get('external_id', '')
+                if eid.startswith(old_prefix):
+                    q['external_id'] = api_form_id + '/' + eid[len(old_prefix):]
+            fetch_result.form_id = api_form_id
     else:
         from .google_forms.fetcher import FetchResult
         fetch_result = FetchResult()
         fetch_result.form_id = api_form_id
 
     # 2. Правильные ответы и баллы через Forms API
-    if api_form_id and forms_api_available():
-        try:
-            quiz_data = get_form_quiz_data(api_form_id)
-            if quiz_data:
-                fetch_result.questions = merge_into_questions(
-                    fetch_result.questions,
-                    quiz_data.get('answers', []),
-                    quiz_data.get('questions', []),
-                )
-                fetch_result.used_api = True
-                fetch_result.warnings.append(
-                    f'Получено {len(quiz_data.get("answers", []))} правильных ответов из Forms API'
-                )
-        except Exception:
-            fetch_result.warnings.append('Ошибка получения правильных ответов из Forms API')
+    sa_available = forms_api_available()
+    if api_form_id and sa_available:
+        if api_form_id.startswith('1FAIpQLS'):
+            # Резолвинг не удался — форма не расшарена на сервисный аккаунт.
+            sa_email = get_service_account_email() or 'сервисного аккаунта'
+            fetch_result.warnings.append(
+                f'Правильные ответы и картинки недоступны: форма не найдена '
+                f'среди расшаренных на {sa_email}. Откройте форму → "Доступ" '
+                f'→ добавьте этот email с правом "Просмотр", затем повторите '
+                f'импорт (или вставьте ссылку из редактора /forms/d/.../edit).'
+            )
+        else:
+            try:
+                quiz_data = get_form_quiz_data(api_form_id)
+                if quiz_data:
+                    fetch_result.questions = merge_into_questions(
+                        fetch_result.questions,
+                        quiz_data.get('answers', []),
+                        quiz_data.get('questions', []),
+                    )
+                    fetch_result.used_api = True
+                    fetch_result.warnings.append(
+                        f'Получено {len(quiz_data.get("answers", []))} правильных ответов из Forms API'
+                    )
+                else:
+                    fetch_result.warnings.append(
+                        'Правильные ответы не получены: форма не является тестом '
+                        '(Quiz) или не расшарена на сервисный аккаунт'
+                    )
+            except Exception:
+                fetch_result.warnings.append('Ошибка получения правильных ответов из Forms API')
+    elif not sa_available:
+        fetch_result.warnings.append(
+            'Правильные ответы не получены: сервисный аккаунт не настроен '
+            '(файл service-account.json)'
+        )
 
     # 3. Картинки — сначала Forms API (прямые URL), потом Drive (fallback)
     from .google_forms.answers import get_form_images_via_api
