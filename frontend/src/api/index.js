@@ -80,6 +80,8 @@ export const questionsAPI = {
   update: (id, data) => api.put(`/questions/${id}/`, data),
   // точечная правка полей оцифровки из банка из книг
   patchBookScan: (id, data) => api.patch(`/questions/${id}/`, data),
+  // откат правки — вернуть условие и ответ к снимку из оцифровки
+  revertOcr: (id) => api.post(`/questions/${id}/revert-ocr/`),
   delete: (id) => api.delete(`/questions/${id}/`),
 }
 

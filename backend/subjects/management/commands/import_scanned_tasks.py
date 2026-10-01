@@ -31,6 +31,9 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("run_dir", help="папка прогона: tasks.json, run.json, pages/, assets/")
         parser.add_argument("--subject", default="physics")
+        # Кабарга/қазақша листы лежат в том же предмете, но язык строки обязан быть
+        # настоящим: дефолт 'ru' на казахский лист молча наврал бы про 20 задач.
+        parser.add_argument("--language", default="ru", help="ru / kk / uz — язык задач прогона")
         parser.add_argument("--dry-run", action="store_true")
 
     def load(self, path, default=None):
@@ -53,14 +56,19 @@ class Command(BaseCommand):
         render = man.get("render") or {}
         review = self.load(run / "review.json", {}) or {}
         name = tasks["run"]
+        units = tasks.get("tasks") or []
+        if not units:
+            raise CommandError(
+                f"{run}/tasks.json пуст — парсер границ не нашёл ни одной задачи. "
+                "Это не «задач нет», это «формат не распознан»: сначала дорабатывай pipeline/tasks.py.")
         # тема берётся из «области» страницы, и её у десятка задач одна — считаем новые темы
         # по множеством имён, иначе отчёт рисовал бы «новых тем 136» на трёх настоящих
-        scopes = {t.get("scope") or name for t in (tasks.get("tasks") or [])}
+        scopes = {t.get("scope") or name for t in units}
         known = set(Topic.objects.filter(subject=subject, name__in=scopes).values_list("name", flat=True))
 
         made = upd = drawn = took = kept_edited = 0
         tnew = len(scopes - known)
-        for t in tasks.get("tasks") or []:
+        for t in units:
             page = (t.get("pages") or [0])[0]
             ext = f"{name}:p{page}:{t.get('word') or ''}{t['num']}"[:150]
             scope = t.get("scope") or name
@@ -89,6 +97,7 @@ class Command(BaseCommand):
                 "latex": t.get("markdown") or "",
                 "latex_answer": t.get("answer") or "; ".join(t.get("answer_in") or []),
                 "question_type": "open_answer",
+                "language": opt["language"],
                 "verification_status": "verified" if accepted else "draft",
                 "uncertain": t.get("uncertain") or [],
                 "provenance": {
@@ -126,7 +135,7 @@ class Command(BaseCommand):
                     drawn += 1
         self.stdout.write(self.style.SUCCESS(
             f"{name}: создано {made}, обновлено {upd}, новых тем {tnew}, картинок положено {drawn}, "
-            f"предмет «{subject.name}», принято человеком {took} из {len(review)} записей приёмки, "
+            f"предмет «{subject.name}», язык {opt['language']}, принято человеком {took} из {len(review)} записей приёмки, "
             f"ручных правок сохранено {kept_edited}"
             + (" — dry-run, в базу не писано" if opt["dry_run"] else "")))
         if not opt["dry_run"]:

@@ -37,13 +37,29 @@ function EditModal({ q, onClose, onSaved }) {
   const [showOriginal, setShowOriginal] = useState(false)
   const orig = (q.provenance || {}).ocr_original || {}
 
+  // Откат держим модалку открытой: вернули машинный текст — и правим дальше по нему.
+  const revert = () => {
+    setBusy(true)
+    setErr('')
+    questionsAPI.revertOcr(q.id)
+      .then(res => {
+        if (!res.data.restored) { setErr('Откатывать нечего: оригинала из оцифровки в паспорте нет.'); return }
+        const d = res.data.question
+        setLatex(d.latex || '')
+        setAnswer(d.latex_answer || '')
+        onSaved(d)
+      })
+      .catch(e => setErr(errorText(e)))
+      .finally(() => setBusy(false))
+  }
+
   const save = () => {
     setBusy(true)
     setErr('')
     questionsAPI.patchBookScan(q.id, {
       latex, latex_answer: answer, difficulty, verification_status: status,
     })
-      .then(res => onSaved(res.data))
+      .then(res => { onSaved(res.data); onClose() })
       .catch(e => setErr(errorText(e)))
       .finally(() => setBusy(false))
   }
@@ -87,6 +103,10 @@ function EditModal({ q, onClose, onSaved }) {
               <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                 <button className="btn btn-sm btn-outline" onClick={() => setShowOriginal(s => !s)}>
                   {showOriginal ? 'Скрыть' : 'Как было в оцифровке'}
+                </button>
+                <button className="btn btn-sm btn-outline" onClick={revert} disabled={busy}
+                        style={{ marginLeft: 8 }} title="Вернуть условие и ответ к машинному тексту">
+                  Вернуть как в оцифровке
                 </button>
                 {showOriginal && (
                   <pre style={{ whiteSpace: 'pre-wrap', marginTop: 8, padding: 10, background: 'rgba(107,114,128,0.08)', borderRadius: 8 }}>
@@ -162,9 +182,11 @@ export default function BookBankPage() {
 
   const goPage = (pg) => { setPage(pg); load(pg) }
 
+  // модалка сама решает, закрыться ей (после сохранения) или остаться (после отката);
+  // editing обновляем тем же ответом — иначе в окне остаётся устаревший паспорт
   const saved = (data) => {
     setRows(rs => rs.map(r => (r.id === data.id ? data : r)))
-    setEditing(null)
+    setEditing(e => (e && e.id === data.id ? data : e))
   }
 
   const sel = {

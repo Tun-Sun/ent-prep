@@ -153,6 +153,13 @@ class QuestionViewSet(viewsets.ModelViewSet):
         serializer.save()
         return Response(QuestionListSerializer(serializer.instance).data)
 
+    @action(detail=True, methods=['post'], url_path='revert-ocr')
+    def revert_ocr(self, request, pk=None):
+        """Откат правки: условие и ответ возвращаются к снимку из оцифровки."""
+        question = self.get_object()
+        restored = question.restore_ocr_original()
+        return Response({'restored': restored, 'question': QuestionListSerializer(question).data})
+
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         self.perform_destroy(instance)

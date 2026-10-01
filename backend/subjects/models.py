@@ -189,6 +189,27 @@ class Question(models.Model):
     def __str__(self):
         return self.text[:80]
 
+    def restore_ocr_original(self):
+        """Вернуть условие и ответ к снимку из оцифровки (provenance.ocr_original).
+
+        True, если откатывать есть к чему. Метку «правил человек» снимаем:
+        строка снова машинная, и утверждать, что её видел глаз, было бы ложью.
+        Статус вычитки и сложность не трогаем — их откат не просили.
+        """
+        prov = dict(self.provenance or {})
+        orig = prov.get('ocr_original') or {}
+        if not orig:
+            return False
+        for f in ('latex', 'latex_answer'):
+            if f in orig:
+                setattr(self, f, orig[f])
+        self.text = plain_from_latex(self.latex)[:4000] or '(пустое условие)'
+        for k in ('ocr_original', 'human_edited', 'edited_at', 'edited_by'):
+            prov.pop(k, None)
+        self.provenance = prov
+        self.save()
+        return True
+
 
 class Answer(models.Model):
     question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='answers')
