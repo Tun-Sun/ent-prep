@@ -72,7 +72,10 @@ class QuestionListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Question
         fields = ('id', 'text', 'topic', 'topic_name', 'subject_name',
-                  'difficulty', 'source_type', 'verification_status', 'language', 'year', 'image')
+                  'difficulty', 'source_type', 'verification_status', 'language', 'year', 'image',
+                  # поля оцифровки: без них экран банка задач показал бы вместо формул
+                  # обрывки, а без паспорта — не откуда вопрос взялся
+                  'latex', 'latex_answer', 'uncertain', 'provenance', 'external_id')
 
 
 class QuestionDetailSerializer(serializers.ModelSerializer):

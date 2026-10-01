@@ -1,5 +1,6 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.shortcuts import get_object_or_404
@@ -87,8 +88,16 @@ class TopicViewSet(viewsets.ModelViewSet):
         return queryset
 
 
+class QuestionPagination(PageNumberPagination):
+    """34 592 вопроса одним ответом — это 30 МБ JSON, экран висит. Листаем по 50."""
+    page_size = 50
+    page_size_query_param = 'page_size'
+    max_page_size = 200
+
+
 class QuestionViewSet(viewsets.ModelViewSet):
     queryset = Question.objects.select_related('topic__subject')
+    pagination_class = QuestionPagination
 
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
@@ -103,11 +112,14 @@ class QuestionViewSet(viewsets.ModelViewSet):
         return QuestionListSerializer
 
     def get_queryset(self):
-        queryset = Question.objects.select_related('topic__subject')
+        # порядок обязателен: без него LIMIT/OFFSET на разных страницах может
+        # показать одну строку дважды и пропустить другую
+        queryset = Question.objects.select_related('topic__subject').order_by('id')
         subject_id = self.request.query_params.get('subject')
         topic_id = self.request.query_params.get('topic')
         difficulty = self.request.query_params.get('difficulty')
         source_type = self.request.query_params.get('source_type')
+        status = self.request.query_params.get('verification_status')
 
         if subject_id:
             queryset = queryset.filter(topic__subject_id=subject_id)
@@ -117,6 +129,8 @@ class QuestionViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(difficulty=difficulty)
         if source_type:
             queryset = queryset.filter(source_type=source_type)
+        if status:
+            queryset = queryset.filter(verification_status=status)
         return queryset
 
     def retrieve(self, request, *args, **kwargs):

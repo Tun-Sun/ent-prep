@@ -19,6 +19,8 @@ const EMPTY_FORM = {
 }
 
 const DIFF_LABELS = { easy: 'Лёгкий', medium: 'Средний', hard: 'Сложный' }
+// зеркалит QuestionPagination на бэкенде: менять надо вместе с ним
+const PAGE_SIZE = 50
 
 export default function QuestionsPage() {
   const [searchParams] = useSearchParams()
@@ -28,11 +30,14 @@ export default function QuestionsPage() {
   const [filterSubject, setFilterSubject] = useState(searchParams.get('subject') || '')
   const [filterTopic, setFilterTopic] = useState('')
   const [filterSource, setFilterSource] = useState('')
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [errors, setErrors] = useState({})
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   useEffect(() => {
     subjectsAPI.list().then(res => setSubjects(res.data))
@@ -46,18 +51,28 @@ export default function QuestionsPage() {
     }
   }, [filterSubject])
 
-  const loadQuestions = () => {
+  const loadQuestions = (pg = page) => {
     setLoading(true)
-    const params = {}
+    const params = { page: pg }
     if (filterSubject) params.subject = filterSubject
     if (filterTopic) params.topic = filterTopic
     if (filterSource) params.source_type = filterSource
     questionsAPI.list(params)
-      .then(res => setQuestions(res.data))
+      .then(res => {
+        // список теперь пагинированный: {count, results}; старая форма — голый массив
+        const d = Array.isArray(res.data) ? { count: res.data.length, results: res.data } : res.data
+        setQuestions(d.results || [])
+        setTotal(d.count || 0)
+      })
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { loadQuestions() }, [filterSubject, filterTopic, filterSource])
+  useEffect(() => { setPage(1); loadQuestions(1) }, [filterSubject, filterTopic, filterSource])
+
+  const goPage = (pg) => {
+    setPage(pg)
+    loadQuestions(pg)
+  }
 
   const openCreate = () => {
     setForm(EMPTY_FORM)
@@ -160,6 +175,7 @@ export default function QuestionsPage() {
             <option value="">Все базы</option>
             <option value="collected">Собранные (ЕНТ)</option>
             <option value="authorial">Авторские</option>
+            <option value="book_scan">Оцифровано из книги</option>
           </select>
         </div>
       </div>
@@ -274,7 +290,7 @@ export default function QuestionsPage() {
 
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>
-          Всего вопросов: {questions.length}
+          Всего вопросов: {total} · на странице {questions.length}
         </div>
         {loading ? (
           <div className="text-center py-4"><div className="spinner"></div></div>
@@ -334,6 +350,15 @@ export default function QuestionsPage() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+        {!loading && pages > 1 && (
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '14px 20px', borderTop: '1px solid var(--border)' }}>
+            <button className="btn btn-outline" disabled={page <= 1} onClick={() => goPage(page - 1)}
+              style={{ borderRadius: 10, padding: '6px 14px' }}>← назад</button>
+            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>стр. {page} из {pages}</span>
+            <button className="btn btn-outline" disabled={page >= pages} onClick={() => goPage(page + 1)}
+              style={{ borderRadius: 10, padding: '6px 14px' }}>вперёд →</button>
           </div>
         )}
       </div>
