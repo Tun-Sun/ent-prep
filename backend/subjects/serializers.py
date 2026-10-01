@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import Subject, Topic, Question, Answer
+from django.utils import timezone
+from .models import Subject, Topic, Question, Answer, plain_from_latex
 
 
 class AnswerSerializer(serializers.ModelSerializer):
@@ -127,3 +128,57 @@ class QuestionCreateSerializer(serializers.ModelSerializer):
         if not any(a.get('is_correct') for a in answers):
             raise serializers.ValidationError('Должен быть хотя бы один правильный ответ')
         return answers
+
+
+class BookScanEditSerializer(serializers.ModelSerializer):
+    """Правка задачи, оцифрованной из книги.
+
+    QuestionCreateSerializer для неё не годится: требует вложенные варианты
+    ответа, а у открытого ответа вариантов нет. Здесь правятся только поля
+    оцифровки, и правка переживает повторный импорт — import_scanned_tasks
+    обходит своим текстом/latex/статусом именно строки с human_edited.
+    """
+    DIFFICULTY_KEYS = {k for k, _ in Question.DIFFICULTY_CHOICES}
+    STATUS_KEYS = {k for k, _ in Question.VERIFICATION_CHOICES}
+
+    class Meta:
+        model = Question
+        fields = ('latex', 'latex_answer', 'difficulty', 'verification_status')
+
+    def validate_difficulty(self, v):
+        if v not in self.DIFFICULTY_KEYS:
+            raise serializers.ValidationError('Такой сложности нет: easy / medium / hard')
+        return v
+
+    def validate_verification_status(self, v):
+        if v not in self.STATUS_KEYS:
+            raise serializers.ValidationError('Такого статуса нет: draft / verified / rejected')
+        return v
+
+    def update(self, instance, validated_data):
+        changed = [f for f, v in validated_data.items() if v != getattr(instance, f)]
+        if not changed:
+            # «Сохранить» без правки не должно оставлять метку «правил человек»:
+            # она значит, что строку видел глаз, а не что кто-то открыл окно
+            return instance
+        # Оригинал храним один раз: после второй правки в нём должна лежать
+        # строка из прогона, а не то, что стало после первой опечатки.
+        prov = dict(instance.provenance or {})
+        orig = dict(prov.get('ocr_original') or {})
+        for f in ('latex', 'latex_answer'):
+            if f in changed:
+                orig.setdefault(f, getattr(instance, f))
+        for f in changed:
+            setattr(instance, f, validated_data[f])
+        if 'latex' in changed:
+            # text читает весь остальной UI (тест, админка, выгрузка) — он обязан
+            # идти за latex, иначе на экране теста останется исправленная опечатка
+            instance.text = plain_from_latex(instance.latex)[:4000] or '(пустое условие)'
+        if orig:
+            prov['ocr_original'] = orig
+        prov['human_edited'] = True
+        prov['edited_at'] = timezone.now().isoformat()
+        prov['edited_by'] = str(self.context['request'].user)
+        instance.provenance = prov
+        instance.save()
+        return instance

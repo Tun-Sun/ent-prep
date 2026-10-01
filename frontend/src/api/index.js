@@ -78,6 +78,8 @@ export const questionsAPI = {
   retrieve: (id) => api.get(`/questions/${id}/`),
   create: (data) => api.post('/questions/', data),
   update: (id, data) => api.put(`/questions/${id}/`, data),
+  // точечная правка полей оцифровки из банка из книг
+  patchBookScan: (id, data) => api.patch(`/questions/${id}/`, data),
   delete: (id) => api.delete(`/questions/${id}/`),
 }
 

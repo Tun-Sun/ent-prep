@@ -11,6 +11,7 @@ from .serializers import (
     SubjectSerializer, SubjectMinimalSerializer,
     TopicSerializer, TopicListSerializer,
     QuestionListSerializer, QuestionDetailSerializer, QuestionCreateSerializer,
+    BookScanEditSerializer,
 )
 
 
@@ -105,7 +106,7 @@ class QuestionViewSet(viewsets.ModelViewSet):
         return [IsTeacherOrAdmin()]
 
     def get_serializer_class(self):
-        if self.action in ('create', 'update', 'partial_update'):
+        if self.action in ('create', 'update'):
             return QuestionCreateSerializer
         if self.action == 'retrieve':
             return QuestionDetailSerializer
@@ -138,6 +139,19 @@ class QuestionViewSet(viewsets.ModelViewSet):
         instance = Question.objects.select_related('topic__subject').prefetch_related('answers').get(pk=instance.pk)
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        """Окно редактуры в банке из книг: PATCH по полям оцифровки.
+
+        Отдельный сериализатор, а не общий PUT: у задачи с открытым ответом
+        вариантов ответа нет, и QuestionCreateSerializer отклонил бы правку.
+        """
+        instance = self.get_object()
+        serializer = BookScanEditSerializer(instance, data=request.data,
+                                           partial=True, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(QuestionListSerializer(serializer.instance).data)
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()

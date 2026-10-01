@@ -1,5 +1,26 @@
 from django.db import models
 from django.db.models import Q
+import re
+
+FIGURE_LINE = re.compile(r"^!\[[^\]]*\]\(([^)]+)\)\s*$")
+MATH_NOISE = re.compile(r"\*\*|\$|\\tag\{[^}]*\}")
+
+
+def plain_from_latex(latex):
+    """Условие по-человечески из Markdown+LaTeX.
+
+    Поле text существующему UI нужно читаемым: он рендерит HTML, а не KaTeX.
+    Это не замена latex, а то, что видно везде, где банк из книг не подключён
+    (игровой тест, админка, выгрузка). Одна функция на генератор и на правку:
+    иначе отредактированная задача разошлась бы по text с импортированной.
+    """
+    lines = []
+    for ln in (latex or "").split("\n"):
+        if FIGURE_LINE.match(ln.strip()):
+            lines.append("[рисунок]")
+            continue
+        lines.append(MATH_NOISE.sub("", ln))
+    return "\n".join(lines).strip()
 
 
 class Subject(models.Model):

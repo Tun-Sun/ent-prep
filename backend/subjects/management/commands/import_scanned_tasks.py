@@ -11,30 +11,18 @@ external_id = "<прогон>:p<страница>:<слово><номер>". В�
 
 Черновиком остаётся всё, что человек не отметил как проверенное: молча показать
 это ученикам — значит выставить наружу догадки модели наравне с вычитанным.
+
+Правка, сделанная тренером в окне редактуры банка (provenance.human_edited),
+перегоном не затирается: условие, ответ и статус такой задачи остаются как их
+исправил человек. Остальные поля паспорта обновляются — они из прогона.
 """
 import json
-import re
 from pathlib import Path
 
 from django.core.files.base import ContentFile
 from django.core.management.base import BaseCommand, CommandError
 
-from subjects.models import Question, Subject, Topic
-
-IMG = re.compile(r"^!\[[^\]]*\]\(([^)]+)\)\s*$")
-
-
-def as_text(latex):
-    """text существующему UI нужен читаемый: он рендерит HTML, а не KaTeX.
-    Это не замена latex — это то, что видно, пока экран банка не дописан."""
-    lines = []
-    for ln in (latex or "").split("\n"):
-        m = IMG.match(ln.strip())
-        if m:
-            lines.append("[рисунок]")
-            continue
-        lines.append(re.sub(r"\*\*|\$|\\tag\{[^}]*\}", "", ln))
-    return "\n".join(lines).strip()
+from subjects.models import Question, Subject, Topic, plain_from_latex
 
 
 class Command(BaseCommand):
@@ -70,7 +58,7 @@ class Command(BaseCommand):
         scopes = {t.get("scope") or name for t in (tasks.get("tasks") or [])}
         known = set(Topic.objects.filter(subject=subject, name__in=scopes).values_list("name", flat=True))
 
-        made = upd = drawn = took = 0
+        made = upd = drawn = took = kept_edited = 0
         tnew = len(scopes - known)
         for t in tasks.get("tasks") or []:
             page = (t.get("pages") or [0])[0]
@@ -82,6 +70,10 @@ class Command(BaseCommand):
             took += accepted
             figures = [f for f in (t.get("figures") or []) if isinstance(f, str)]
             old = Question.objects.filter(source_type="book_scan", external_id=ext).first()
+            # Правка тренера в банке важнее перегоня: второй импорт молча вернул бы
+            # опечатку, которую человек уже исправил глазами, и снял бы его статус.
+            edited = bool((old.provenance or {}).get("human_edited")) if old else False
+            kept_edited += edited
             if opt["dry_run"]:
                 # dry-run только считает: ни тему, ни вопрос, ни файл картинки не трогаем
                 made += old is None
@@ -93,7 +85,7 @@ class Command(BaseCommand):
             topic, _ = Topic.objects.get_or_create(subject=subject, name=scope)
             defaults = {
                 "topic": topic,
-                "text": as_text(t.get("markdown"))[:4000] or "(пустое условие)",
+                "text": plain_from_latex(t.get("markdown"))[:4000] or "(пустое условие)",
                 "latex": t.get("markdown") or "",
                 "latex_answer": t.get("answer") or "; ".join(t.get("answer_in") or []),
                 "question_type": "open_answer",
@@ -111,6 +103,12 @@ class Command(BaseCommand):
                     "model": render.get("model"), "prompt_sha256": used.get("prompt_sha256"),
                 },
             }
+            if edited:
+                for f in ("text", "latex", "latex_answer", "verification_status"):
+                    defaults[f] = getattr(old, f)
+                for k in ("human_edited", "edited_at", "edited_by", "ocr_original"):
+                    if k in old.provenance:
+                        defaults["provenance"][k] = old.provenance[k]
             q, new = Question.objects.update_or_create(
                 source_type="book_scan", external_id=ext, defaults=defaults)
             made += new
@@ -128,7 +126,8 @@ class Command(BaseCommand):
                     drawn += 1
         self.stdout.write(self.style.SUCCESS(
             f"{name}: создано {made}, обновлено {upd}, новых тем {tnew}, картинок положено {drawn}, "
-            f"предмет «{subject.name}», принято человеком {took} из {len(review)} записей приёмки"
+            f"предмет «{subject.name}», принято человеком {took} из {len(review)} записей приёмки, "
+            f"ручных правок сохранено {kept_edited}"
             + (" — dry-run, в базу не писано" if opt["dry_run"] else "")))
         if not opt["dry_run"]:
             self.stdout.write("сложность у всех проставлена дефолтом «Средний»: в оцифровке её нет, "
