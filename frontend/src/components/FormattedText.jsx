@@ -75,19 +75,19 @@ function formatText(input, markdown = false) {
   text = text.replace(/\$\$([\s\S]+?)\$\$/g, (_, f) => {
     const idx = formulas.length
     formulas.push({ latex: f.trim(), block: true })
-    return `\u0000FORMULA_${idx}\u0000`
+    return `\u0000KTX${idx}\u0000`
   })
   text = text.replace(/\\\[([\s\S]+?)\\\]/g, (_, f) => {
     const idx = formulas.length
     formulas.push({ latex: f.trim(), block: true })
-    return `\u0000FORMULA_${idx}\u0000`
+    return `\u0000KTX${idx}\u0000`
   })
 
   // 2. Инлайн формулы: \(...\)
   text = text.replace(/\\\(([\s\S]+?)\\\)/g, (_, f) => {
     const idx = formulas.length
     formulas.push({ latex: f.trim(), block: false })
-    return `\u0000FORMULA_${idx}\u0000`
+    return `\u0000KTX${idx}\u0000`
   })
 
   // 3. Одиничные $...$ — инлайн формулы (осторожно, чтобы не задеть деньги)
@@ -95,7 +95,7 @@ function formatText(input, markdown = false) {
   text = text.replace(/(?<![a-zA-Z0-9])\$([^$\n]+?)\$(?![a-zA-Z0-9])/g, (_, f) => {
     const idx = formulas.length
     formulas.push({ latex: f.trim(), block: false })
-    return `\u0000FORMULA_${idx}\u0000`
+    return `\u0000KTX${idx}\u0000`
   })
 
   // 4. Оцифровка книги — markdown: ссылки на рисунки, *курсив*, таблицы |…| .
@@ -105,9 +105,10 @@ function formatText(input, markdown = false) {
   // 5. Очищаем HTML от опасных тегов и атрибутов
   text = sanitizeHtml(text)
 
-  // 6. Защищаем плейсхолдеры формул от sanitize
-  // Заменяем их на span-ы с KaTeX
-  text = text.replace(/\u0000FORMULA_(\d+)\u0000/g, (_, idx) => {
+  // 6. Возвращаем формулы: плейсхолдер без подчёркивания и звёздочек — markdown-шаг
+  // съедает их как раз в паре «_…_» между двумя формулами, и на экране оставалось
+  // «FORMULA2 … FORMULA5» вместо самих формул (574 раза на одной странице банка).
+  text = text.replace(/\u0000KTX(\d+)\u0000/g, (_, idx) => {
     const f = formulas[parseInt(idx)]
     if (!f) return ''
     const cls = f.block ? 'formula-block' : 'formula-inline'
