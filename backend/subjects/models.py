@@ -72,6 +72,8 @@ class Question(models.Model):
     SOURCE_CHOICES = [
         ('collected', 'Собранный'),
         ('authorial', 'Авторский'),
+        # Оцифровка бумажного задачника: скан → Gemini Vision → Markdown+LaTeX.
+        ('book_scan', 'Оцифровано из книги'),
     ]
     VERIFICATION_CHOICES = [
         ('draft', 'Черновик'),
@@ -82,6 +84,8 @@ class Question(models.Model):
         ('single_choice', 'Один правильный'),
         ('multiple_choice', 'Несколько правильных'),
         ('matching', 'На соответствие'),
+        # Задача из учебника: ответ студент пишет сам, варианта нет.
+        ('open_answer', 'Открытый ответ'),
     ]
     SECTION_CHOICES = [
         ('history', 'История Казахстана'),
@@ -130,6 +134,23 @@ class Question(models.Model):
     )
     # Закладка под AI-разбор ошибок (Этап 2.1).
     ai_explanation = models.TextField(blank=True, default='', verbose_name='AI-объяснение')
+
+    # --- Оцифровка бумажного задачника (Этап 1: скан → Gemini Vision → KaTeX) ---
+    # text остаётся HTML'ом для текущих 34k вопросов; формулы в нём терять нельзя,
+    # поэтому LaTeX живёт отдельными полями и рендерится на фронте тем же KaTeX.
+    latex = models.TextField(blank=True, default='', verbose_name='Условие в LaTeX')
+    latex_answer = models.TextField(
+        blank=True, default='', verbose_name='Ответ в LaTeX',
+        help_text='Заполняется только когда в источнике есть отдельный ответ.',
+    )
+    solution_latex = models.TextField(blank=True, default='', verbose_name='Решение в LaTeX')
+    # Паспорт задачи: прогон, страница и строка скана, хэш источника, разрешение,
+    # модель, хэш промпта. Нужен, чтобы спорный знак вели не «по странице отчёта»,
+    # а по конкретной задаче, и чтобы правку можно было откатить к оригиналу.
+    provenance = models.JSONField(null=True, blank=True, verbose_name='Паспорт источника')
+    # Спорные знаки распознавания: [{char, page, line, why}]. Пока пусто — значит
+    # модель не ставила под вопрос ни один знак, а не то что вопрос проверен.
+    uncertain = models.JSONField(default=list, blank=True, verbose_name='Спорные знаки')
 
     class Meta:
         verbose_name = 'Вопрос'
