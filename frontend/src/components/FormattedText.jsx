@@ -15,7 +15,7 @@ import 'katex/dist/katex.min.css'
  *
  * Также рендерит базовый HTML (из парсеров/импорта).
  */
-export default function FormattedText({ text, as: Tag = 'span', className = '', ...rest }) {
+export default function FormattedText({ text, as: Tag = 'span', className = '', markdown = false, ...rest }) {
   const containerRef = useRef(null)
 
   useEffect(() => {
@@ -25,11 +25,18 @@ export default function FormattedText({ text, as: Tag = 'span', className = '', 
     formulaEls.forEach(el => {
       const latex = el.getAttribute('data-latex') || ''
       const displayMode = el.classList.contains('formula-block')
+      // KaTeX принимает один \tag на формулу, а модель ставит две нумерованные строки
+      // через \qquad — иначе на экране красное «ParseError: Multiple \tag»
+      const parts = (latex.match(/\\tag\{/g) || []).length > 1 ? latex.split(/\s*\\qquad\s*/) : [latex]
       try {
-        katex.render(latex, el, {
-          displayMode,
-          throwOnError: false,
-          output: 'html',
+        el.innerHTML = ''
+        parts.forEach(part => {
+          const span = document.createElement('span')
+          el.appendChild(span)
+          katex.render(part.trim(), span, {
+            displayMode,
+            throwOnError: false,
+          })
         })
       } catch {
         el.textContent = latex
@@ -40,7 +47,7 @@ export default function FormattedText({ text, as: Tag = 'span', className = '', 
   if (!text) return null
 
   // Преобразуем исходный текст в HTML: выделяем формулы, экранируем опасное
-  const html = formatText(text)
+  const html = formatText(text, markdown)
 
   return (
     <Tag
@@ -58,7 +65,7 @@ export default function FormattedText({ text, as: Tag = 'span', className = '', 
  * 2. Очищаем HTML от опасных тегов/атрибутов
  * 3. Возвращаем формулы как <span class="formula">
  */
-function formatText(input) {
+function formatText(input, markdown = false) {
   if (!input) return ''
 
   let text = String(input)
@@ -91,10 +98,14 @@ function formatText(input) {
     return `\u0000FORMULA_${idx}\u0000`
   })
 
-  // 4. Очищаем HTML от опасных тегов и атрибутов
+  // 4. Оцифровка книги — markdown: ссылки на рисунки, *курсив*, таблицы |…| .
+  // Без этого шага банк показывает сырой исходник посреди условия.
+  if (markdown) text = renderMarkdown(text)
+
+  // 5. Очищаем HTML от опасных тегов и атрибутов
   text = sanitizeHtml(text)
 
-  // 5. Защищаем плейсхолдеры формул от sanitize
+  // 6. Защищаем плейсхолдеры формул от sanitize
   // Заменяем их на span-ы с KaTeX
   text = text.replace(/\u0000FORMULA_(\d+)\u0000/g, (_, idx) => {
     const f = formulas[parseInt(idx)]
@@ -108,9 +119,48 @@ function formatText(input) {
 }
 
 /**
- * Очистка HTML: убираем <script>, <iframe>, on* атрибуты, javascript: ссылки.
- * Разрешаем базовые теги форматирования из парсеров/импорта.
+ * Подмножество markdown, которое реально встречается в оцифровке: картинки ![..](..),
+ * *курсив* / **жирный**, таблицы из строк |…|. Заголовков и списков в единицах нет —
+ * не добавляем то, что никто не производит.
  */
+const FIGURE = /!\[([^\]]*)\]\(([^)]+)\)/g
+const TABLE_ROW = /^\|[\s:|-]+\|$/
+
+function renderMarkdown(text) {
+  const out = []
+  let rows = null
+  const flush = () => {
+    if (rows) out.push(`<table>${rows.join('')}</table>`)
+    rows = null
+  }
+  for (const raw of text.split('\n')) {
+    const ln = raw.trim()
+    if (ln.startsWith('|')) {
+      if (TABLE_ROW.test(ln)) continue
+      const cells = ln.replace(/^\||\|$/g, '').split('|').map(c => `<td>${inlineMarkdown(c.trim())}</td>`)
+      ;(rows = rows || []).push(`<tr>${cells.join('')}</tr>`)
+      continue
+    }
+    flush()
+    if (ln) out.push(inlineMarkdown(ln))
+  }
+  flush()
+  return out.join('<br>')
+}
+
+function inlineMarkdown(s) {
+  return s
+    // путь assets/p04_fig1.png живёт в папке прогона, в браузере его нет: остаётся подпись
+    .replace(FIGURE, (_, alt) => `<span class="figure-ref">${alt || 'рисунок'}</span>`)
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>')
+    // модель пишет «_Ответ:_» так же часто, как «*Ответ:*»; подчёркивания формул сюда
+    // не доходят — они уже спрятаны в плейсхолдеры
+    .replace(/_([^_\n]+)_/g, '<em>$1</em>')
+}
+
+// Убираем <script>, <iframe>, on* атрибуты, javascript: ссылки; теги вне списка молча
+// вырезаются вместе с содержимым — сюда приходит текст из чужих сканов.
 function sanitizeHtml(html) {
   // Эскейпим то, что выглядит как формулы-плейсхолдеры (чтобы не сломать их)
   // 1. Удаляем <script>, <iframe>, <object>, <embed> и их содержимое

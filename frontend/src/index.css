@@ -1071,6 +1071,26 @@ tr:hover td { background: #F9FAFB; }
 .formula-block .katex-display {
   margin: 0;
 }
+/* Оцифровка книги: таблицы «Дано / Решение» и подпись рисунка вместо сырого ![..](..) */
+.formatted-text table {
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-size: 13px;
+}
+.formatted-text td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  vertical-align: top;
+}
+.formatted-text .figure-ref {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 100px;
+  background: rgba(99, 102, 241, 0.08);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+}
 /* Если формула широкая — скролл по горизонтали на мобильных */
 .formatted-text .formula-block::-webkit-scrollbar {
   height: 4px;
