@@ -134,6 +134,12 @@ class Command(BaseCommand):
                     "model": render.get("model"), "prompt_sha256": used.get("prompt_sha256"),
                 },
             }
+            # Пометка «сложность взята из напечатанного уровня книги» — вывод из
+            # разворота скана, а не из распознавания: новый прогон её не опровергает.
+            # Без переноса перегон стирал 62 пометки, и размеченное строкой
+            # «Средний» становилось неразличимым от «Средний, потому что никто не трогал».
+            if old is not None and (old.provenance or {}).get("difficulty_source"):
+                defaults["provenance"]["difficulty_source"] = old.provenance["difficulty_source"]
             if edited:
                 # тему тоже бережём: если тренер перенёс задачу в свою тему
                 # («это не книга, а отрывок»), перегон не должен вернуть её назад
