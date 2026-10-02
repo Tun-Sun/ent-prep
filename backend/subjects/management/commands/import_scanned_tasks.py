@@ -88,7 +88,7 @@ class Command(BaseCommand):
         scopes = {topic_name(book, t.get("scope") or name) for t in units}
         known = set(Topic.objects.filter(subject=subject, name__in=scopes).values_list("name", flat=True))
 
-        made = upd = drawn = took = kept_edited = 0
+        made = upd = drawn = took = kept_edited = orphaned = 0
         tnew = len(scopes - known)
         for t in units:
             page = (t.get("pages") or [0])[0]
@@ -167,8 +167,18 @@ class Command(BaseCommand):
                 if not q.image and f.is_file():
                     q.image.save(f"{name}_p{page:02d}_{f.name}", ContentFile(f.read_bytes()), save=True)
                     drawn += 1
+            elif not edited and (q.image_ref or "").startswith(f"{name}:"):
+                # Картинка задачи обязана быть рисунком из её тела: прогон перестал
+                # считать выкройку содержимым — и на задаче Касаткиной оставался логотип
+                # бланка «INTELLECT», положенный до того, как шапку стали срезать.
+                # Файл в media не сносим: поле снимаем, удаление решает человек.
+                q.image_ref = ""
+                q.image = None
+                q.save(update_fields=["image_ref", "image"])
+                orphaned += 1
         self.stdout.write(self.style.SUCCESS(
             f"{name}: создано {made}, обновлено {upd}, новых тем {tnew}, картинок положено {drawn}, "
+            f"картинок снято по чужому кадру {orphaned}, "
             f"предмет «{subject.name}», язык {opt['language']}, принято человеком {took} из {len(review)} записей приёмки, "
             f"ручных правок сохранено {kept_edited}"
             + (" — dry-run, в базу не писано" if opt["dry_run"] else "")))
