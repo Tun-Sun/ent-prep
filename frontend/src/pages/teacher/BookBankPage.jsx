@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { questionsAPI, subjectsAPI } from '../../api'
 import FormattedText from '../../components/FormattedText'
-import { BookOpen, AlertTriangle, HelpCircle, Pencil } from 'lucide-react'
+import { BookOpen, AlertTriangle, HelpCircle, Pencil, Trash2 } from 'lucide-react'
 
 // зеркалит QuestionPagination на бэкенде: менять надо вместе с ним
 const PAGE_SIZE = 50
@@ -27,15 +27,28 @@ function errorText(e) {
   return Object.entries(d).map(([k, v]) => `${k}: ${[].concat(v).join(', ')}`).join(' · ')
 }
 
-function EditModal({ q, onClose, onSaved }) {
+function EditModal({ q, subjects, onClose, onSaved }) {
   const [latex, setLatex] = useState(q.latex || '')
   const [answer, setAnswer] = useState(q.latex_answer || '')
   const [difficulty, setDifficulty] = useState(q.difficulty || 'medium')
   const [status, setStatus] = useState(q.verification_status || 'draft')
+  const [subject, setSubject] = useState(q.subject)
+  const [topics, setTopics] = useState([])
+  const [topic, setTopic] = useState(q.topic)
+  const [newTopic, setNewTopic] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [showOriginal, setShowOriginal] = useState(false)
   const orig = (q.provenance || {}).ocr_original || {}
+
+  // Книги кончаются, а отрывки и рукописные задачи начинаются: место задачи
+  // (предмет → тема) тренер правит здесь же, где опечатку.
+  useEffect(() => {
+    subjectsAPI.topics(subject).then(res => {
+      setTopics(res.data)
+      if (!res.data.some(t => t.id === Number(topic))) setTopic('')
+    })
+  }, [subject])
 
   // Откат держим модалку открытой: вернули машинный текст — и правим дальше по нему.
   const revert = () => {
@@ -56,9 +69,15 @@ function EditModal({ q, onClose, onSaved }) {
   const save = () => {
     setBusy(true)
     setErr('')
-    questionsAPI.patchBookScan(q.id, {
-      latex, latex_answer: answer, difficulty, verification_status: status,
-    })
+    const named = newTopic.trim()
+    const place = named ? subjectsAPI.createTopic({ name: named, subject }).then(r => r.data.id)
+      : Promise.resolve(topic ? Number(topic) : null)
+    place
+      .then(tid => {
+        const body = { latex, latex_answer: answer, difficulty, verification_status: status }
+        if (tid) body.topic = tid
+        return questionsAPI.patchBookScan(q.id, body)
+      })
       .then(res => { onSaved(res.data); onClose() })
       .catch(e => setErr(errorText(e)))
       .finally(() => setBusy(false))
@@ -84,6 +103,26 @@ function EditModal({ q, onClose, onSaved }) {
             <div>
               <div style={label}>Ответ (если в источнике отдельный ответ)</div>
               <textarea style={field} rows={4} value={answer} onChange={e => setAnswer(e.target.value)} />
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={label}>Предмет</div>
+                <select style={pick} value={subject} onChange={e => setSubject(Number(e.target.value))}>
+                  {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+              <div style={{ flex: 1.4 }}>
+                <div style={label}>Тема (книга · раздел)</div>
+                <select style={pick} value={topic} onChange={e => setTopic(e.target.value)}>
+                  <option value="">— перенести нельзя, выбери тему —</option>
+                  {topics.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div>
+              <div style={label}>…или новая тема</div>
+              <input style={{ ...pick, height: 38 }} placeholder="напр. Отрывок: задачи МКТ, вариант тренеровки"
+                     value={newTopic} onChange={e => setNewTopic(e.target.value)} />
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <div style={{ flex: 1 }}>
@@ -152,10 +191,14 @@ export default function BookBankPage() {
   const [filterSubject, setFilterSubject] = useState('')
   const [filterTopic, setFilterTopic] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
+  // тесты без ключа ответа в общем списке только мешают вычитке задач —
+  // по умолчанию показываем задачи, тесты под отдельным фильтром
+  const [filterFormat, setFilterFormat] = useState('задача')
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null)
+  const [notice, setNotice] = useState('')
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   useEffect(() => {
@@ -173,14 +216,31 @@ export default function BookBankPage() {
     if (filterSubject) params.subject = filterSubject
     if (filterTopic) params.topic = filterTopic
     if (filterStatus) params.verification_status = filterStatus
+    if (filterFormat) params.task_format = filterFormat
+    setNotice('')
     questionsAPI.list(params)
       .then(res => { setRows(res.data.results || []); setTotal(res.data.count || 0) })
+      .catch(e => {
+        // пустой список из-за ошибки сети выглядит как «под фильтр ничего не попало»:
+        // человек решит, что задач нет, хотя запрос просто упал
+        setRows([]); setTotal(0); setNotice(errorText(e))
+      })
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { setPage(1); load(1) }, [filterSubject, filterTopic, filterStatus])
+  useEffect(() => { setPage(1); load(1) }, [filterSubject, filterTopic, filterStatus, filterFormat])
 
   const goPage = (pg) => { setPage(pg); load(pg) }
+
+  const remove = (q) => {
+    const pr = q.provenance || {}
+    const what = `${pr.format === 'тест' ? 'тест' : (pr.unit || 'задача')}${pr.page ? ` · с. ${pr.page}` : ''}${pr.run ? ` из «${pr.run}»` : ''}`
+    if (!confirm(`Удалить ${what} из банка? Вернуть можно только повторным импортом прогона.`)) return
+    setNotice('')
+    questionsAPI.delete(q.id)
+      .then(() => { setRows(rs => rs.filter(r => r.id !== q.id)); setTotal(t => t - 1) })
+      .catch(e => setNotice(errorText(e)))
+  }
 
   // модалка сама решает, закрыться ей (после сохранения) или остаться (после отката);
   // editing обновляем тем же ответом — иначе в окне остаётся устаревший паспорт
@@ -220,7 +280,13 @@ export default function BookBankPage() {
             <option value="verified">Проверено</option>
             <option value="rejected">Отклонено</option>
           </select>
+          <select value={filterFormat} onChange={e => setFilterFormat(e.target.value)} style={sel}>
+            <option value="">Любой формат</option>
+            <option value="задача">Только задачи</option>
+            <option value="тест">Только тесты с вариантами</option>
+          </select>
         </div>
+        {notice && <div style={{ marginTop: 10, fontSize: 13, color: '#991B1B' }}>{notice}</div>}
       </div>
 
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -242,7 +308,8 @@ export default function BookBankPage() {
                 <span style={chip('rgba(99,102,241,0.08)', 'var(--primary)')}>{q.subject_name}</span>
                 <span style={chip('rgba(16,185,129,0.08)', '#065F46')}>{q.topic_name}</span>
                 <span style={chip('rgba(245,158,11,0.1)', '#92400E')}>
-                  {pr.unit || 'задача'}{pr.page ? ` · с. ${pr.page}` : ''}
+                  {/* у теста границей парсер считал слово «задача» — в чипе оно было бы ложью */}
+                  {pr.format === 'тест' ? 'тест' : (pr.unit || 'задача')}{pr.page ? ` · с. ${pr.page}` : ''}
                 </span>
                 <span style={chip(q.verification_status === 'verified' ? 'rgba(16,185,129,0.12)' : 'rgba(107,114,128,0.12)',
                                   q.verification_status === 'verified' ? '#065F46' : '#374151')}>
@@ -259,6 +326,10 @@ export default function BookBankPage() {
                 <button className="btn btn-sm btn-outline" onClick={() => setEditing(q)}
                         style={{ marginLeft: 'auto', borderRadius: 10, padding: '4px 12px' }}>
                   <Pencil size={12} strokeWidth={1.5} style={{ verticalAlign: -1, marginRight: 4 }} />Править
+                </button>
+                <button className="btn btn-sm btn-outline" onClick={() => remove(q)} title="Удалить из банка"
+                        style={{ borderRadius: 10, padding: '4px 10px', color: '#991B1B' }}>
+                  <Trash2 size={12} strokeWidth={1.5} />
                 </button>
               </div>
               <div style={{ fontSize: 14, marginBottom: 10 }}>
@@ -299,7 +370,7 @@ export default function BookBankPage() {
         )}
       </div>
 
-      {editing && <EditModal q={editing} onClose={() => setEditing(null)} onSaved={saved} />}
+      {editing && <EditModal q={editing} subjects={subjects} onClose={() => setEditing(null)} onSaved={saved} />}
     </div>
   )
 }

@@ -121,6 +121,11 @@ class QuestionViewSet(viewsets.ModelViewSet):
         difficulty = self.request.query_params.get('difficulty')
         source_type = self.request.query_params.get('source_type')
         status = self.request.query_params.get('verification_status')
+        # формат из паспорта прогона: 'задача' / 'тест' — тесты без ключа ответа
+        # в общем списке только мешают вычитке, их прячут отдельным фильтром.
+        # Параметр не называем `format`: DRF резервирует его под согласование
+        # контента, и ?format=задача давало 404 вместо списка.
+        fmt = self.request.query_params.get('task_format')
 
         if subject_id:
             queryset = queryset.filter(topic__subject_id=subject_id)
@@ -132,6 +137,8 @@ class QuestionViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(source_type=source_type)
         if status:
             queryset = queryset.filter(verification_status=status)
+        if fmt:
+            queryset = queryset.filter(provenance__format=fmt)
         return queryset
 
     def retrieve(self, request, *args, **kwargs):

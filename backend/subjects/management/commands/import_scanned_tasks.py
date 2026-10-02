@@ -4,7 +4,7 @@
     python manage.py import_scanned_tasks C:/path/out_kasatkina_em [--subject physics]
 
 Ключ перезаписи — уже существующее ограничение uniq_external_id_per_source:
-external_id = "<прогон>:p<страница>:<слово><номер>". Второй запуск обновляет
+external_id = "<прогон>:p<страница>:<слово><номер>:<тема>". Второй запуск обновляет
 запись, а не заводит дубль, поэтому вычитку можно перегонять сколько угодно.
 Отмеченное на стенде «проверено» приходит по ключу единицы из tasks.json
 (тот же ключ пишет review.json), а не по external_id.
@@ -25,6 +25,19 @@ from django.core.management.base import BaseCommand, CommandError
 from subjects.models import Question, Subject, Topic, plain_from_latex
 
 
+def topic_name(book, scope):
+    return f"{book} · {scope}" if book else scope
+
+
+def unit_format(t):
+    """Тест или задача — по тому, что парсер уже насчитал вариантов A)/А).
+
+    Отдельная метка нужна, потому что тест без ключа ответа в банке мешает
+    вычитке задач: тренер листает 300 условий, а 20 из них — совсем другой формат.
+    """
+    return "тест" if (t.get("options") or 0) >= 2 or t.get("options_cyr") else "задача"
+
+
 class Command(BaseCommand):
     help = "Загрузить оцифрованные из книги задачи в базу вопросов (перезаписью по external_id)."
 
@@ -34,6 +47,10 @@ class Command(BaseCommand):
         # Кабарга/қазақша листы лежат в том же предмете, но язык строки обязан быть
         # настоящим: дефолт 'ru' на казахский лист молча наврал бы про 20 задач.
         parser.add_argument("--language", default="ru", help="ru / kk / uz — язык задач прогона")
+        # Тема одна на десяток задач и в разных книгах называется одинаково:
+        # «Решение отдельных задач» от Касаткиной и от МКТ слилось бы в одну тему.
+        # Метка книги разносит их, а правится она потом в окне банка, если это отрывок.
+        parser.add_argument("--book", default="", help="метка книги/источника для имени темы")
         parser.add_argument("--dry-run", action="store_true")
 
     def load(self, path, default=None):
@@ -63,15 +80,19 @@ class Command(BaseCommand):
                 "Это не «задач нет», это «формат не распознан»: сначала дорабатывай pipeline/tasks.py.")
         # тема берётся из «области» страницы, и её у десятка задач одна — считаем новые темы
         # по множеством имён, иначе отчёт рисовал бы «новых тем 136» на трёх настоящих
-        scopes = {t.get("scope") or name for t in units}
+        book = opt["book"].strip()
+        scopes = {topic_name(book, t.get("scope") or name) for t in units}
         known = set(Topic.objects.filter(subject=subject, name__in=scopes).values_list("name", flat=True))
 
         made = upd = drawn = took = kept_edited = 0
         tnew = len(scopes - known)
         for t in units:
             page = (t.get("pages") or [0])[0]
-            ext = f"{name}:p{page}:{t.get('word') or ''}{t['num']}"[:150]
             scope = t.get("scope") or name
+            # Номер задачи на странице не уникален: на одном листе уровни пишут свои «3»,
+            # и две разные задачи на одном ключе молча переписывают друг друга.
+            # Тема входит в ключ — из-за этого перегон из out_v2 съел 8 задач.
+            ext = f"{name}:p{page}:{t.get('word') or ''}{t['num']}:{scope}"[:150]
             # приёмка на стенде keyed по ключу единицы (блок#словономер), а не по external_id:
             # стенд про БД ничего не знает, и по внешнему ID он бы не нашёл, что отмечено
             accepted = bool((review.get(t.get("key") or "") or {}).get("ok"))
@@ -90,7 +111,7 @@ class Command(BaseCommand):
                 if figures and (old is None or not old.image) and (run / figures[0]).is_file():
                     drawn += 1
                 continue
-            topic, _ = Topic.objects.get_or_create(subject=subject, name=scope)
+            topic, _ = Topic.objects.get_or_create(subject=subject, name=topic_name(book, scope))
             defaults = {
                 "topic": topic,
                 "text": plain_from_latex(t.get("markdown"))[:4000] or "(пустое условие)",
@@ -103,6 +124,7 @@ class Command(BaseCommand):
                 "provenance": {
                     "run": name, "page": page, "unit": t.get("word") or "задача",
                     "kind": t.get("kind"), "scope": t.get("scope"),
+                    "book": book, "format": unit_format(t),
                     "pages": t.get("pages"), "loc": t.get("spans"),
                     "answer_pages": t.get("answer_pages") or [],
                     "answer_note": t.get("answer_note") or "",
@@ -113,7 +135,9 @@ class Command(BaseCommand):
                 },
             }
             if edited:
-                for f in ("text", "latex", "latex_answer", "verification_status"):
+                # тему тоже бережём: если тренер перенёс задачу в свою тему
+                # («это не книга, а отрывок»), перегон не должен вернуть её назад
+                for f in ("text", "latex", "latex_answer", "verification_status", "topic"):
                     defaults[f] = getattr(old, f)
                 for k in ("human_edited", "edited_at", "edited_by", "ocr_original"):
                     if k in old.provenance:

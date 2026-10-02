@@ -69,10 +69,13 @@ class TopicListSerializer(serializers.ModelSerializer):
 class QuestionListSerializer(serializers.ModelSerializer):
     topic_name = serializers.CharField(source='topic.name', read_only=True)
     subject_name = serializers.CharField(source='topic.subject.name', read_only=True)
+    # id предмета, а не только название: без него окно редактуры не сможет
+    # подставить список тем этого предмета
+    subject = serializers.IntegerField(source='topic.subject_id', read_only=True)
 
     class Meta:
         model = Question
-        fields = ('id', 'text', 'topic', 'topic_name', 'subject_name',
+        fields = ('id', 'text', 'topic', 'topic_name', 'subject', 'subject_name',
                   'difficulty', 'source_type', 'verification_status', 'language', 'year', 'image',
                   # поля оцифровки: без них экран банка задач показал бы вместо формул
                   # обрывки, а без паспорта — не откуда вопрос взялся
@@ -134,16 +137,18 @@ class BookScanEditSerializer(serializers.ModelSerializer):
     """Правка задачи, оцифрованной из книги.
 
     QuestionCreateSerializer для неё не годится: требует вложенные варианты
-    ответа, а у открытого ответа вариантов нет. Здесь правятся только поля
-    оцифровки, и правка переживает повторный импорт — import_scanned_tasks
-    обходит своим текстом/latex/статусом именно строки с human_edited.
+    ответа, а у открытого ответа вариантов нет. Здесь правятся поля оцифровки
+    и классификация, и правка переживает повторный импорт — import_scanned_tasks
+    обходит своим текстом/темой/статусом именно строки с human_edited.
     """
     DIFFICULTY_KEYS = {k for k, _ in Question.DIFFICULTY_CHOICES}
     STATUS_KEYS = {k for k, _ in Question.VERIFICATION_CHOICES}
 
+    topic = serializers.PrimaryKeyRelatedField(queryset=Topic.objects.all())
+
     class Meta:
         model = Question
-        fields = ('latex', 'latex_answer', 'difficulty', 'verification_status')
+        fields = ('latex', 'latex_answer', 'difficulty', 'verification_status', 'topic')
 
     def validate_difficulty(self, v):
         if v not in self.DIFFICULTY_KEYS:
