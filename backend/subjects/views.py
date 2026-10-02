@@ -138,7 +138,10 @@ class QuestionViewSet(viewsets.ModelViewSet):
         if status:
             queryset = queryset.filter(verification_status=status)
         if fmt:
-            queryset = queryset.filter(provenance__format=fmt)
+            # Значения через запятую: «и задачи, и теорию» — это не одно значение,
+            # а просить «всё, кроме тестов» отдельным параметром значит удвоить фильтр.
+            queryset = queryset.filter(
+                provenance__format__in=[f for f in fmt.split(',') if f])
         return queryset
 
     def retrieve(self, request, *args, **kwargs):

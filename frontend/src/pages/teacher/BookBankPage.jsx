@@ -192,8 +192,8 @@ export default function BookBankPage() {
   const [filterTopic, setFilterTopic] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   // тесты без ключа ответа в общем списке только мешают вычитке задач —
-  // по умолчанию показываем задачи, тесты под отдельным фильтром
-  const [filterFormat, setFilterFormat] = useState('задача')
+  // по умолчанию показываем задачи и теорию, тесты под отдельным фильтром
+  const [filterFormat, setFilterFormat] = useState('задача,теория')
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -282,8 +282,10 @@ export default function BookBankPage() {
           </select>
           <select value={filterFormat} onChange={e => setFilterFormat(e.target.value)} style={sel}>
             <option value="">Любой формат</option>
+            <option value="задача,теория">Задачи и теория — без тестов</option>
             <option value="задача">Только задачи</option>
             <option value="тест">Только тесты с вариантами</option>
+            <option value="теория">Только теория</option>
           </select>
         </div>
         {notice && <div style={{ marginTop: 10, fontSize: 13, color: '#991B1B' }}>{notice}</div>}
