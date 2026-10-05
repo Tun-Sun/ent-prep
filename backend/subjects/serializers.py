@@ -1,7 +1,7 @@
 from rest_framework import serializers
+from django.conf import settings
 from django.utils import timezone
 from .models import Subject, Topic, Question, Answer, plain_from_latex
-
 
 class AnswerSerializer(serializers.ModelSerializer):
     class Meta:
@@ -72,6 +72,23 @@ class QuestionListSerializer(serializers.ModelSerializer):
     # id предмета, а не только название: без него окно редактуры не сможет
     # подставить список тем этого предмета
     subject = serializers.IntegerField(source='topic.subject_id', read_only=True)
+    source_pages = serializers.SerializerMethodField()
+
+    def get_source_pages(self, obj):
+        """Страницы скана, на которых напечатана эта единица.
+
+        Вычитка — сравнение распознанного с источником, поэтому одного кадра-выкройки
+        мало: ответ мог уйти в таблицу ответов на другой странице, а номер —
+        оказаться под чужим заголовком. Путь собирается из паспорта строки, новой
+        колонки нет; если растра на диске нет, ссылка всё равно отдаётся — экран
+        сам покажет битую картинку, а молча пустое поле выглядело бы как «страницы
+        не было».
+        """
+        prov = obj.provenance or {}
+        run, pages = prov.get("run"), prov.get("pages") or []
+        if not run or not pages:
+            return []
+        return ["%sscans/%s/p%02d.png" % (settings.MEDIA_URL, run, int(p)) for p in pages]
 
     class Meta:
         model = Question
@@ -79,7 +96,8 @@ class QuestionListSerializer(serializers.ModelSerializer):
                   'difficulty', 'source_type', 'verification_status', 'language', 'year', 'image',
                   # поля оцифровки: без них экран банка задач показал бы вместо формул
                   # обрывки, а без паспорта — не откуда вопрос взялся
-                  'latex', 'latex_answer', 'uncertain', 'provenance', 'external_id')
+                  'latex', 'latex_answer', 'uncertain', 'provenance', 'external_id',
+                  'source_pages')
 
 
 class QuestionDetailSerializer(serializers.ModelSerializer):

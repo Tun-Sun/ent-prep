@@ -40,6 +40,9 @@ function EditModal({ q, subjects, onClose, onSaved }) {
   const [err, setErr] = useState('')
   const [showOriginal, setShowOriginal] = useState(false)
   const orig = (q.provenance || {}).ocr_original || {}
+  // Вычитка — это сравнение с источником, а не с самим собой: без страницы скана
+  // правая колонка показывает то же, что левая, только красивее.
+  const pages = q.source_pages || []
 
   // Книги кончаются, а отрывки и рукописные задачи начинаются: место задачи
   // (предмет → тема) тренер правит здесь же, где опечатку.
@@ -169,6 +172,32 @@ function EditModal({ q, subjects, onClose, onSaved }) {
             </div>
             {err && <div style={{ marginTop: 10, fontSize: 13, color: '#991B1B' }}>{err}</div>}
           </div>
+          {/* Вычитка — это сравнение с источником, поэтому скан страницы живёт
+              рядом с полем условия, а не в отдельной вкладке стенда. */}
+          <div style={{ minWidth: 0, gridColumn: '1 / -1' }}>
+            <div style={label}>
+              Страница источника{pages.length > 1 ? 'ы' : ''} — {(q.provenance || {}).run || ''}
+            </div>
+            {pages.length ? (
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                {pages.map(u => (
+                  <a key={u} href={u} target="_blank" rel="noreferrer"
+                     title="Открыть скан в полную величину"
+                     style={{ flex: '1 1 min(360px, 100%)', minWidth: 0 }}>
+                    <img src={u} alt=""
+                         onError={e => { e.target.style.display = 'none' }}
+                         style={{ width: '100%', maxHeight: '62vh', objectFit: 'contain',
+                                  border: '1px solid var(--border)', borderRadius: 10,
+                                  background: '#f7f7f8' }} />
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                Страницы прогона на сервер не долетели — сверять глазами пока не с чем.
+              </div>
+            )}
+          </div>
         </div>
         <div className="modal-footer" style={{ borderTop: '1px solid var(--border)', padding: '14px 20px',
                                                display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
@@ -199,7 +228,19 @@ export default function BookBankPage() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null)
   const [notice, setNotice] = useState('')
+  // Прогресс вычитки считаем по всему банку, а не по текущему фильтру: человеку
+  // надо знать, сколько из 330 строк вообще просмотрено глазами.
+  const [progress, setProgress] = useState(null)
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+
+  const loadProgress = () => {
+    questionsAPI.list({ source_type: 'book_scan', page_size: 1 })
+      .then(a => questionsAPI.list({ source_type: 'book_scan', verification_status: 'verified', page_size: 1 })
+        .then(b => setProgress({ total: a.data.count, verified: b.data.count })))
+      .catch(() => setProgress(null))
+  }
+
+  useEffect(() => { loadProgress() }, [])
 
   useEffect(() => {
     subjectsAPI.list().then(res => setSubjects(res.data))
@@ -247,6 +288,7 @@ export default function BookBankPage() {
   const saved = (data) => {
     setRows(rs => rs.map(r => (r.id === data.id ? data : r)))
     setEditing(e => (e && e.id === data.id ? data : e))
+    loadProgress()
   }
 
   const sel = {
@@ -294,6 +336,13 @@ export default function BookBankPage() {
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>
           Всего: {total} · на странице {rows.length}
+          {progress && (
+            <button className="btn btn-sm btn-outline" onClick={() => setFilterStatus('draft')}
+                    title="Остались только те, которые никто не смотрел глазами"
+                    style={{ marginLeft: 10 }}>
+              вычитано {progress.verified} из {progress.total} · недосмотрено {progress.total - progress.verified}
+            </button>
+          )}
         </div>
         {loading ? (
           <div className="text-center py-4"><div className="spinner"></div></div>

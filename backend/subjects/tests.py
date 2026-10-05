@@ -13,6 +13,12 @@ Drive API (скачивание картинок) тестируется на м
 """
 from __future__ import annotations
 
+import io
+import json
+import tempfile
+from pathlib import Path
+
+from django.core.management import call_command
 from django.test import TestCase
 
 from subjects.google_forms.dto import AnswerDTO, QuestionDTO
@@ -295,3 +301,117 @@ class GoogleFormsEndpointTest(TestCase):
         f = SimpleUploadedFile('not.txt', b'hello', content_type='text/plain')
         r = c.post(self.url, data={'file': f}, format='multipart')
         self.assertEqual(r.status_code, 400)
+
+
+# === Банк оцифрованных из книг задач =======================================
+# Отдельный набор, потому что банк перегоняют в одну и ту же базу сколько угодно
+# раз, и каждое из трёх правил ниже уже однажды нарушалось молча: дубль по ключу,
+# затёртая правка человека, чужая картинка на задаче.
+
+def scan_unit(**overrides):
+    """Единица tasks.json ровно в той форме, в какой её пишет pipeline/tasks.py."""
+    base = {
+        'key': 'Решение отдельных задач#Задача1',
+        'num': '1', 'word': 'Задача', 'kind': 'word',
+        'scope': 'Решение отдельных задач', 'block': 'Решение отдельных задач',
+        'pages': [8], 'spans': [{'page': 8, 'l0': 3, 'l1': 12}],
+        'figures': [], 'markdown': '$x = 1$', 'answer_in': [], 'uncertain': [],
+        'options': 0, 'options_cyr': None,
+    }
+    base.update(overrides)
+    return base
+
+
+class BookScanBankTest(TestCase):
+    """Перегон импорта: ключ перезаписи, защита правки, чужие кадры."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.physics = Subject.objects.create(name='Физика', slug='physics', icon='⚡')
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.run = Path(self.tmp) / 'out_t'
+        self.run.mkdir()
+
+    def write_run(self, units):
+        (self.run / 'tasks.json').write_text(json.dumps(
+            {'run': 'out_t', 'tasks': units, 'answers': [], 'other': [], 'pages': []},
+            ensure_ascii=False), encoding='utf-8')
+
+    def do_import(self):
+        out = io.StringIO()
+        call_command('import_scanned_tasks', str(self.run), subject='physics',
+                     book='Сборник', stdout=out)
+        return out.getvalue()
+
+    def test_import_creates_row_and_topic(self):
+        self.write_run([scan_unit()])
+        self.do_import()
+        q = Question.objects.get(source_type='book_scan')
+        self.assertEqual(q.external_id, 'out_t:p8:Задача1:Решение отдельных задач')
+        self.assertEqual(q.topic.name, 'Сборник · Решение отдельных задач')
+        self.assertEqual(q.verification_status, 'draft')
+        self.assertEqual(q.provenance['run'], 'out_t')
+        self.assertEqual(q.provenance['pages'], [8])
+
+    def test_second_run_updates_not_duplicates(self):
+        self.write_run([scan_unit()])
+        self.do_import()
+        self.write_run([scan_unit(markdown='$x = 2$')])
+        self.do_import()
+        self.assertEqual(Question.objects.filter(source_type='book_scan').count(), 1)
+        self.assertEqual(Question.objects.get().latex, '$x = 2$')
+
+    def test_human_edit_survives_reimport(self):
+        self.write_run([scan_unit()])
+        self.do_import()
+        q = Question.objects.get()
+        q.latex = '$x = 3$  # исправил тренер'
+        q.verification_status = 'verified'
+        q.provenance = {**q.provenance, 'human_edited': True}
+        q.save()
+        report = self.do_import()  # прогон предлагает прежний $x = 1$
+        q.refresh_from_db()
+        self.assertEqual(q.latex, '$x = 3$  # исправил тренер')
+        self.assertEqual(q.verification_status, 'verified')
+        self.assertIn('ручных правок сохранено 1', report)
+
+    def test_foreign_crop_is_taken_off_the_task(self):
+        """Кадр обязан принадлежать телу задачи: без figures остаётся пустое поле."""
+        self.write_run([scan_unit(figures=['assets/p08_fig1.png'])])
+        (self.run / 'assets').mkdir()
+        (self.run / 'assets' / 'p08_fig1.png').write_bytes(b'\x89PNG\r\n\x1a\n' + b'0' * 32)
+        self.do_import()
+        q = Question.objects.get()
+        self.assertEqual(q.image_ref, 'out_t:p08_fig1.png')
+        self.assertTrue(q.image)
+        # второй прогон, где парсер больше не считает эту выкройку содержимым
+        self.write_run([scan_unit(figures=[])])
+        report = self.do_import()
+        q.refresh_from_db()
+        self.assertEqual(q.image_ref, '')
+        self.assertIn('картинок снято по чужому кадру 1', report)
+
+    def test_review_mark_makes_row_verified(self):
+        u = scan_unit()
+        self.write_run([u])
+        (self.run / 'review.json').write_text(
+            json.dumps({u['key']: {'ok': True}}), encoding='utf-8')
+        report = self.do_import()
+        self.assertIn('принято человеком 1 из 1', report)
+        self.assertEqual(Question.objects.get().verification_status, 'verified')
+
+    def test_source_pages_points_at_scan_rasters(self):
+        from subjects.serializers import QuestionListSerializer
+        self.write_run([scan_unit(pages=[8, 9])])
+        self.do_import()
+        data = QuestionListSerializer(Question.objects.get()).data
+        self.assertEqual(data['source_pages'],
+                         ['/media/scans/out_t/p08.png', '/media/scans/out_t/p09.png'])
+
+    def test_source_pages_empty_without_provenance(self):
+        from subjects.serializers import QuestionListSerializer
+        topic = Topic.objects.create(subject=self.physics, name='Обычная тема')
+        q = Question.objects.create(topic=topic, text='Не из скана', source_type='manual')
+        self.assertEqual(QuestionListSerializer(q).data['source_pages'], [])
