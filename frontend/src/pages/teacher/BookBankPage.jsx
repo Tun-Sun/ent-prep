@@ -176,17 +176,19 @@ function EditModal({ q, subjects, onClose, onSaved }) {
               рядом с полем условия, а не в отдельной вкладке стенда. */}
           <div style={{ minWidth: 0, gridColumn: '1 / -1' }}>
             <div style={label}>
-              Страница источника{pages.length > 1 ? 'ы' : ''} — {(q.provenance || {}).run || ''}
+              {pages.length > 1 ? 'Страницы источника' : 'Страница источника'} — {(q.provenance || {}).run || ''}
             </div>
             {pages.length ? (
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              // Страницы друг под другом, а не в строку: разворот 1242 px в три
+              // колонки сжимается в нечитаемую полосу, а сверять нужно именно текст.
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {pages.map(u => (
                   <a key={u} href={u} target="_blank" rel="noreferrer"
                      title="Открыть скан в полную величину"
-                     style={{ flex: '1 1 min(360px, 100%)', minWidth: 0 }}>
+                     style={{ display: 'block' }}>
                     <img src={u} alt=""
                          onError={e => { e.target.style.display = 'none' }}
-                         style={{ width: '100%', maxHeight: '62vh', objectFit: 'contain',
+                         style={{ width: '100%', height: 'auto', display: 'block',
                                   border: '1px solid var(--border)', borderRadius: 10,
                                   background: '#f7f7f8' }} />
                   </a>
@@ -194,7 +196,7 @@ function EditModal({ q, subjects, onClose, onSaved }) {
               </div>
             ) : (
               <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                Страницы прогона на сервер не долетели — сверять глазами пока не с чем.
+                Страниц прогона здесь нет — сверять глазами пока не с чем.
               </div>
             )}
           </div>
