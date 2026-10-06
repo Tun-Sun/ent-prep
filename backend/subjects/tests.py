@@ -402,6 +402,25 @@ class BookScanBankTest(TestCase):
         self.assertIn('принято человеком 1 из 1', report)
         self.assertEqual(Question.objects.get().verification_status, 'verified')
 
+    def test_review_note_survives_reimport_without_becoming_acceptance(self):
+        """Заметка «сверено глазами, спор остался» доезжает до банка, статус не меняет."""
+        u = scan_unit()
+        self.write_run([u])
+        (self.run / 'review.json').write_text(json.dumps({
+            u['key']: {'ok': False, 'by': 'глаза по скану', 'at': '2026-10-06T10:00:00',
+                       'note': 'в книге напечатано 10^22, это опечатка пособия'}}), encoding='utf-8')
+        report = self.do_import()
+        self.assertIn('принято человеком 0 из 1', report)
+        self.assertIn('со заметкой со скана 1', report)
+        q = Question.objects.get()
+        self.assertEqual(q.verification_status, 'draft')
+        self.assertEqual(q.provenance['review_note'], 'в книге напечатано 10^22, это опечатка пособия')
+        self.assertEqual(q.provenance['review_by'], 'глаза по скану')
+        # перегон не должен оставлять заметку от прошлой записи приёмки, если её сняли
+        (self.run / 'review.json').write_text('{}', encoding='utf-8')
+        self.do_import()
+        self.assertEqual(Question.objects.get().provenance['review_note'], '')
+
     def test_source_pages_points_at_scan_rasters(self):
         from subjects.serializers import QuestionListSerializer
         self.write_run([scan_unit(pages=[8, 9])])

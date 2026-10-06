@@ -88,7 +88,7 @@ class Command(BaseCommand):
         scopes = {topic_name(book, t.get("scope") or name) for t in units}
         known = set(Topic.objects.filter(subject=subject, name__in=scopes).values_list("name", flat=True))
 
-        made = upd = drawn = took = kept_edited = orphaned = 0
+        made = upd = drawn = took = kept_edited = orphaned = noted = 0
         tnew = len(scopes - known)
         for t in units:
             page = (t.get("pages") or [0])[0]
@@ -99,8 +99,14 @@ class Command(BaseCommand):
             ext = f"{name}:p{page}:{t.get('word') or ''}{t['num']}:{scope}"[:150]
             # приёмка на стенде keyed по ключу единицы (блок#словономер), а не по external_id:
             # стенд про БД ничего не знает, и по внешнему ID он бы не нашёл, что отмечено
-            accepted = bool((review.get(t.get("key") or "") or {}).get("ok"))
+            rev = review.get(t.get("key") or "") or {}
+            accepted = bool(rev.get("ok"))
             took += accepted
+            # Заметка приёмки — не флаг «проверено». Её пишут, когда знак сверен глазами,
+            # но спор остался (опечатка книги, а не ошибка распознавания): строка остаётся
+            # черновиком, а вывод глаз доезжает до банка и переживает перегон.
+            if rev.get("note"):
+                noted += 1
             figures = [f for f in (t.get("figures") or []) if isinstance(f, str)]
             old = Question.objects.filter(source_type="book_scan", external_id=ext).first()
             # Правка тренера в банке важнее перегоня: второй импорт молча вернул бы
@@ -133,6 +139,8 @@ class Command(BaseCommand):
                     "answer_pages": t.get("answer_pages") or [],
                     "answer_note": t.get("answer_note") or "",
                     "figures": figures,
+                    # заметка приёмки: что увидел глаз на скане и почему спор не снят
+                    "review_note": rev.get("note") or "", "review_by": rev.get("by") or "",
                     "src": src.get("src"), "src_sha256": src.get("sha256"),
                     "scan_dpi": src.get("raster_dpi"), "render_dpi": render.get("dpi"),
                     "model": render.get("model"), "prompt_sha256": used.get("prompt_sha256"),
@@ -180,7 +188,7 @@ class Command(BaseCommand):
             f"{name}: создано {made}, обновлено {upd}, новых тем {tnew}, картинок положено {drawn}, "
             f"картинок снято по чужому кадру {orphaned}, "
             f"предмет «{subject.name}», язык {opt['language']}, принято человеком {took} из {len(review)} записей приёмки, "
-            f"ручных правок сохранено {kept_edited}"
+            f"со заметкой со скана {noted}, ручных правок сохранено {kept_edited}"
             + (" — dry-run, в базу не писано" if opt["dry_run"] else "")))
         if not opt["dry_run"]:
             self.stdout.write("сложность у всех проставлена дефолтом «Средний»: в оцифровке её нет, "
