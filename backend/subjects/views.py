@@ -3,8 +3,10 @@ from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 
 from .models import Subject, Topic, Question, Answer
 from .permissions import IsTeacherOrAdmin
@@ -172,6 +174,51 @@ class QuestionViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(QuestionListSerializer(serializer.instance).data)
+
+    @action(detail=False, methods=['post'], url_path='bulk-verify')
+    def bulk_verify(self, request, *args, **kwargs):
+        """Пакетная приёмка: статус сразу по всей выборке, а не по окну на каждую задачу.
+
+        Решает человек, здесь только его рука: accepted_by значит «эту строку принял
+        этот аккаунт», а не «её поправили». В отличие от human_edited метка бережёт
+        один статус — условие следующий прогон всё равно обновит.
+        """
+        to = request.data.get('verification_status', 'verified')
+        if to not in dict(Question.VERIFICATION_CHOICES):
+            return Response({'detail': 'Такого статуса нет: draft / verified / rejected'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        ids = request.data.get('ids') or []
+        whole = bool(request.data.get('all_matching'))
+        if whole and ids:
+            return Response({'detail': 'ids или all_matching — что-то одно, не оба'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if not whole and not ids:
+            return Response({'detail': 'Не выбрано ни одной задачи'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        # выборка берётся тем же фильтром, что и список: «все под фильтр» обязана
+        # принять ровно то, что человек сейчас видит, а не то, что он описал заново
+        qs = self.filter_queryset(self.get_queryset()) if whole \
+            else self.get_queryset().filter(pk__in=ids)
+        now = timezone.now().isoformat()
+        changed = []
+        with transaction.atomic():
+            for q in qs:
+                if q.verification_status == to:
+                    continue
+                prov = dict(q.provenance or {})
+                q.verification_status = to
+                if to == 'draft':
+                    # вернули в черновик — и метка приёмки обязана уйти, иначе
+                    # перегон по ей молча восстановил бы «проверено»
+                    for k in ('accepted_by', 'accepted_at'):
+                        prov.pop(k, None)
+                else:
+                    prov['accepted_by'] = str(request.user)
+                    prov['accepted_at'] = now
+                q.provenance = prov
+                q.save(update_fields=['verification_status', 'provenance'])
+                changed.append(q.pk)
+        return Response({'verification_status': to, 'changed': len(changed), 'ids': changed})
 
     @action(detail=True, methods=['post'], url_path='revert-ocr')
     def revert_ocr(self, request, pk=None):

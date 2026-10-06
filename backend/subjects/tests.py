@@ -400,6 +400,27 @@ class BookScanBankTest(TestCase):
         self.assertEqual(q.verification_status, 'verified')
         self.assertIn('ручных правок сохранено 1', report)
 
+    def test_bulk_acceptance_keeps_status_but_still_updates_text(self):
+        """Приёмка пакетом — решение про статус, а не про текст.
+
+        human_edited бережёт условие целиком; если бы приёмка пакетом ставила ту же
+        метку, принятая сегодня строка навсегда застыла бы в текущей оцифровке.
+        """
+        self.write_run([scan_unit()])
+        self.do_import()
+        q = Question.objects.get()
+        q.verification_status = 'verified'
+        q.provenance = {**q.provenance, 'accepted_by': 'teacher1',
+                        'accepted_at': '2026-10-06T12:00:00'}
+        q.save()
+        self.write_run([scan_unit(markdown='$x = 2$')])
+        report = self.do_import()
+        q.refresh_from_db()
+        self.assertEqual(q.verification_status, 'verified')
+        self.assertEqual(q.latex, '$x = 2$')
+        self.assertEqual(q.provenance['accepted_by'], 'teacher1')
+        self.assertIn('принято пакетом в банке 1', report)
+
     def test_foreign_crop_is_taken_off_the_task(self):
         """Кадр обязан принадлежать телу задачи: без figures остаётся пустое поле."""
         self.write_run([scan_unit(figures=['assets/p08_fig1.png'])])
@@ -457,3 +478,86 @@ class BookScanBankTest(TestCase):
         topic = Topic.objects.create(subject=self.physics, name='Обычная тема')
         q = Question.objects.create(topic=topic, text='Не из скана', source_type='manual')
         self.assertEqual(QuestionListSerializer(q).data['source_pages'], [])
+
+
+class BulkVerifyTest(TestCase):
+    """Пакетная приёмка: один запрос на всю выборку вместо окна на каждую задачу.
+
+    Отдельный класс потому, что это единственная кнопка банка, которая трогает сотню
+    строк сразу. Главное в ней — взят ровно тот фильтр, который человек видит на
+    экране, а не «всё, что лежит в базе».
+    """
+    url = '/api/questions/bulk-verify/'
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.physics = Subject.objects.create(name='Физика', slug='physics', icon='⚡')
+        cls.topic = Topic.objects.create(subject=cls.physics, name='Касаткина · Глава 1')
+        from users.models import User
+        cls.teacher = User.objects.create_user(username='t1', password='x', role='teacher')
+        cls.student = User.objects.create_user(username='s1', password='x', role='student')
+
+    def book(self, tag):
+        return Question.objects.create(
+            topic=self.topic, text=f'задача {tag}', latex=f'$x = {tag}$',
+            source_type='book_scan', verification_status='draft',
+            provenance={'run': 'out_t', 'page': 8, 'format': 'задача'})
+
+    def setUp(self):
+        self.a, self.b = self.book('A'), self.book('B')
+        # строка не из банка: приёмка по фильтру до неё доехать не имеет права
+        self.other = Question.objects.create(topic=self.topic, text='из Excel',
+                                             source_type='manual')
+
+    def api(self, user):
+        from rest_framework.test import APIClient
+        c = APIClient()
+        c.force_authenticate(user=user)
+        return c
+
+    def test_all_matching_takes_the_filter_not_the_whole_bank(self):
+        r = self.api(self.teacher).post(
+            self.url + '?source_type=book_scan&verification_status=draft',
+            {'all_matching': True}, format='json')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()['changed'], 2)
+        self.assertEqual(Question.objects.filter(verification_status='verified').count(), 2)
+        self.a.refresh_from_db()
+        self.assertEqual(self.a.provenance['accepted_by'], str(self.teacher))
+        self.assertTrue(self.a.provenance['accepted_at'])
+
+    def test_ids_accept_only_what_was_clicked(self):
+        r = self.api(self.teacher).post(
+            self.url, {'ids': [self.a.pk, self.b.pk], 'verification_status': 'verified'},
+            format='json')
+        self.assertEqual(r.json()['changed'], 2)
+        self.assertEqual(Question.objects.get(pk=self.other.pk).verification_status, 'draft')
+
+    def test_returning_to_draft_clears_the_mark(self):
+        """Иначе перегон по оставшейся метке молча вернул бы «проверено»."""
+        url = self.url + '?source_type=book_scan'
+        self.api(self.teacher).post(url, {'ids': [self.a.pk]}, format='json')
+        self.api(self.teacher).post(url, {'ids': [self.a.pk],
+                                         'verification_status': 'draft'}, format='json')
+        self.a.refresh_from_db()
+        self.assertEqual(self.a.verification_status, 'draft')
+        self.assertNotIn('accepted_by', self.a.provenance)
+
+    def test_repeated_accept_touches_nobody(self):
+        url = self.url + '?source_type=book_scan'
+        self.api(self.teacher).post(url, {'all_matching': True}, format='json')
+        first = Question.objects.get(pk=self.a.pk).provenance['accepted_at']
+        r = self.api(self.teacher).post(url, {'all_matching': True}, format='json')
+        self.assertEqual(r.json()['changed'], 0)
+        self.assertEqual(Question.objects.get(pk=self.a.pk).provenance['accepted_at'], first)
+
+    def test_student_forbidden(self):
+        r = self.api(self.student).post(self.url, {'all_matching': True}, format='json')
+        self.assertEqual(r.status_code, 403)
+
+    def test_garbage_requests_rejected(self):
+        c = self.api(self.teacher)
+        self.assertEqual(c.post(self.url, {'verification_status': 'ok'}, format='json').status_code, 400)
+        self.assertEqual(c.post(self.url, {}, format='json').status_code, 400)
+        self.assertEqual(c.post(self.url, {'ids': [self.a.pk], 'all_matching': True},
+                                format='json').status_code, 400)

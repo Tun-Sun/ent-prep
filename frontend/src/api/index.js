@@ -82,6 +82,9 @@ export const questionsAPI = {
   patchBookScan: (id, data) => api.patch(`/questions/${id}/`, data),
   // откат правки — вернуть условие и ответ к снимку из оцифровки
   revertOcr: (id) => api.post(`/questions/${id}/revert-ocr/`),
+  // пакетная приёмка: статус сразу по выбранным id или по всей текущей выборке
+  // (params — те же фильтры списка, что видит человек на экране)
+  bulkVerify: (params, body) => api.post('/questions/bulk-verify/', body, { params }),
   delete: (id) => api.delete(`/questions/${id}/`),
 }
 

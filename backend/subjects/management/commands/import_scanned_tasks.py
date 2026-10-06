@@ -15,6 +15,10 @@ external_id = "<прогон>:p<страница>:<слово><номер>:<те
 Правка, сделанная тренером в окне редактуры банка (provenance.human_edited),
 перегоном не затирается: условие, ответ и статус такой задачи остаются как их
 исправил человек. Остальные поля паспорта обновляются — они из прогона.
+
+Отдельно стоит пакетная приёмка (provenance.accepted_by): она решена про статус,
+а не про текст, поэтому перегон оставляет «проверено», но условие обновляет —
+иначе принятая строка навсегда застыла бы в текущем состоянии оцифровки.
 """
 import json
 from pathlib import Path
@@ -88,7 +92,7 @@ class Command(BaseCommand):
         scopes = {topic_name(book, t.get("scope") or name) for t in units}
         known = set(Topic.objects.filter(subject=subject, name__in=scopes).values_list("name", flat=True))
 
-        made = upd = drawn = took = kept_edited = orphaned = noted = 0
+        made = upd = drawn = took = kept_edited = kept_accepted = orphaned = noted = 0
         opts_written = 0
         tnew = len(scopes - known)
         for t in units:
@@ -118,6 +122,12 @@ class Command(BaseCommand):
             # опечатку, которую человек уже исправил глазами, и снял бы его статус.
             edited = bool((old.provenance or {}).get("human_edited")) if old else False
             kept_edited += edited
+            # Приёмка пакетом в окне банка — решение про статус, а не про текст:
+            # строку человек видел глазами, а условие мы ещё дооцифровываем. Поэтому
+            # перегон оставляет её статус, но обновляет latex (в edited-строках статус
+            # и так берётся из базы, там приёмка просто переезжает вместе с меткой).
+            bank_accepted = bool((old.provenance or {}).get("accepted_by")) if old else False
+            kept_accepted += bank_accepted
             if opt["dry_run"]:
                 # dry-run только считает: ни тему, ни вопрос, ни файл картинки не трогаем
                 made += old is None
@@ -167,6 +177,11 @@ class Command(BaseCommand):
                 for k in ("human_edited", "edited_at", "edited_by", "ocr_original"):
                     if k in old.provenance:
                         defaults["provenance"][k] = old.provenance[k]
+            if bank_accepted:
+                if not edited:
+                    defaults["verification_status"] = old.verification_status
+                for k in ("accepted_by", "accepted_at"):
+                    defaults["provenance"][k] = old.provenance[k]
             q, new = Question.objects.update_or_create(
                 source_type="book_scan", external_id=ext, defaults=defaults)
             made += new
@@ -204,7 +219,8 @@ class Command(BaseCommand):
             f"вариантов теста строками ответа {opts_written}, "
             f"картинок снято по чужому кадру {orphaned}, "
             f"предмет «{subject.name}», язык {opt['language']}, принято человеком {took} из {len(review)} записей приёмки, "
-            f"со заметкой со скана {noted}, ручных правок сохранено {kept_edited}"
+            f"со заметкой со скана {noted}, ручных правок сохранено {kept_edited}, "
+            f"принято пакетом в банке {kept_accepted}"
             + (" — dry-run, в базу не писано" if opt["dry_run"] else "")))
         if not opt["dry_run"]:
             self.stdout.write("сложность у всех проставлена дефолтом «Средний»: в оцифровке её нет, "

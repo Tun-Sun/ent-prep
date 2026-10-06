@@ -7,6 +7,10 @@ import { BookOpen, AlertTriangle, HelpCircle, Pencil, Trash2, Search } from 'luc
 const PAGE_SIZE = 50
 const DIFFICULTY = [['easy', 'Лёгкий'], ['medium', 'Средний'], ['hard', 'Сложный']]
 const STATUS = [['draft', 'Черновик'], ['verified', 'Проверено'], ['rejected', 'Отклонено']]
+// один список подписей и для селекта, и для строки «что именно я принял»
+const FORMAT = [['', 'Любой формат'], ['задача,теория', 'Задачи и теория — без тестов'],
+                ['задача', 'Только задачи'], ['тест', 'Только тесты с вариантами'],
+                ['теория', 'Только теория']]
 
 const chip = (bg, color) => ({
   padding: '2px 8px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: bg, color,
@@ -242,6 +246,11 @@ export default function BookBankPage() {
   // каждый ввод запрос к БД, а печатают по-казахски длинными словами.
   const [needle, setNeedle] = useState('')
   const [loading, setLoading] = useState(true)
+  // Пакетная приёмка: выбор живёт в id, а не в объектах — строки перечитываются
+  // фильтром, и в выбранном обязаны остаться именно те задачи, что на экране.
+  const [picked, setPicked] = useState([])
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState('')
   const [editing, setEditing] = useState(null)
   const [notice, setNotice] = useState('')
   // Прогресс вычитки считаем по всему банку, а не по текущему фильтру: человеку
@@ -267,16 +276,26 @@ export default function BookBankPage() {
     else setTopics([])
   }, [filterSubject])
 
-  const load = (pg = 1) => {
-    setLoading(true)
-    const params = { source_type: 'book_scan', page: pg }
+  // Один источник параметров для списка и для пакетной приёмки: «принять всё под
+  // фильтр» обязано взять ровно те строки, что человек видит, а не пересказ фильтра.
+  const queryParams = (pg = null) => {
+    const params = { source_type: 'book_scan' }
+    if (pg) params.page = pg
     if (filterSubject) params.subject = filterSubject
     if (filterTopic) params.topic = filterTopic
     if (filterStatus) params.verification_status = filterStatus
     if (filterFormat) params.task_format = filterFormat
     if (needle.trim()) params.q = needle.trim()
+    return params
+  }
+
+  const load = (pg = 1) => {
+    setLoading(true)
+    // с новой выдачей прежний выбор повесил бы приёмку на другие строки
+    setPicked([])
     setNotice('')
-    questionsAPI.list(params)
+    setDone('')
+    questionsAPI.list(queryParams(pg))
       .then(res => { setRows(res.data.results || []); setTotal(res.data.count || 0) })
       .catch(e => {
         // пустой список из-за ошибки сети выглядит как «под фильтр ничего не попало»:
@@ -303,6 +322,46 @@ export default function BookBankPage() {
     questionsAPI.delete(q.id)
       .then(() => { setRows(rs => rs.filter(r => r.id !== q.id)); setTotal(t => t - 1) })
       .catch(e => setNotice(errorText(e)))
+  }
+
+  // Что именно принимает человек — надо написать в диалоге числом и фильтром:
+  // «принять всё» без адреса отличило бы 330 строк от 15 недосмотренных.
+  const filterNote = () => {
+    const named = [
+      filterSubject && (subjects.find(s => s.id === Number(filterSubject)) || {}).name,
+      filterTopic && (topics.find(t => t.id === Number(filterTopic)) || {}).name,
+      filterStatus && (STATUS.find(([v]) => v === filterStatus) || [, ''])[1],
+      filterFormat && (FORMAT.find(([v]) => v === filterFormat) || [, filterFormat])[1],
+      needle.trim() && `поиск «${needle.trim()}»`,
+    ].filter(Boolean)
+    return named.length ? named.join(' · ') : 'весь банк'
+  }
+
+  // Приёмку ставит человек — кнопка здесь только экономит его клики: статус сразу
+  // по выбранному или по всей выдаче, вместо окна «Править» на каждую задачу.
+  const bulk = (to, whole) => {
+    const n = whole ? total : picked.length
+    if (!n) return
+    const scope = whole ? `${n} строк под фильтр «${filterNote()}»` : `${n} выбранных строк`
+    if (!confirm(to === 'verified'
+      ? `Принять ${scope}?\n\n«Проверено» останется и после следующего перегона, а условие и ответ прогон обновит как обычно.`
+      : `Вернуть ${scope} в черновик? Приёмка с них снимется.`)) return
+    setBusy(true)
+    setNotice('')
+    questionsAPI.bulkVerify(whole ? queryParams() : {},
+                            whole ? { all_matching: true, verification_status: to }
+                                  : { ids: picked, verification_status: to })
+      .then(res => {
+        load(page)
+        loadProgress()
+        // после load(): он снимает старые сообщения, и написанный до него ответ
+        // стирался бы, не дойдя до глаз
+        setDone(res.data.changed
+          ? `Статус «${to === 'verified' ? 'проверено' : 'черновик'}» у ${res.data.changed} строк.`
+          : 'Ничего не изменилось: эти строки уже были в таком статусе.')
+      })
+      .catch(e => setNotice(errorText(e)))
+      .finally(() => setBusy(false))
   }
 
   // модалка сама решает, закрыться ей (после сохранения) или остаться (после отката);
@@ -345,11 +404,7 @@ export default function BookBankPage() {
             <option value="rejected">Отклонено</option>
           </select>
           <select value={filterFormat} onChange={e => setFilterFormat(e.target.value)} style={sel}>
-            <option value="">Любой формат</option>
-            <option value="задача,теория">Задачи и теория — без тестов</option>
-            <option value="задача">Только задачи</option>
-            <option value="тест">Только тесты с вариантами</option>
-            <option value="теория">Только теория</option>
+            {FORMAT.map(([v, n]) => <option key={v} value={v}>{n}</option>)}
           </select>
           <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
             <Search size={13} strokeWidth={1.8} style={{ position: 'absolute', left: 10, color: 'var(--text-secondary)' }} />
@@ -358,6 +413,40 @@ export default function BookBankPage() {
           </span>
         </div>
         {notice && <div style={{ marginTop: 10, fontSize: 13, color: '#991B1B' }}>{notice}</div>}
+      </div>
+
+      {/* Пакетная приёмка: фильтруешь «черновики» и отмечаешь проверенными всю
+          выдачу, вместо того чтобы заходить в окно редактуры на каждую задачу. */}
+      <div className="card" style={{ padding: '10px 16px', marginBottom: 20, display: 'flex',
+                                     gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>
+          Пакетная приёмка
+        </span>
+        <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+          выбрано {picked.length} · в выдаче {total} · {filterNote()}
+        </span>
+        <button className="btn btn-sm btn-outline" disabled={!rows.length}
+                onClick={() => setPicked(picked.length ? [] : rows.map(r => r.id))}
+                style={{ borderRadius: 10, padding: '4px 12px' }}>
+          {picked.length ? 'Снять выбор' : `Выбрать ${rows.length} на странице`}
+        </button>
+        <button className="btn btn-sm btn-outline" disabled={!picked.length || busy}
+                onClick={() => bulk('verified', false)}
+                style={{ borderRadius: 10, padding: '4px 12px' }}>
+          Принять выбранное{picked.length ? ` (${picked.length})` : ''}
+        </button>
+        <button className="btn btn-sm btn-outline" disabled={!picked.length || busy}
+                onClick={() => bulk('draft', false)} title="Отменить приёмку"
+                style={{ borderRadius: 10, padding: '4px 12px', color: '#991B1B' }}>
+          В черновик
+        </button>
+        <button className="btn btn-sm btn-primary" disabled={!total || busy}
+                onClick={() => bulk('verified', true)}
+                title="Отметить «проверено» все строки, которые сейчас под фильтром"
+                style={{ marginLeft: 'auto', borderRadius: 10, padding: '6px 14px' }}>
+          {busy ? 'Принимаю…' : `Принять все ${total} под фильтр`}
+        </button>
+        {done && <span style={{ fontSize: 13, color: '#065F46' }}>{done}</span>}
       </div>
 
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -383,6 +472,10 @@ export default function BookBankPage() {
           return (
             <div key={q.id} style={{ padding: '18px 20px', borderBottom: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
+                {/* выбор для пакетной приёмки — здесь же, где человек видит строку */}
+                <input type="checkbox" checked={picked.includes(q.id)} title="Выбрать для пакетной приёмки"
+                       onChange={e => setPicked(rs => e.target.checked ? [...rs, q.id] : rs.filter(i => i !== q.id))}
+                       style={{ width: 16, height: 16, accentColor: 'var(--primary)', cursor: 'pointer', marginRight: 2 }} />
                 <span style={chip('rgba(99,102,241,0.08)', 'var(--primary)')}>{q.subject_name}</span>
                 <span style={chip('rgba(16,185,129,0.08)', '#065F46')}>{q.topic_name}</span>
                 <span style={chip('rgba(245,158,11,0.1)', '#92400E')}>
@@ -395,6 +488,10 @@ export default function BookBankPage() {
                 </span>
                 {pr.human_edited && (
                   <span style={chip('rgba(59,130,246,0.12)', '#1E40AF')}>правил человек</span>
+                )}
+                {pr.accepted_by && (
+                  // принято пакетом — не «правил»: условие мог и не трогать никто
+                  <span style={chip('rgba(16,185,129,0.12)', '#065F46')}>принято</span>
                 )}
                 {(q.uncertain || []).length > 0 && (
                   <span style={chip('rgba(239,68,68,0.1)', '#991B1B')}>
@@ -433,6 +530,7 @@ export default function BookBankPage() {
               <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>
                 {pr.run}{pr.model ? ` · ${pr.model}` : ''}{pr.src_sha256 ? ` · источник ${String(pr.src_sha256).slice(0, 8)}` : ''}
                 {pr.edited_at ? ` · правка ${String(pr.edited_at).slice(0, 10)} (${pr.edited_by})` : ''}
+                {pr.accepted_at ? ` · принято ${String(pr.accepted_at).slice(0, 10)} — ${pr.accepted_by}` : ''}
               </div>
             </div>
           )
