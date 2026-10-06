@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { questionsAPI, subjectsAPI } from '../../api'
 import FormattedText from '../../components/FormattedText'
-import { BookOpen, AlertTriangle, HelpCircle, Pencil, Trash2 } from 'lucide-react'
+import { BookOpen, AlertTriangle, HelpCircle, Pencil, Trash2, Search } from 'lucide-react'
 
 // зеркалит QuestionPagination на бэкенде: менять надо вместе с ним
 const PAGE_SIZE = 50
@@ -227,6 +227,9 @@ export default function BookBankPage() {
   const [filterFormat, setFilterFormat] = useState('задача,теория')
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
+  // Поиск по банку — подстрока: «где ещё у нас встречается этот знак». Без паузы
+  // каждый ввод запрос к БД, а печатают по-казахски длинными словами.
+  const [needle, setNeedle] = useState('')
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null)
   const [notice, setNotice] = useState('')
@@ -260,6 +263,7 @@ export default function BookBankPage() {
     if (filterTopic) params.topic = filterTopic
     if (filterStatus) params.verification_status = filterStatus
     if (filterFormat) params.task_format = filterFormat
+    if (needle.trim()) params.q = needle.trim()
     setNotice('')
     questionsAPI.list(params)
       .then(res => { setRows(res.data.results || []); setTotal(res.data.count || 0) })
@@ -271,7 +275,12 @@ export default function BookBankPage() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { setPage(1); load(1) }, [filterSubject, filterTopic, filterStatus, filterFormat])
+  // Фильтры и поиск — один путь: страница всегда откатывается на первую, а запрос
+  // уходит после паузы, иначе каждый символ — это прогон по 330 строкам.
+  useEffect(() => {
+    const t = setTimeout(() => { setPage(1); load(1) }, 350)
+    return () => clearTimeout(t)
+  }, [filterSubject, filterTopic, filterStatus, filterFormat, needle])
 
   const goPage = (pg) => { setPage(pg); load(pg) }
 
@@ -331,6 +340,11 @@ export default function BookBankPage() {
             <option value="тест">Только тесты с вариантами</option>
             <option value="теория">Только теория</option>
           </select>
+          <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+            <Search size={13} strokeWidth={1.8} style={{ position: 'absolute', left: 10, color: 'var(--text-secondary)' }} />
+            <input value={needle} onChange={e => setNeedle(e.target.value)} placeholder="Поиск: кусок условия, формулы или номер"
+              style={{ ...sel, width: 280, paddingLeft: 28 }} />
+          </span>
         </div>
         {notice && <div style={{ marginTop: 10, fontSize: 13, color: '#991B1B' }}>{notice}</div>}
       </div>

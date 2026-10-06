@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 
 from .models import Subject, Topic, Question, Answer
@@ -142,6 +143,15 @@ class QuestionViewSet(viewsets.ModelViewSet):
             # а просить «всё, кроме тестов» отдельным параметром значит удвоить фильтр.
             queryset = queryset.filter(
                 provenance__format__in=[f for f in fmt.split(',') if f])
+        needle = self.request.query_params.get('q', '').strip()
+        if needle:
+            # Подстрока, а не «похожие задачи»: вычитчику нужно найти, где ещё в банке
+            # встречается этот знак или этот номер, и промахнуться он не имеет права.
+            # Ищем и по тексту, и по LaTeX: у условия с формулой «text» — это то, что
+            # видит глаз на экране, а «latex» — то, что набрано в книге.
+            queryset = queryset.filter(
+                Q(text__icontains=needle) | Q(latex__icontains=needle)
+                | Q(latex_answer__icontains=needle) | Q(external_id__icontains=needle))
         return queryset
 
     def retrieve(self, request, *args, **kwargs):
