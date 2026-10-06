@@ -24,6 +24,10 @@ backend/raw_entries.json
 backend/.env
 .env
 
+# Прогоны оцифровки книг: залитый PDF, растр страниц, кэш модели — всё это на диске сервера,
+# в репозиторий не входит (тянуть чужую книгу в git незачем)
+backend/ingest-runs/
+
 # Google service-account credentials (НИКОГДА в репозиторий)
 backend/google_credentials/
 backend/service-account.json

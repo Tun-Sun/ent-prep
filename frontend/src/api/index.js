@@ -184,4 +184,11 @@ export const groupsAPI = {
     api.put(`/auth/students/${studentId}/subjects/`, { profile_subjects: subjectIds }),
 }
 
+// Оцифровка новых книг: загрузил PDF — сервер сам прогнал конвейер и положил черновики
+export const ingestAPI = {
+  list: () => api.get('/ingest/runs/'),
+  detail: (id) => api.get(`/ingest/runs/${id}/`),
+  start: (form) => api.post('/ingest/runs/', form, { headers: { 'Content-Type': 'multipart/form-data' } }),
+}
+
 export default api

@@ -76,6 +76,7 @@ INSTALLED_APPS = [
     'dashboard',
     'grant_calc',
     'gamification',
+    'ingest',
 ]
 
 MIDDLEWARE = [
@@ -190,3 +191,21 @@ GOOGLE_SERVICE_ACCOUNT_FILE = os.environ.get('GOOGLE_SERVICE_ACCOUNT_FILE', '')
 if GOOGLE_SERVICE_ACCOUNT_FILE and not os.path.isabs(GOOGLE_SERVICE_ACCOUNT_FILE):
     # Относительный путь резолвим от BASE_DIR, а не от CWD процесса
     GOOGLE_SERVICE_ACCOUNT_FILE = str(BASE_DIR / GOOGLE_SERVICE_ACCOUNT_FILE)
+
+# ── Оцифровка книг (ingest) ───────────────────────────────────────────────
+# Конвейер говорит с Gemini напрямую и просит ключ файлом, поэтому здесь путь,
+# а не сам ключ: секрет не попадает ни в репозиторий, ни в аргументы процесса.
+GEMINI_KEY_FILE = os.environ.get('GEMINI_KEY_FILE', 'C:/Ocifrovka/key.txt')
+# Папка прогонов вне media: страницы скана и выкройки не должны отдаваться наружу
+# тем же путём, каким отдаются картинки вопросов.
+INGEST_RUNS_DIR = os.environ.get('INGEST_RUNS_DIR') or str(BASE_DIR / 'ingest-runs')
+INGEST_MODEL = os.environ.get('INGEST_MODEL', 'gemini-3.7-flash')
+# 300 dpi — принятый компромисс: ниже знаки формул сливаются, выше деньги растут,
+# а распознаваемого содержимого не добавляется.
+INGEST_DPI = int(os.environ.get('INGEST_DPI', '300'))
+INGEST_WORKERS = int(os.environ.get('INGEST_WORKERS', '4'))
+# Ставка за миллион токенов. Нули означают «ставки нет»: тогда деньги в отчёте
+# прогона не показаны, а не равны нулю — выдуманный тариф хуже отсутствующего.
+INGEST_PRICE_IN = float(os.environ.get('INGEST_PRICE_IN', '0') or 0)
+INGEST_PRICE_OUT = float(os.environ.get('INGEST_PRICE_OUT', '0') or 0)
+INGEST_MAX_PDF_MB = int(os.environ.get('INGEST_MAX_PDF_MB', '60'))

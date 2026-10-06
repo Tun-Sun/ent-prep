@@ -26,6 +26,8 @@ urlpatterns = [
     path('api/grant-calc/', include('grant_calc.urls')),
     # Gamification (achievements, duels)
     path('api/gamification/', include('gamification.urls')),
+    # Оцифровка новых книг (загрузил PDF -> черновики в банке)
+    path('api/ingest/', include('ingest.urls')),
 ]
 
 
