@@ -40,6 +40,7 @@ function EditModal({ q, subjects, onClose, onSaved }) {
   const [err, setErr] = useState('')
   const [showOriginal, setShowOriginal] = useState(false)
   const orig = (q.provenance || {}).ocr_original || {}
+  const pr = q.provenance || {}
   // Вычитка — это сравнение с источником, а не с самим собой: без страницы скана
   // правая колонка показывает то же, что левая, только красивее.
   const pages = q.source_pages || []
@@ -99,6 +100,16 @@ function EditModal({ q, subjects, onClose, onSaved }) {
                                              gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))',
                                              gap: 16, padding: '14px 20px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+            {pr.review_note && (
+              // Заметка — вывод глаз по скану, а не машинный флаг: строка остаётся
+              // черновиком, и без неё следующий правщик заново спотыкается о тот же спор.
+              <div style={{ fontSize: 12, lineHeight: 1.45, padding: '8px 10px', borderRadius: 8,
+                            background: 'rgba(217,119,6,0.08)', border: '1px solid rgba(217,119,6,0.25)',
+                            color: '#92400E' }}>
+                <b>Заметка вычитки.</b> {pr.review_note}
+                {pr.review_by ? ` — ${pr.review_by}` : ''}
+              </div>
+            )}
             <div>
               <div style={label}>Условие (Markdown + LaTeX)</div>
               <textarea style={field} rows={14} value={latex} onChange={e => setLatex(e.target.value)} />
