@@ -256,6 +256,9 @@ export default function BookBankPage() {
   // Прогресс вычитки считаем по всему банку, а не по текущему фильтру: человеку
   // надо знать, сколько из 330 строк вообще просмотрено глазами.
   const [progress, setProgress] = useState(null)
+  // Сколько строк под текущим фильтром ещё не принято. Без этого числа кнопка
+  // «принять все» показывает всю выдачу и висит нетронутой после приёма всего.
+  const [pending, setPending] = useState(null)
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   const loadProgress = () => {
@@ -265,7 +268,7 @@ export default function BookBankPage() {
       .catch(() => setProgress(null))
   }
 
-  useEffect(() => { loadProgress() }, [])
+  useEffect(() => { loadProgress(); loadPending() }, [])
 
   useEffect(() => {
     subjectsAPI.list().then(res => setSubjects(res.data))
@@ -289,6 +292,14 @@ export default function BookBankPage() {
     return params
   }
 
+  // Статус в фильтре перекрываем на черновик: «сколько осталось принять» — это
+  // про текущий предмет/тему/формат/поиск, а не про то, что сейчас на экране.
+  const loadPending = () => {
+    questionsAPI.list({ ...queryParams(), verification_status: 'draft', page_size: 1 })
+      .then(res => setPending(res.data.count))
+      .catch(() => setPending(null))
+  }
+
   const load = (pg = 1) => {
     setLoading(true)
     // с новой выдачей прежний выбор повесил бы приёмку на другие строки
@@ -308,7 +319,7 @@ export default function BookBankPage() {
   // Фильтры и поиск — один путь: страница всегда откатывается на первую, а запрос
   // уходит после паузы, иначе каждый символ — это прогон по 330 строкам.
   useEffect(() => {
-    const t = setTimeout(() => { setPage(1); load(1) }, 350)
+    const t = setTimeout(() => { setPage(1); load(1); loadPending() }, 350)
     return () => clearTimeout(t)
   }, [filterSubject, filterTopic, filterStatus, filterFormat, needle])
 
@@ -340,20 +351,24 @@ export default function BookBankPage() {
   // Приёмку ставит человек — кнопка здесь только экономит его клики: статус сразу
   // по выбранному или по всей выдаче, вместо окна «Править» на каждую задачу.
   const bulk = (to, whole) => {
-    const n = whole ? total : picked.length
+    const n = whole ? pending : picked.length
     if (!n) return
-    const scope = whole ? `${n} строк под фильтр «${filterNote()}»` : `${n} выбранных строк`
+    // Приёмка по всей выдаче берёт ровно тот набор, число которого показано на
+    // кнопке: иначе «принять 310» и «принялось 280» разъезжаются в отчёте.
+    const params = whole ? { ...queryParams(), verification_status: 'draft' } : {}
+    const scope = whole ? `${n} черновых строк под фильтр «${filterNote()}»` : `${n} выбранных строк`
     if (!confirm(to === 'verified'
       ? `Принять ${scope}?\n\n«Проверено» останется и после следующего перегона, а условие и ответ прогон обновит как обычно.`
       : `Вернуть ${scope} в черновик? Приёмка с них снимется.`)) return
     setBusy(true)
     setNotice('')
-    questionsAPI.bulkVerify(whole ? queryParams() : {},
+    questionsAPI.bulkVerify(params,
                             whole ? { all_matching: true, verification_status: to }
                                   : { ids: picked, verification_status: to })
       .then(res => {
         load(page)
         loadProgress()
+        loadPending()
         // после load(): он снимает старые сообщения, и написанный до него ответ
         // стирался бы, не дойдя до глаз
         setDone(res.data.changed
@@ -370,6 +385,7 @@ export default function BookBankPage() {
     setRows(rs => rs.map(r => (r.id === data.id ? data : r)))
     setEditing(e => (e && e.id === data.id ? data : e))
     loadProgress()
+    loadPending()
   }
 
   const sel = {
@@ -423,7 +439,7 @@ export default function BookBankPage() {
           Пакетная приёмка
         </span>
         <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-          выбрано {picked.length} · в выдаче {total} · {filterNote()}
+          выбрано {picked.length} · в выдаче {total} · черновиков под фильтр {pending === null ? '…' : pending} · {filterNote()}
         </span>
         <button className="btn btn-sm btn-outline" disabled={!rows.length}
                 onClick={() => setPicked(picked.length ? [] : rows.map(r => r.id))}
@@ -440,11 +456,13 @@ export default function BookBankPage() {
                 style={{ borderRadius: 10, padding: '4px 12px', color: '#991B1B' }}>
           В черновик
         </button>
-        <button className="btn btn-sm btn-primary" disabled={!total || busy}
+        <button className="btn btn-sm btn-primary" disabled={!pending || busy}
                 onClick={() => bulk('verified', true)}
-                title="Отметить «проверено» все строки, которые сейчас под фильтром"
+                title="Отметить «проверено» все черновики, которые сейчас под фильтром"
                 style={{ marginLeft: 'auto', borderRadius: 10, padding: '6px 14px' }}>
-          {busy ? 'Принимаю…' : `Принять все ${total} под фильтр`}
+          {busy ? 'Принимаю…' : pending === null ? 'Считаю…' : pending
+            ? `Принять все ${pending} черновиков под фильтр`
+            : 'Принимать нечего: черновиков под фильтр нет'}
         </button>
         {done && <span style={{ fontSize: 13, color: '#065F46' }}>{done}</span>}
       </div>
