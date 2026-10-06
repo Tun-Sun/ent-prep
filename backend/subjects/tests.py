@@ -437,6 +437,30 @@ class BookScanBankTest(TestCase):
         self.assertEqual(q.image_ref, '')
         self.assertIn('картинок снято по чужому кадру 1', report)
 
+    def test_crop_is_relaid_when_parser_names_another_figure(self):
+        """Перегон с другим figures[0] обязан переложить кадр, а не оставить старый.
+
+        Строка картинок в книге одна на несколько задач: парсер мог сначала отдать
+        задаче рис. 1.30, а потом — тот же прогон, но с правильным рис. 1.32. Если
+        импорт считает «картинка уже есть» неписуемым, задача навсегда останется с
+        чужим рисунком.
+        """
+        (self.run / 'assets').mkdir()
+        for n in ('p08_fig1.png', 'p08_fig2.png'):
+            (self.run / 'assets' / n).write_bytes(b'\x89PNG\r\n\x1a\n' + b'0' * 32)
+        self.write_run([scan_unit(figures=['assets/p08_fig1.png'])])
+        self.do_import()
+        q = Question.objects.get()
+        self.assertEqual(q.image_ref, 'out_t:p08_fig1.png')
+        old_image = q.image.name
+
+        self.write_run([scan_unit(figures=['assets/p08_fig2.png', 'assets/p08_fig1.png'])])
+        report = self.do_import()
+        q.refresh_from_db()
+        self.assertEqual(q.image_ref, 'out_t:p08_fig2.png')
+        self.assertNotEqual(q.image.name, old_image)
+        self.assertIn('переложено кадров 1', report)
+
     def test_review_mark_makes_row_verified(self):
         u = scan_unit()
         self.write_run([u])

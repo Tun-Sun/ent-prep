@@ -92,7 +92,7 @@ class Command(BaseCommand):
         scopes = {topic_name(book, t.get("scope") or name) for t in units}
         known = set(Topic.objects.filter(subject=subject, name__in=scopes).values_list("name", flat=True))
 
-        made = upd = drawn = took = kept_edited = kept_accepted = orphaned = noted = 0
+        made = upd = drawn = took = kept_edited = kept_accepted = orphaned = noted = relaid = 0
         opts_written = 0
         tnew = len(scopes - known)
         for t in units:
@@ -133,7 +133,10 @@ class Command(BaseCommand):
                 made += old is None
                 upd += old is not None
                 # считаем ровно тот кадр, который положим: на задачу один, первый по списку
-                if figures and (old is None or not old.image) and (run / figures[0]).is_file():
+                if figures and (run / figures[0]).is_file() and (
+                        old is None or not old.image
+                        # или прогон стал показывать другой вырез той же страницы
+                        or (old.image_ref or "") not in ("", f"{name}:{Path(figures[0]).name}")):
                     drawn += 1
                 if is_test and not edited:
                     opts_written += len(opts)
@@ -196,15 +199,21 @@ class Command(BaseCommand):
                 opts_written += len(opts)
             # выкройка — один кадр на задачу: второй в источнике бывает дублем с оборота
             if figures:
+                want = f"{name}:{Path(figures[0]).name}"
+                prev_ref = q.image_ref or ""
                 # image_ref — ссылка на файл прогона; присвоить до save(), иначе save()
                 # уйдёт в БД с тем, что было раньше, и поле останется пустым
-                if not q.image_ref:
-                    q.image_ref = f"{name}:{Path(figures[0]).name}"
+                if prev_ref != want:
+                    q.image_ref = want
                     q.save(update_fields=["image_ref"])
                 f = run / figures[0]
-                if not q.image and f.is_file():
+                # Кадр перекладываем, когда прогон стал показывать другой вырез той же
+                # страницы: «картинка уже есть» для импорта раньше значило «трогать
+                # нечего», и задача про рис. 1.32 вечно сидела с рисунком 1.30.
+                if f.is_file() and (not q.image or (prev_ref and prev_ref != want)):
                     q.image.save(f"{name}_p{page:02d}_{f.name}", ContentFile(f.read_bytes()), save=True)
                     drawn += 1
+                    relaid += bool(prev_ref) and prev_ref != want
             elif not edited and (q.image_ref or "").startswith(f"{name}:"):
                 # Картинка задачи обязана быть рисунком из её тела: прогон перестал
                 # считать выкройку содержимым — и на задаче Касаткиной оставался логотип
@@ -217,7 +226,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(
             f"{name}: создано {made}, обновлено {upd}, новых тем {tnew}, картинок положено {drawn}, "
             f"вариантов теста строками ответа {opts_written}, "
-            f"картинок снято по чужому кадру {orphaned}, "
+            f"картинок снято по чужому кадру {orphaned}, переложено кадров {relaid}, "
             f"предмет «{subject.name}», язык {opt['language']}, принято человеком {took} из {len(review)} записей приёмки, "
             f"со заметкой со скана {noted}, ручных правок сохранено {kept_edited}, "
             f"принято пакетом в банке {kept_accepted}"
