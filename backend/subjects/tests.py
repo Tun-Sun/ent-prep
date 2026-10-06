@@ -316,7 +316,7 @@ def scan_unit(**overrides):
         'scope': 'Решение отдельных задач', 'block': 'Решение отдельных задач',
         'pages': [8], 'spans': [{'page': 8, 'l0': 3, 'l1': 12}],
         'figures': [], 'markdown': '$x = 1$', 'answer_in': [], 'uncertain': [],
-        'options': 0, 'options_cyr': None,
+        'options': 0, 'options_cyr': None, 'options_list': [],
     }
     base.update(overrides)
     return base
@@ -362,6 +362,29 @@ class BookScanBankTest(TestCase):
         self.do_import()
         self.assertEqual(Question.objects.filter(source_type='book_scan').count(), 1)
         self.assertEqual(Question.objects.get().latex, '$x = 2$')
+
+    def test_test_unit_gets_options_as_answer_rows(self):
+        """Тест остаётся тестом: варианты печатаются в условии и едут строками ответа.
+
+        Без строк ответа приложение не может отрендерить выбор, а переписывать условие
+        нельзя — так книга и напечатала. Ключа ответа в отсканированной части нет,
+        поэтому ни один вариант не помечен правильным: выдумывать его импорт не вправе.
+        """
+        self.write_run([scan_unit(
+            word='', scope='ТАҚЫРЫПТЫҚ ТЕСТ', block='ТАҚЫРЫПТЫҚ ТЕСТ', key='ТАҚЫРЫПТЫҚ ТЕСТ#1',
+            markdown='Сұрақ\nA) $8{,}3$\nB) $19{,}92$', options=2,
+            options_list=[{'letter': 'A', 'text': '$8{,}3$'}, {'letter': 'B', 'text': '$19{,}92$'}])])
+        self.do_import()
+        q = Question.objects.get(source_type='book_scan')
+        self.assertEqual(q.question_type, 'single_choice')
+        self.assertEqual(list(q.answers.order_by('id').values_list('text', flat=True)),
+                         ['$8{,}3$', '$19{,}92$'])
+        self.assertFalse(any(q.answers.values_list('is_correct', flat=True)))
+        self.assertIn('A) $8{,}3$', q.latex)
+        self.assertEqual(q.provenance['format'], 'тест')
+        # перегон не должен плодить дубли вариантов
+        self.do_import()
+        self.assertEqual(q.answers.count(), 2)
 
     def test_human_edit_survives_reimport(self):
         self.write_run([scan_unit()])

@@ -22,7 +22,7 @@ from pathlib import Path
 from django.core.files.base import ContentFile
 from django.core.management.base import BaseCommand, CommandError
 
-from subjects.models import Question, Subject, Topic, plain_from_latex
+from subjects.models import Answer, Question, Subject, Topic, plain_from_latex
 
 
 def topic_name(book, scope):
@@ -89,6 +89,7 @@ class Command(BaseCommand):
         known = set(Topic.objects.filter(subject=subject, name__in=scopes).values_list("name", flat=True))
 
         made = upd = drawn = took = kept_edited = orphaned = noted = 0
+        opts_written = 0
         tnew = len(scopes - known)
         for t in units:
             page = (t.get("pages") or [0])[0]
@@ -108,6 +109,10 @@ class Command(BaseCommand):
             if rev.get("note"):
                 noted += 1
             figures = [f for f in (t.get("figures") or []) if isinstance(f, str)]
+            # Варианты теста: их две десятки на весь банк, и без строк ответа они
+            # остаются куском текста, который нечем отрендерить как выбор.
+            opts = t.get("options_list") or []
+            is_test = len(opts) >= 2
             old = Question.objects.filter(source_type="book_scan", external_id=ext).first()
             # Правка тренера в банке важнее перегоня: второй импорт молча вернул бы
             # опечатку, которую человек уже исправил глазами, и снял бы его статус.
@@ -120,6 +125,8 @@ class Command(BaseCommand):
                 # считаем ровно тот кадр, который положим: на задачу один, первый по списку
                 if figures and (old is None or not old.image) and (run / figures[0]).is_file():
                     drawn += 1
+                if is_test and not edited:
+                    opts_written += len(opts)
                 continue
             topic, _ = Topic.objects.get_or_create(subject=subject, name=topic_name(book, scope))
             defaults = {
@@ -127,7 +134,7 @@ class Command(BaseCommand):
                 "text": plain_from_latex(t.get("markdown"))[:4000] or "(пустое условие)",
                 "latex": t.get("markdown") or "",
                 "latex_answer": t.get("answer") or "; ".join(t.get("answer_in") or []),
-                "question_type": "open_answer",
+                "question_type": "single_choice" if is_test else "open_answer",
                 "language": opt["language"],
                 "verification_status": "verified" if accepted else "draft",
                 "uncertain": t.get("uncertain") or [],
@@ -164,6 +171,14 @@ class Command(BaseCommand):
                 source_type="book_scan", external_id=ext, defaults=defaults)
             made += new
             upd += not new
+            if is_test and not edited:
+                # Варианты едут отдельными строками, а условие с ними — нет: напечатанный
+                # список остаётся в тексте как был. Ключ ответа не выдумываем: в отсканированной
+                # части его нет, поэтому ни один вариант не помечен правильным.
+                q.answers.all().delete()
+                for o in opts:
+                    Answer.objects.create(question=q, text=o["text"][:300], is_correct=False)
+                opts_written += len(opts)
             # выкройка — один кадр на задачу: второй в источнике бывает дублем с оборота
             if figures:
                 # image_ref — ссылка на файл прогона; присвоить до save(), иначе save()
@@ -186,6 +201,7 @@ class Command(BaseCommand):
                 orphaned += 1
         self.stdout.write(self.style.SUCCESS(
             f"{name}: создано {made}, обновлено {upd}, новых тем {tnew}, картинок положено {drawn}, "
+            f"вариантов теста строками ответа {opts_written}, "
             f"картинок снято по чужому кадру {orphaned}, "
             f"предмет «{subject.name}», язык {opt['language']}, принято человеком {took} из {len(review)} записей приёмки, "
             f"со заметкой со скана {noted}, ручных правок сохранено {kept_edited}"
