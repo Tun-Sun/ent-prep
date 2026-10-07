@@ -193,7 +193,7 @@ class RunBookIngestCommandTest(TestCase):
         self.assertEqual(Question.objects.count(), 0)
 
     def test_no_rate_means_no_money(self):
-        """Без ставки в отчёте пустота, а не ноль: «потрачено 0 ₽» звучит как
+        """Без ставки в отчёте пустота, а не ноль: «потрачено 0» звучит как
         бесплатная книга, хотя токены считались."""
         with self.fake_steps(price=(0, 0), money=0):
             call_command('run_book_ingest', self.run.pk)
@@ -311,6 +311,102 @@ class AnswersBlockOnTheSamePageTest(TestCase):
             'Задача 1.4. Точечный заряд 8 нКл. Найдите напряжённость в точке A.\n\n'
             'Ответы на вопросы 5–12 приведены в конце книги.\n')
         self.assertIn('Ответы на вопросы', got['1.4']['markdown'])
+
+
+class NumberingRestartByBlockTest(TestCase):
+    """Сборник с переразбивкой (Рустюмова): счёт номеров свой внутри каждого «БЛОК N»,
+    блоки идут под одним §-заголовком, а ответы блока печатают списком или таблицей под
+    заголовком «ОТВЕТЫ» после его вариантов А и В.
+
+    Живой прогон 8 страниц лег без этой правки: из ~90 задач в банк ушли 38, остальные
+    43 условия свернулись «ответами» задач первого блока, и у 23 задач в поле ответа
+    стояло чужое условие."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent / 'pipeline'))
+        import tasks
+        cls.tasks = tasks
+
+    def parse(self, *markdown):
+        t = self.tasks
+        pages = [{'page': n + 1, 'markdown': md} for n, md in enumerate(markdown)]
+        by_page = {p['page']: p for p in pages}
+        units, answers, other, acc = t.walk(pages)
+        for u in units:
+            t.entities(u, by_page)
+        t.share_figures(units, by_page)
+        t.attach(units, answers, acc)
+        return {(u['run'], u['num']): u for u in units}, acc
+
+    def test_same_number_in_two_blocks_stays_two_tasks(self):
+        got, _ = self.parse(
+            '# ГЛАВА I\n\n## §1. СТЕПЕНИ\n\n'
+            '**БЛОК 1. Вычислите:**\n\n### A\n\n'
+            '**1)** $3{,}7 - 1{,}2$\n\n'
+            '**2)** $5{,}4 : 0{,}6$\n',
+            '**БЛОК 2. Сократите дробь:**\n\n**А**\n\n'
+            '**1)** $\\frac{41^2 - 17^2}{37^2 - 21^2}$\n\n'
+            '### ОТВЕТЫ:\n\n'
+            '| 1) 1 | 2) 9 |\n')
+        self.assertEqual(len(got), 3)                      # 1 и 2 блока 1, 1 блока 2
+        self.assertEqual(got[(u'ГЛАВА I / БЛОК 2. Сократите дробь:', '1')]['answer'], '1')
+        self.assertEqual(got[(u'ГЛАВА I / БЛОК 1. Вычислите:', '1')]['markdown'].strip(),
+                         '$3{,}7 - 1{,}2$')
+
+    def test_answers_table_without_a_number_header_is_read(self):
+        """| 1) 1 | 2) 9 | — шапки «№» нет, веткой TABLE такая строка не бралась,
+        и весь список ответов уезжал в «вне задач»."""
+        got, _ = self.parse(
+            '# ГЛАВА I\n\n**БЛОК 1. Вычислите:**\n\n'
+            '**1)** $2{,}5 \\cdot 4$\n\n**2)** $9 - 0{,}7$\n\n'
+            '### **ОТВЕТЫ:**\n\n'
+            '| 1) 10 | 2) 8,3 |\n')
+        self.assertEqual(got[(u'ГЛАВА I / БЛОК 1. Вычислите:', '1')]['answer'], '10')
+        self.assertEqual(got[(u'ГЛАВА I / БЛОК 1. Вычислите:', '2')]['answer'], '8,3')
+
+    def test_one_answers_list_covers_both_variants(self):
+        """Ответы блока — одним списком на варианты А и В, и номер варианта для поиска
+        ответа не годится: связывает их счёт (путь заголовков без буквы и без «ОТВЕТЫ»)."""
+        got, _ = self.parse(
+            '# ГЛАВА I\n\n**БЛОК 3. Сократите дробь:**\n\n**А**\n\n'
+            '**1)** $\\frac{7^8}{49^2}$\n\n'
+            '### В\n\n**2)** $\\frac{\\sqrt{12}}{\\sqrt{3}}$\n\n'
+            '### ОТВЕТЫ:\n\n'
+            '1) 350\n\n2) 2\n')
+        run = u'ГЛАВА I / БЛОК 3. Сократите дробь:'
+        self.assertEqual(got[(run, '1')]['answer'], '350')
+        self.assertEqual(got[(run, '2')]['answer'], '2')
+
+    def test_topic_is_the_block_not_the_variant_letter(self):
+        """Тема строки в банке строится по области: «Книга · A» — это три темы на одну,
+        различить которые потом нельзя."""
+        got, _ = self.parse(
+            '# ГЛАВА I\n\n**БЛОК 4. Освободитесь от иррациональности:**\n\n'
+            '#### **A**\n\n**1)** $\\frac{4}{3-\\sqrt{3}}$\n\n'
+            '### ОТВЕТЫ:\n\n1) $\\frac{6+2\\sqrt{3}}{3}$\n')
+        u = got[(u'ГЛАВА I / БЛОК 4. Освободитесь от иррациональности:', '1')]
+        self.assertEqual(u['scope'], 'БЛОК 4. Освободитесь от иррациональности:')
+        self.assertEqual(u['answer'], '$\\frac{6+2\\sqrt{3}}{3}$')
+
+    def test_prose_about_a_block_is_not_a_heading(self):
+        """«Блок задач 1–5 решите письменно» внутри условия счёт не перебивает:
+        заголовком считается только решётка или жирная строка, закрытая звёздочками."""
+        got, _ = self.parse(
+            '# ГЛАВА I\n\n**БЛОК 1. Вычислите:**\n\n'
+            '**1)** Найдите сумму. Блок задач 1–5 решите письменно.\n\n'
+            '**2)** $5 - 1{,}4$\n')
+        self.assertEqual(len(got), 2)
+        self.assertIn('Блок задач', got[(u'ГЛАВА I / БЛОК 1. Вычислите:', '1')]['markdown'])
+
+    def test_balance_of_signs_survives_the_new_branches(self):
+        md = ('# ГЛАВА I\n\n## §1. ДРОБИ\n\n**БЛОК 1. Вычислите:**\n\n**A**\n\n'
+              '**1)** $2{,}5 + 1$ \n\n**2)** $7 : 2$\n\n'
+              '### ОТВЕТЫ:\n\n| 1) 3,5 | 2) 3,5 |\n')
+        _, acc = self.parse(md)
+        self.assertEqual(sum(acc.values()), len(md) + 1)
 
 
 class MissingPagesTest(TestCase):

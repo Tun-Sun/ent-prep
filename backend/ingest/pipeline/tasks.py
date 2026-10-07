@@ -141,6 +141,43 @@ def clean(s):
     return re.sub(r"[*_`]+", "", s).strip()
 
 
+# Заголовок блока переразбивки: «**БЛОК 1. Вычислите:**», «**<u>БЛОК 2.</u> …**»,
+# «### **БЛОК 4. Освободитесь…**». Жирным — только строка, закрытая звёздочками, или
+# решётка: проза, начинающаяся со слова «блок», заголовок не напоминает.
+BLOCK_HEAD = re.compile(r"^\s*(?:#{1,4}\s+)?\*{0,2}\s*(?:<u>)?\s*(?:БЛОК|Блок|блок)\b")
+# Заголовок-буква варианта («### A», «#### **B**», «### В»): нумерацию не перебивает,
+# ответы под ним печатают одним списком на все варианты.
+VARIANT = re.compile(r"^[A-HА-Я]$", re.I)
+
+
+def block_head(line):
+    """Имя блока, если строка — его заголовок, иначе None."""
+    if not BLOCK_HEAD.match(line):
+        return None
+    s = line.strip()
+    if not s.startswith("#") and not (s.startswith("**") and s.endswith("**")):
+        return None
+    return clean(re.sub(r"^#{1,4}\s+|</?u>", "", s))
+
+
+def unit_scope(stack):
+    """Область единицы — последний заголовок, который не буква варианта. Тема строки в
+    банке строится по области, и «Рустюмова 2013 · A» вместо «· БЛОК 1. Вычислите:» —
+    это три темы на одну, различить которые потом нельзя."""
+    for _, name in reversed(stack):
+        if not VARIANT.fullmatch(name):
+            return name
+    return ""
+
+
+def run_of(stack):
+    """Счёт номеров: путь заголовков без буквы варианта и без шапки «ОТВЕТЫ».
+    В сборнике с переразбивкой задачи блока стоят под буквой варианта, а его ответы —
+    под заголовком «ОТВЕТЫ», и связывает их именно этот путь."""
+    return " / ".join(n for _, n in stack
+                      if not ANS_HEAD.search(n) and not VARIANT.fullmatch(n))
+
+
 def norm(n):
     return n.strip().strip(".*°'′”\\").replace(" ", "")
 
@@ -186,14 +223,14 @@ def answer_lines(body):
     return [v for v in out if v]
 
 
-def add_answer(answers, num, scope, page, text, block=None):
+def add_answer(answers, num, scope, page, text, block=None, run=""):
     """Запись ответа ключуется именем области — так таблица из раздела «ОТВЕТЫ» находится
     свою задачу из раздела темы. Блок в ключ не кладём: он разные у таблицы и задачи.
     Блок свёрнутой задачи пишем в значение — её принимать по имени области нельзя."""
     text = text.strip().strip("*").strip()
     if text:
         answers.setdefault((num, scope), []).append(
-            {"page": page, "text": text, "block": block or ""})
+            {"page": page, "text": text, "block": block or "", "run": run})
 
 
 # ============================ один проход по прогону ============================
@@ -238,7 +275,7 @@ def walk(pages):
         return any(ANS_HEAD.search(s) for _, s in stack)
 
     def scope():
-        return stack[-1][1] if stack else ""
+        return unit_scope(stack)
 
     for p in pages:
         page = p["page"]
@@ -250,6 +287,7 @@ def walk(pages):
             raw = lines[i]
             line = raw.rstrip()
             from_head = False               # маркер уже проверен в ветке заголовка, второй раз нельзя
+            run = run_of(stack)             # счёт, к которому относится эта строка
             acc["пробелы"] += len(raw) - len(line)      # баланс: без этого строка «abc   » теряется
 
             if not line.strip():
@@ -273,6 +311,17 @@ def walk(pages):
                 blank, i = True, i + 1
                 continue
 
+            bname = block_head(line) if blank else None
+            if bname:
+                # Уровень 2: блок перебивает § (в нём счёт свой), но сносится только
+                # заголовком уровня 1–2, а не буквой варианта «### A».
+                while stack and stack[-1][0] >= 2:
+                    stack.pop()
+                stack.append((2, bname))
+                acc["заголовки"] += len(line) + 1
+                cur, blank, i = None, True, i + 1
+                continue
+
             if SECT.match(line):
                 inner = SECT.match(line).group(2).strip()
                 mh = WORD.match(inner) if blank else None
@@ -288,9 +337,19 @@ def walk(pages):
                     continue
 
             if TABLE.match(line):
-                n = table_answers(lines, i, scope(), answers, page, acc)
+                n = table_answers(lines, i, scope(), answers, page, acc, run_of(stack))
                 i += n
                 cur, blank = None, True
+                continue
+
+            if in_answers() and ROW.match(line) and cells_of_answers(line, answers, scope(),
+                                                                    run_of(stack), page):
+                # Ответ блока печатают таблицей без шапки «№» — «| 1) 1 | 2) 8 |». Веткой
+                # TABLE такая не берётся (нет шапки), жирных номеров на строке нет, и
+                # весь список ответов уходил в «вне задач»: в Рустюмовой так терялись
+                # 20 ответов блока 2, а задачи оставались с пометкой «ответа нет».
+                acc["ответы"] += len(line) + 1
+                cur, blank, i = None, False, i + 1
                 continue
 
             ma = ANS_BLOCK.match(line) if blank else None
@@ -302,7 +361,8 @@ def walk(pages):
                     sc = scope()
                     for k, h in enumerate(recs):
                         end = recs[k + 1].start() if k + 1 < len(recs) else len(line)
-                        add_answer(answers, norm(h.group(1)), sc, page, line[h.end():end])
+                        add_answer(answers, norm(h.group(1)), sc, page, line[h.end():end],
+                                   run=run)
                     acc["ответы"] += len(line) + 1
                     cur, blank, i = None, False, i + 1
                     continue
@@ -312,7 +372,7 @@ def walk(pages):
                 sc = scope()
                 for k, h in enumerate(hits):
                     end = hits[k + 1].start() if k + 1 < len(hits) else len(line)
-                    add_answer(answers, norm(h.group(1)), sc, page, line[h.end():end])
+                    add_answer(answers, norm(h.group(1)), sc, page, line[h.end():end], run=run)
                 acc["ответы"] += len(line) + 1
                 cur, blank, i = None, False, i + 1
                 continue
@@ -335,7 +395,7 @@ def walk(pages):
 
             if kind:
                 if in_answers():
-                    add_answer(answers, num, scope(), page, rest)
+                    add_answer(answers, num, scope(), page, rest, run=run_of(stack))
                     acc["ответы"] += len(line) + 1
                     cur, blank, i = None, False, i + 1
                     continue
@@ -366,7 +426,7 @@ def walk(pages):
 def new_task(page, num, kind, stack, word=""):
     # loc — координаты тела в строках страницы: по ним стенд и правит конкретную задачу
     return {"num": num, "word": word or "", "kind": kind,
-            "scope": stack[-1][1] if stack else "", "block": block_of(stack),
+            "scope": unit_scope(stack), "block": block_of(stack), "run": run_of(stack),
             "pages": [page], "lines": [], "loc": []}
 
 
@@ -384,12 +444,26 @@ def theory_pages(pages):
         head = next((SECT.match(l) for _, l in body), None)
         scope = clean(head.group(2)) if head else "теория"
         out.append({"num": str(p["page"]), "word": "Теория", "kind": "theory",
-                    "scope": scope, "block": scope, "pages": [p["page"]],
+                    "scope": scope, "block": scope, "run": scope,
+                    "pages": [p["page"]],
                     "lines": [l for _, l in body], "loc": [[p["page"], i] for i, _ in body]})
     return out
 
 
-def table_answers(lines, i, sc, answers, page, acc):
+def cells_of_answers(line, answers, sc, run, page):
+    """Строка таблицы ответов без шапки: каждая ячейка — «номер) значение».
+    Возвращает число записей: 0 значит, что строка ответом не была (разделитель или
+    ячейки с текстом), и ветке её брать нельзя."""
+    n = 0
+    for cell in line.strip().strip("|").split("|"):
+        mc = re.match(r"^\s*\*{0,2}(" + NUM + r")[.)]\*{0,2}\s+(.*)$", cell.strip())
+        if mc and mc.group(2).strip():
+            add_answer(answers, norm(mc.group(1)), sc, page, mc.group(2), run=run)
+            n += 1
+    return n
+
+
+def table_answers(lines, i, sc, answers, page, acc, run=""):
     """| № | 1 | 2 | над | | 0,83 м/с² | 1,57 м/с | — номер из шапки, значение из ячеек.
     Строк-значений может быть несколько (таблица разбита по 3 колонки на листе)."""
     head = [c.strip() for c in lines[i].strip().strip("|").split("|")]
@@ -403,7 +477,7 @@ def table_answers(lines, i, sc, answers, page, acc):
         cells = [c.strip() for c in lines[j].strip().strip("|").split("|")]
         for k, v in enumerate(cells[1:]):
             if k < len(cols) and cols[k]:
-                add_answer(answers, norm(cols[k]), sc, page, v)
+                add_answer(answers, norm(cols[k]), sc, page, v, run=run)
         acc["ответы"] += len(lines[j]) + 1
         j += 1
     return j - i
@@ -513,7 +587,7 @@ def attach(tasks, answers, acc):
         if owner is t or t["pages"][0] <= owner["pages"][0]:
             continue
         add_answer(answers, t["num"], owner["scope"], t["pages"][0], " ".join(t["lines"]),
-                   owner["block"])
+                   owner["block"], run=owner.get("run", ""))
         folded[t["pages"][0]] += 1
         acc["ответы"] += t["chars"] + 1
         acc["задачи"] -= t["chars"] + 1
@@ -522,6 +596,15 @@ def attach(tasks, answers, acc):
     by_num = collections.defaultdict(list)
     for (n, sc), v in answers.items():
         by_num[n].append((sc, v))
+    # Ответ блока ищется по счёту, внутри которого напечатан: задачи стоят под буквой
+    # варианта, а его ответы — под заголовком «ОТВЕТЫ», и именем области они не сходятся.
+    # Для книг, где блок не перебивает счёт (физика), ключ совпадает с областью, и этот
+    # индекс ничего не находит там, где не должен.
+    by_run = collections.defaultdict(list)
+    for (n, sc), v in answers.items():
+        for g in v:
+            if g.get("run"):
+                by_run[(n, g["run"])].append(g)
     # «взять по номеру» можно, только если номер в книге один: в главе Касаткиной задачи
     # для самостоятельного решения (1…37) и разобранные решения (1…30) идут двумя независимыми
     # счётами, и по номеру к разобранной задаче 20 приклеилось условие задачи 20 из списка —
@@ -531,6 +614,8 @@ def attach(tasks, answers, acc):
         blocks_of[t["num"]].add(t["block"])
     for t in tasks:
         got = answers.get((t["num"], t["scope"])) or []
+        if not got and t.get("run"):
+            got = by_run.get((t["num"], t["run"])) or []
         only = by_num.get(t["num"], [])
         if not got and len(only) == 1 and len(blocks_of[t["num"]]) == 1:
             got = only[0][1]
