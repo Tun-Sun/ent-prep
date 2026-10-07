@@ -18,7 +18,7 @@ import json
 import tempfile
 from pathlib import Path
 
-from django.core.management import call_command
+from django.core.management import CommandError, call_command
 from django.test import TestCase
 
 from subjects.google_forms.dto import AnswerDTO, QuestionDTO
@@ -585,3 +585,68 @@ class BulkVerifyTest(TestCase):
         self.assertEqual(c.post(self.url, {}, format='json').status_code, 400)
         self.assertEqual(c.post(self.url, {'ids': [self.a.pk], 'all_matching': True},
                                 format='json').status_code, 400)
+
+
+class AutoacceptBookDraftsTest(TestCase):
+    """Приёмка автоматом: статус тот же, но метка говорит, что человека не было.
+
+    Строка «проверено» уже решает показ ученикам (тесты и дуэли берут verified),
+    поэтому важнее статуса только одно — чем она записана. Если accepted_by
+    окажется логином аккаунта, через месяц не отличить вычитанное от догадки.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.physics = Subject.objects.create(name='Физика', slug='physics', icon='⚡')
+        cls.topic = Topic.objects.create(subject=cls.physics, name='Касаткина · Глава 1')
+
+    def book(self, tag, answer=''):
+        return Question.objects.create(
+            topic=self.topic, text=f'задача {tag}', latex=f'$x = {tag}$', latex_answer=answer,
+            source_type='book_scan', verification_status='draft',
+            provenance={'run': 'out_t', 'page': 8, 'format': 'задача'})
+
+    def run_command(self, **opt):
+        out = io.StringIO()
+        call_command('autoaccept_book_drafts', stdout=out, stderr=out, **opt)
+        return out.getvalue()
+
+    def test_dry_run_touches_nothing(self):
+        a = self.book('A', '5 м/с')
+        text = self.run_command(decision='нет ресурсов на вычитку', dry_run=True)
+        a.refresh_from_db()
+        self.assertEqual(a.verification_status, 'draft')
+        self.assertIn('принято было бы 1', text)
+
+    def test_mark_says_auto_and_keeps_the_decision(self):
+        a = self.book('A', '5 м/с')
+        self.run_command(decision='решение владельца 2026-10-07')
+        a.refresh_from_db()
+        self.assertEqual(a.verification_status, 'verified')
+        self.assertEqual(a.provenance['accepted_mode'], 'auto')
+        self.assertEqual(a.provenance['accepted_by'],
+                         'автоматом: решение владельца 2026-10-07')
+
+    def test_rows_without_answer_can_be_left_out(self):
+        with_a = self.book('A', '5 м/с')
+        without = self.book('B')
+        self.run_command(decision='только с ответом', only_with_answer=True)
+        with_a.refresh_from_db()
+        without.refresh_from_db()
+        self.assertEqual(with_a.verification_status, 'verified')
+        self.assertEqual(without.verification_status, 'draft')
+
+    def test_second_run_accepts_nobody(self):
+        self.book('A', '5 м/с')
+        self.run_command(decision='первый проход')
+        with self.assertRaises(CommandError):
+            self.run_command(decision='второй проход')
+        self.assertEqual(Question.objects.filter(verification_status='verified').count(), 1)
+
+    def test_manual_row_is_not_in_scope(self):
+        other = Question.objects.create(topic=self.topic, text='из Excel', source_type='manual',
+                                        verification_status='draft')
+        with self.assertRaises(CommandError):
+            self.run_command(decision='не для того')
+        other.refresh_from_db()
+        self.assertEqual(other.verification_status, 'draft')
