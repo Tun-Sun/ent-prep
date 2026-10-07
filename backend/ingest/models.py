@@ -58,8 +58,9 @@ class IngestRun(models.Model):
     step = models.CharField("что делает сейчас", max_length=60, blank=True)
     pages = models.IntegerField("страниц распознано", default=0)
     units = models.IntegerField("единиц разбора", default=0)
-    # None означает «ставки в окружении нет» — деньги не выдумываем, а честим пустотой
-    money = models.FloatField("потрачено, ₽", null=True, blank=True)
+    # None означает «ставки в окружении нет» — деньги не выдумываем, а честим пустотой.
+    # Ставка приходит в долларах за миллион токенов, знак при числе не рисуем.
+    money = models.FloatField("потрачено", null=True, blank=True)
     report = models.TextField("импорт в банк", blank=True)
     error = models.TextField("почему упало", blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, verbose_name="кто запустил", null=True,

@@ -35,9 +35,10 @@ function chip(status, text) {
 }
 
 function money(run) {
-  // Пустая ставка — не «ноль рублей»: выдуманный тариф хуже отсутствующего
+  // Пустая ставка — не «ноль»: выдуманный тариф хуже отсутствующего.
+  // Число — доллары (ставка API приходит в $ за миллион токенов), знак не рисуем.
   if (run.money === null || run.money === undefined) return 'деньги не считаны: ставка не задана'
-  return `потрачено ${run.money} ₽`
+  return `потрачено ${run.money}`
 }
 
 export default function BookIngestPage() {
