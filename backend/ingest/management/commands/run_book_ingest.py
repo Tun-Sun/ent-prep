@@ -11,11 +11,11 @@ import io
 import json
 import subprocess
 import sys
-from datetime import datetime
 from pathlib import Path
 
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
+from django.utils import timezone
 
 from ingest import runner
 from ingest.models import STATUS_DONE, STATUS_FAILED, STATUS_PENDING, STATUS_RUNNING, IngestRun
@@ -136,7 +136,7 @@ class Command(BaseCommand):
         self.log(run, run.report)
         run.status = STATUS_DONE
         run.step = ""
-        run.finished_at = datetime.now()
+        run.finished_at = timezone.now()
         run.save(update_fields=["report", "status", "step", "finished_at"])
 
     def log(self, run, text):
@@ -146,7 +146,7 @@ class Command(BaseCommand):
         run.status = STATUS_FAILED
         run.error = text
         run.step = ""
-        run.finished_at = datetime.now()
+        run.finished_at = timezone.now()
         run.save(update_fields=["status", "error", "step", "finished_at"])
         self.stderr.write(f"{run.name}: {text}")
         sys.exit(1)
