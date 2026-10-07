@@ -40,6 +40,16 @@ TRAIL = JUNK + r"[.)]?[:.]?\s*"
 HEAD_ONLY = re.compile(r"^#{1,4}\s+\*{0,2}(" + NUM + r")" + JUNK + r"[.)]?" + JUNK + r"\s*$")
 BOLD = re.compile(r"^\*\*\s*(" + NUM + r")" + TRAIL + r"\*\*\s*(.*)$")
 BOLD_ALL = re.compile(r"\*\*\s*(" + NUM + r")[.)]\s*\*\*")
+# Ответы печатают не только отдельной страницей, но и блоком в конце той же:
+# «**Ответы к главе 1: 1.1) 5,4 мкН. 1.2) 100 см.**» Без этой ветки такая строка
+# доставалась последней задаче страницы — в банк уезжал чужой список в конце условия,
+# а поле ответа пустело, хотя ответ напечатан рядом с задачей.
+ANS_BLOCK = re.compile(r"^\s*(?:#{1,4}\s+)?\*{0,2}\s*(?:Ответы|Жауаптар|Answers)\b"
+                       r"[^:\n]*?:\s*", re.I)
+# Число с точкой или скобкой и пробелом — начало записи ответа. Перед числом не должно
+# быть цифры, точки и запятой: иначе «$4 \cdot 10^{-13}$ Кл.» дало бы запись «13», а
+# «0,225 Н» — запись «225».
+ANS_REC = re.compile(r"(?<![\d.,])(" + NUM + r")[.)]\s+")
 WORD = re.compile(r"^\*{0,2}\s*(Тапсырма|Задача|Есеп|Вариант|Пример)\s*(" + NUM + r")\s*\*{0,2}"
                   + JUNK + r"[.)]?" + JUNK + r"\s*", re.I)
 PLAIN = re.compile(r"^(" + NUM + r")[.)]\s+\S")
@@ -282,6 +292,20 @@ def walk(pages):
                 i += n
                 cur, blank = None, True
                 continue
+
+            ma = ANS_BLOCK.match(line) if blank else None
+            if ma:
+                recs = list(ANS_REC.finditer(line, ma.end()))
+                if recs:
+                    # ответ здесь ищется по той же области, что и в таблице: задача и её
+                    # ответ стоят под одним заголовком главы, раздел им не нужен
+                    sc = scope()
+                    for k, h in enumerate(recs):
+                        end = recs[k + 1].start() if k + 1 < len(recs) else len(line)
+                        add_answer(answers, norm(h.group(1)), sc, page, line[h.end():end])
+                    acc["ответы"] += len(line) + 1
+                    cur, blank, i = None, False, i + 1
+                    continue
 
             hits = list(BOLD_ALL.finditer(line))
             if len(hits) >= 2:

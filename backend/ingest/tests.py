@@ -261,9 +261,60 @@ class FilterRefusalTest(TestCase):
         self.assertEqual(self.ocr.finish_reason({'candidates': []}), 'пустой ответ')
 
 
+class AnswersBlockOnTheSamePageTest(TestCase):
+    """Ответы печатают и блоком в конце той же страницы, а не отдельным разворотом.
+    Живой прогон платформы показал: такая строка прилипала к последней задаче страницы —
+    в банк уходило условие со списком чужих ответов и пустым полем ответа."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent / 'pipeline'))
+        import tasks
+        cls.tasks = tasks
+
+    def parse(self, markdown):
+        t = self.tasks
+        pages = [{'page': 1, 'markdown': markdown}]
+        units, answers, other, acc = t.walk(pages)
+        for u in units:
+            t.entities(u, {1: pages[0]})
+        t.share_figures(units, {1: pages[0]})
+        t.attach(units, answers, acc)
+        return {u['num']: u for u in units}, acc
+
+    def test_answers_block_becomes_answers_not_the_last_task(self):
+        md = ('# Глава 1\n\n'
+              'Задача 1.1. Два заряда по 2 нКл на расстоянии 10 см. Найдите силу.\n\n'
+              'Задача 1.2. На каком расстоянии сила будет 0,225 Н?\n\n'
+              '**Ответы к главе 1: 1.1) 5,4 мкН. 1.2) 100 см.**\n')
+        got, acc = self.parse(md)
+        self.assertEqual(got['1.1']['answer'], '5,4 мкН.')
+        self.assertEqual(got['1.2']['answer'], '100 см.')
+        self.assertNotIn('Ответы', got['1.2']['markdown'])
+        # полный учёт знаков: новая ветка не имеет права ни потерять, ни удвоить строку
+        self.assertEqual(sum(acc.values()), len(md) + 1)
+
+    def test_exponent_inside_an_answer_is_not_a_new_record(self):
+        got, _ = self.parse(
+            '# Глава 1\n\n'
+            'Задача 1.3. Пылинка массой 2 мкг покоится в поле 50 кВ/м. Найдите заряд.\n\n'
+            '**Ответы к главе 1: 1.3) $4 \\cdot 10^{-13}$ Кл.**\n')
+        self.assertEqual(got['1.3']['answer'], '$4 \\cdot 10^{-13}$ Кл.')
+
+    def test_prose_about_answers_stays_where_it_was(self):
+        """«Ответы на вопросы приведены в конце книги» — это условие задачи: без
+        маркера записей ветка молчит и ничего не срезает."""
+        got, _ = self.parse(
+            '# Глава 1\n\n'
+            'Задача 1.4. Точечный заряд 8 нКл. Найдите напряжённость в точке A.\n\n'
+            'Ответы на вопросы 5–12 приведены в конце книги.\n')
+        self.assertIn('Ответы на вопросы', got['1.4']['markdown'])
+
+
 class MissingPagesTest(TestCase):
     """Прогон обязан сам сказать, что книга легла в банк с дыркой."""
-
     def test_pages_absent_from_the_source_are_listed(self):
         from .management.commands.run_book_ingest import missing_pages
 
