@@ -33,6 +33,30 @@ def counted_units(out):
     return len((json.loads(f.read_text(encoding="utf-8")) or {}).get("tasks") or [])
 
 
+def missing_pages(out):
+    """Номера страниц, которых нет в pages/, хотя они есть в источнике.
+
+    index.json считает страницы PDF, pages/*.json — то, что реально вернула модель.
+    Расхождение означает «книга легла в банк дырявой», а коды выхода шагов при этом
+    ноль: потерянная страница молчала бы до самой вычитки.
+    """
+    idx = Path(out) / "index.json"
+    if not idx.is_file():
+        return []
+    try:
+        expected = {int(p["page"]) for p in json.loads(idx.read_text(encoding="utf-8"))}
+    except (ValueError, KeyError, TypeError):
+        return []
+    d = Path(out) / "pages"
+    got = set()
+    for f in d.glob("*.json") if d.is_dir() else []:
+        try:
+            got.add(int(f.stem.lstrip("p")))
+        except ValueError:
+            pass
+    return sorted(expected - got)
+
+
 def spent(out):
     """Деньги — только из usage.json и только если ставка была задана. Без ставки
     возвращаем None: «не считано» и «потрачено ноль» — разные новости для владельца.
@@ -85,6 +109,19 @@ class Command(BaseCommand):
             run.units = counted_units(out)
             run.money = spent(out)
             run.save(update_fields=["pages", "units", "money"])
+
+        if run.pages == 0:
+            self.fail(run, "ни одной страницы не распознано — в банке нечего строить")
+            return
+        holes = missing_pages(out)
+        if holes:
+            listing = ", ".join(f"с.{p}" for p in holes[:10])
+            if len(holes) > 10:
+                listing += f" и ещё {len(holes) - 10}"
+            run.error = (f"страниц не получено: {listing} — их отбил фильтр модели или "
+                         f"обрыв; книга легла в банк без них")
+            run.save(update_fields=["error"])
+            self.log(run, f"!!! {run.error}")
 
         run.step = "импорт в банк"
         run.save(update_fields=["step"])

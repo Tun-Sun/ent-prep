@@ -34,6 +34,26 @@ class CallFailed(RuntimeError):
         self.attempts = attempts
 
 
+# Safety-фильтр модели случайен: та же картинка страницы, отбитая один раз, со
+# второго-третьего вызова приходит нормальным текстом (проверено на проде 07.10).
+FILTER_RETRIES = 3
+
+
+def filter_refused(raw):
+    """Ответ без текста: HTTP 200, но части пустые — фильтр (RECITATION/SAFETY)."""
+    cand = (raw or {}).get("candidates") or []
+    if not cand:
+        return True
+    return not ((cand[0].get("content") or {}).get("parts") or [])
+
+
+def finish_reason(raw):
+    cand = (raw or {}).get("candidates") or []
+    if not cand:
+        return "пустой ответ"
+    return cand[0].get("finishReason") or "без причины"
+
+
 def call(model, key, img_bytes, prompt, max_tokens, retries=4):
     body = {
         "contents": [{"role": "user", "parts": [
@@ -390,17 +410,33 @@ def main():
             raw = json.load(open(cpath, encoding="utf-8"))
             i, o, th = spend.page(raw, 0.0, live=False)
         else:
-            try:
-                raw, tries = call(a.model, key, png, system, a.max_tokens)
-            except CallFailed as e:
-                # попытки стоят денег даже там, где страница не получена
-                spend.fail(e.attempts)
-                raise
-            api_secs = time.time() - t0
-            i, o, th = spend.page(raw, api_secs, live=True, attempts=tries)
+            i = o = th = 0
+            # отказ фильтра — не ответ страницы: та же картинка со второй-третьей
+            # попытки приходит текстом (замер на проде 07.10), поэтому перевызываем
+            for try_no in range(FILTER_RETRIES):
+                t_call = time.time()
+                try:
+                    raw, tries = call(a.model, key, png, system, a.max_tokens)
+                except CallFailed as e:
+                    # попытки стоят денег даже там, где страница не получена
+                    spend.fail(e.attempts)
+                    raise
+                # у отказа тоже оплачены вход и thinking: списывать их со счёта нельзя
+                di, do, dth = spend.page(raw, time.time() - t_call, live=True, attempts=tries)
+                i, o, th = i + di, o + do, th + dth
+                if not filter_refused(raw):
+                    break
+                if try_no < FILTER_RETRIES - 1:
+                    print(f"  p{page:02d} фильтр {finish_reason(raw)} — перевызов "
+                          f"{try_no + 2}/{FILTER_RETRIES}", flush=True)
+                    time.sleep(3 * (try_no + 1))
         try:
             text = raw["candidates"][0]["content"]["parts"][0]["text"]
         except Exception:
+            if filter_refused(raw):
+                raise RuntimeError(f"p{page}: фильтр модели отбил страницу {FILTER_RETRIES} раз "
+                                   f"кряду (finishReason={finish_reason(raw)}). В кэш отказ не лёг: "
+                                   f"перезапуск прогона перевызовет страницу")
             raise RuntimeError(f"p{page}: no text part: {json.dumps(raw)[:300]}"
                                + ("" if cached else " (отказ фильтра в кэш не лёг — страница перевызовётся)"))
         if not cached:

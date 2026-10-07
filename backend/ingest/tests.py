@@ -146,19 +146,25 @@ class RunBookIngestCommandTest(TestCase):
         self.run = IngestRun.objects.create(name='книга', pdf_path=str(out / 'source.pdf'),
                                             subject=self.physics, language='ru', book='Книга')
 
-    def fake_steps(self, ok=True, price=(10.0, 60.0), money=3.5):
+    def fake_steps(self, ok=True, price=(10.0, 60.0), money=3.5, source_pages=None,
+                   pages=('p08', 'p09')):
         from unittest import mock
 
         def run(argv, **kw):
             class R:
                 returncode = 0 if ok else 1
             if 'ocr.py' in argv[1]:
-                for n in ('p08', 'p09'):
+                for n in pages:
                     (self.out / 'pages' / f'{n}.json').write_text('{"page": 8}', encoding='utf-8')
                 json.dump({'price_per_mtok': {'in': price[0], 'out': price[1]}, 'money_total': money},
                           (self.out / 'usage.json').open('w', encoding='utf-8'))
+            if 'index.py' in argv[1] and source_pages is not None:
+                # сколько страниц в источнике — считает index.py, а не распознавание
+                json.dump([{'page': p} for p in source_pages],
+                          (self.out / 'index.json').open('w', encoding='utf-8'))
             if 'tasks.py' in argv[1]:
-                json.dump({'run': 'книга', 'pages': 2, 'tasks': [unit('1'), unit('2')],
+                json.dump({'run': 'книга', 'pages': len(pages),
+                           'tasks': [unit(str(i + 1)) for i in range(len(pages))],
                            'answers': [], 'other': []},
                           (self.out / 'tasks.json').open('w', encoding='utf-8'))
             return R()
@@ -194,6 +200,25 @@ class RunBookIngestCommandTest(TestCase):
         self.run.refresh_from_db()
         self.assertIsNone(self.run.money)
 
+    def test_hole_in_the_book_is_named_but_the_run_still_lands(self):
+        """Фильтр отбил страницу навсегда: статус остаётся «готово» — остальное в
+        банке всё равно надо вычитывать, — но дырявая книга обязана быть названа."""
+        with self.fake_steps(source_pages=(8, 9, 10)):
+            call_command('run_book_ingest', self.run.pk)
+        self.run.refresh_from_db()
+        self.assertEqual(self.run.status, STATUS_DONE, self.run.error)
+        self.assertIn('с.10', self.run.error)
+        self.assertEqual(Question.objects.count(), 2)
+
+    def test_book_without_a_single_page_fails_instead_of_importing_nothing(self):
+        with self.fake_steps(source_pages=(8, 9), pages=()):
+            with self.assertRaises(SystemExit):
+                call_command('run_book_ingest', self.run.pk)
+        self.run.refresh_from_db()
+        self.assertEqual(self.run.status, STATUS_FAILED)
+        self.assertIn('ни одной страницы', self.run.error)
+        self.assertEqual(Question.objects.count(), 0)
+
     def test_run_without_key_dies_before_the_first_call(self):
         """Без ключа прогон не начнётся: иначе страница молча отвалится на первом
         же вызове, а тренер увидит «упало» без причины."""
@@ -203,3 +228,59 @@ class RunBookIngestCommandTest(TestCase):
         self.run.refresh_from_db()
         self.assertEqual(self.run.status, STATUS_FAILED)
         self.assertIn('GEMINI_KEY_FILE', self.run.error)
+
+
+class FilterRefusalTest(TestCase):
+    """Отказ safety-фильтра модели — это HTTP 200 без текста, и он случайен:
+    на проде одна и та же страница отбилась один раз и три раза подряд прошла.
+    Значит отказ надо перевызывать, а не считать ответом страницы."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent / 'pipeline'))
+        import ocr
+        cls.ocr = ocr
+
+    def test_empty_parts_count_as_refusal(self):
+        f = self.ocr.filter_refused
+        self.assertTrue(f({}))
+        self.assertTrue(f({'candidates': []}))
+        self.assertTrue(f({'candidates': [{'content': {}}]}))
+        self.assertTrue(f({'candidates': [{'content': {'parts': []}}]}))
+
+    def test_answer_with_text_is_not_refusal(self):
+        self.assertFalse(self.ocr.filter_refused(
+            {'candidates': [{'content': {'parts': [{'text': 'Задача 1'}]}}]}))
+
+    def test_reason_is_named_for_the_log(self):
+        self.assertEqual(self.ocr.finish_reason({'candidates': [{'finishReason': 'RECITATION'}]}),
+                         'RECITATION')
+        self.assertEqual(self.ocr.finish_reason({'candidates': []}), 'пустой ответ')
+
+
+class MissingPagesTest(TestCase):
+    """Прогон обязан сам сказать, что книга легла в банк с дыркой."""
+
+    def test_pages_absent_from_the_source_are_listed(self):
+        from .management.commands.run_book_ingest import missing_pages
+
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: shutil.rmtree(d, ignore_errors=True))
+        (d / 'pages').mkdir()
+        (d / 'pages' / 'p08.json').write_text('{}', encoding='utf-8')
+        (d / 'pages' / 'p09.json').write_text('{}', encoding='utf-8')
+        json.dump([{'page': 8}, {'page': 9}, {'page': 10}],
+                  (d / 'index.json').open('w', encoding='utf-8'))
+        self.assertEqual(missing_pages(str(d)), [10])
+
+    def test_no_index_means_no_claims(self):
+        """Без index.json утверждать нечего: выдумать список пропавших страниц
+        хуже, чем промолчать."""
+        from .management.commands.run_book_ingest import missing_pages
+
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: shutil.rmtree(d, ignore_errors=True))
+        self.assertEqual(missing_pages(str(d)), [])
