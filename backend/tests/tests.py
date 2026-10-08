@@ -166,6 +166,69 @@ class StartTestModesTest(TestCase):
         )
 
 
+class BankQuestionsNotIssuedTest(TestCase):
+    """Банк оцифровки — учебный материал, а не тестовый пул.
+
+    Открытая задача из книги не имеет вариантов: ученик не может ответить, а
+    `_score_question` начисляет 0. Тест без правильного варианта нечем проверить.
+    """
+
+    def setUp(self):
+        self.student = User.objects.create_user(
+            username='bank-student', password='password', role='student')
+        self.client = APIClient()
+        self.client.force_authenticate(self.student)
+        self.subject = Subject.objects.create(
+            name='Физика-банк', slug='physics-bank', is_visible=True,
+            question_count=2, time_limit=600,
+        )
+        self.topic = Topic.objects.create(name='Механика-банк', subject=self.subject)
+
+    def _open_bank(self):
+        return Question.objects.create(
+            text='Задача из Касаткиной', topic=self.topic,
+            question_type='open_answer', verification_status='verified',
+            source_type='book_scan', latex_answer='V=0{,}74\\ \\text{л}',
+        )
+
+    def _choice(self, with_key=True, verified=True):
+        q = Question.objects.create(
+            text='Тестовый вопрос', topic=self.topic,
+            question_type='single_choice',
+            verification_status='verified' if verified else 'draft',
+        )
+        if with_key:
+            Answer.objects.create(question=q, text='Верно', is_correct=True)
+        Answer.objects.create(question=q, text='Неверно', is_correct=False)
+        return q
+
+    def _start(self):
+        return self.client.post(
+            '/api/tests/start/', {'subject_id': self.subject.id}, format='json')
+
+    def test_open_answer_verified_is_not_issued_even_alone(self):
+        self._open_bank()
+        response = self._start()
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(TestSession.objects.count(), 0)
+
+    def test_open_answer_never_mixes_into_a_session(self):
+        bank = self._open_bank()
+        good = [self._choice() for _ in range(4)]
+        response = self._start()
+        self.assertEqual(response.status_code, 200)
+        ids = {q['id'] for q in response.data['questions']}
+        self.assertNotIn(bank.id, ids)
+        self.assertTrue(ids <= {g.id for g in good})
+
+    def test_choice_without_correct_option_is_not_issued(self):
+        keyless = self._choice(with_key=False)
+        self._open_bank()
+        response = self._start()
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(TestSessionQuestion.objects.filter(question=keyless).count(), 0)
+
+
 class MatchingScoreTest(TestCase):
     def test_matching_scores_only_exact_right_side(self):
         subject = Subject.objects.create(name='История', slug='history-test')

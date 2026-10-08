@@ -51,8 +51,13 @@ class OpponentsView(APIView):
 
 
 def _pick_duel_questions(user, subject_id=None, num=10):
-    """Набор вопросов для дуэли: без matching (медленный тип), с fallback."""
-    base = Question.objects.filter(topic__subject__is_visible=True).exclude(question_type='matching')
+    """Набор вопросов для дуэли: без matching (медленный тип), с fallback.
+
+    answerable() — тот же смысл, что и в тестах: открытый вопрос банка в дуэли дал бы
+    обоим по нулю, и побеждал бы тот, кто быстрее тыкал.
+    """
+    base = (Question.objects.filter(topic__subject__is_visible=True)
+            .exclude(question_type='matching').answerable())
     if subject_id:
         base = base.filter(topic__subject_id=subject_id)
     else:

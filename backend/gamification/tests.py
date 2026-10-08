@@ -114,6 +114,31 @@ class AchievementsTest(TestCase):
         self.assertIn('streak', response.data)
 
 
+class DuelPickTest(TestCase):
+    """Дуэль не набирает то, что нельзя ответить и проверить: открытую задачу банка
+    и тест без правильного варианта — иначе оба получают 0 и решает только скорость."""
+
+    def test_open_bank_rows_and_keyless_choices_are_skipped(self):
+        from .views import _pick_duel_questions
+
+        subject, topic, good = _make_subject_with_questions(name='Дуэль-отбор', slug='math-pick', n=6)
+        student = User.objects.create_user(username='picker', password='pass12345', role='student')
+        bank = Question.objects.create(
+            text='Задача из книги', topic=topic, question_type='open_answer',
+            verification_status='verified', source_type='book_scan',
+        )
+        keyless = Question.objects.create(
+            text='Тест без ключа', topic=topic, question_type='single_choice',
+            verification_status='verified',
+        )
+        Answer.objects.create(question=keyless, text='Вариант', is_correct=False)
+
+        picked = [q.id for q in _pick_duel_questions(student, subject.id, num=6)]
+        self.assertNotIn(bank.id, picked)
+        self.assertNotIn(keyless.id, picked)
+        self.assertEqual(set(picked), {q.id for q in good})
+
+
 class DuelFlowTest(TestCase):
     def setUp(self):
         self.challenger = User.objects.create_user(username='ch', password='pass12345', role='student')

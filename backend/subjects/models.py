@@ -5,6 +5,23 @@ import re
 FIGURE_LINE = re.compile(r"^!\[[^\]]*\]\(([^)]+)\)\s*$")
 MATH_NOISE = re.compile(r"\*\*|\$|\\tag\{[^}]*\}")
 
+# Типы, на которые ученик может ответить выбором. Открытый ответ варианта не имеет.
+CHOICE_TYPES = ('single_choice', 'multiple_choice', 'matching')
+
+
+class QuestionQuerySet(models.QuerySet):
+    def answerable(self):
+        """Вопросы, которые вообще можно отдать ученику в тест или дуэль.
+
+        Открытая задача из банка оцифровки не имеет вариантов: ответить нечем,
+        а `_score_question` за любой тип вне CHOICE_TYPES начисляет 0. Молча
+        набрать их в сессию — значит отнять у ученика баллы за то, что он их не терял.
+        Второй признак — хоть один правильный вариант: тест без ключа проверять нечем.
+        """
+        return self.filter(question_type__in=CHOICE_TYPES).filter(
+            id__in=Answer.objects.filter(is_correct=True).values('question_id'),
+        )
+
 
 def plain_from_latex(latex):
     """Условие по-человечески из Markdown+LaTeX.
@@ -172,6 +189,8 @@ class Question(models.Model):
     # Спорные знаки распознавания: [{char, page, line, why}]. Пока пусто — значит
     # модель не ставила под вопрос ни один знак, а не то что вопрос проверен.
     uncertain = models.JSONField(default=list, blank=True, verbose_name='Спорные знаки')
+
+    objects = QuestionQuerySet.as_manager()
 
     class Meta:
         verbose_name = 'Вопрос'

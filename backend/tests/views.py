@@ -114,7 +114,11 @@ RUSH_TIME_LIMIT = 300  # 5 минут
 
 
 def _pick_questions(base_qs, num_questions):
-    """Предпочитаем проверенные вопросы; если их мало — добираем остальные."""
+    """Предпочитаем проверенные вопросы; если их мало — добираем остальные.
+
+    Открытые задачи банка оцифровки (401 строка) отсядаются: см. QuestionQuerySet.answerable.
+    """
+    base_qs = base_qs.answerable()
     questions = list(base_qs.filter(verification_status='verified').order_by('?')[:num_questions])
     if len(questions) < num_questions:
         extra = num_questions - len(questions)
@@ -257,12 +261,12 @@ class StartEntView(APIView):
             qs = list(Question.objects.filter(
                 topic__subject__slug=cfg['subject_slug'],
                 verification_status='verified',
-            ).exclude(id__in=selected_question_ids).order_by('?')[:cfg['count']])
+            ).answerable().exclude(id__in=selected_question_ids).order_by('?')[:cfg['count']])
             if len(qs) < cfg['count']:
                 extra = cfg['count'] - len(qs)
                 extra_qs = Question.objects.filter(
                     topic__subject__slug=cfg['subject_slug'],
-                ).exclude(id__in=selected_question_ids | {q.id for q in qs}).order_by('?')[:extra]
+                ).answerable().exclude(id__in=selected_question_ids | {q.id for q in qs}).order_by('?')[:extra]
                 qs.extend(extra_qs)
             selected[sect] = qs
             selected_question_ids.update(q.id for q in qs)
@@ -275,12 +279,12 @@ class StartEntView(APIView):
             qs = list(Question.objects.filter(
                 topic__subject_id=subj_id,
                 verification_status='verified',
-            ).exclude(id__in=selected_question_ids).order_by('?')[:40])
+            ).answerable().exclude(id__in=selected_question_ids).order_by('?')[:40])
             if len(qs) < 40:
                 extra = 40 - len(qs)
                 extra_qs = Question.objects.filter(
                     topic__subject_id=subj_id,
-                ).exclude(id__in=selected_question_ids | {q.id for q in qs}).order_by('?')[:extra]
+                ).answerable().exclude(id__in=selected_question_ids | {q.id for q in qs}).order_by('?')[:extra]
                 qs.extend(extra_qs)
             selected[sect] = qs
             selected_question_ids.update(q.id for q in qs)
