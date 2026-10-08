@@ -9,10 +9,12 @@
 """
 import io
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
@@ -71,6 +73,36 @@ def spent(out):
     return round(float(u.get("money_total") or 0.0), 4)
 
 
+def publish_scans(out, name):
+    """Распознанную страницу — под тот путь, по которому её просит экран вычитки.
+
+    Конвейер кладёт превью рядом с текстом страницы (ingest-runs/<прогон>/scan/), а
+    сериализатор банка собирает ссылку на источник из MEDIA_URL: без перекладки
+    книга, загнанная через платформу, показывала бы вычитчику битую картинку вместо
+    бланка. Имя берём из pages/*.json, а не из названия файла: страница могла лечь
+    в файл с другим номером, а URL строится по номеру страницы.
+    """
+    dst = Path(settings.MEDIA_ROOT) / "scans" / name
+    copied = 0
+    for f in sorted((Path(out) / "pages").glob("*.json")):
+        try:
+            p = json.loads(f.read_text(encoding="utf-8"))
+            rel, num = p.get("scan"), int(p["page"])
+        except (ValueError, KeyError, TypeError):
+            continue
+        src = Path(out) / rel if rel else None
+        if not src or not src.is_file():
+            continue
+        to = dst / ("p%02d.png" % num)
+        # перегон того же прогона не должен переписывать то, что уже на месте
+        if to.is_file() and to.stat().st_size == src.stat().st_size:
+            continue
+        dst.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, to)
+        copied += 1
+    return copied
+
+
 class Command(BaseCommand):
     help = "Оцифровать загруженную книгу и импортировать её единицы в банк вопросов."
 
@@ -122,6 +154,9 @@ class Command(BaseCommand):
                          f"обрыв; книга легла в банк без них")
             run.save(update_fields=["error"])
             self.log(run, f"!!! {run.error}")
+
+        shots = publish_scans(out, run.name)
+        self.log(run, f"страниц источника разложено в media/scans/{run.name}: {shots}")
 
         run.step = "импорт в банк"
         run.save(update_fields=["step"])

@@ -513,3 +513,62 @@ class MissingPagesTest(TestCase):
         d = Path(tempfile.mkdtemp())
         self.addCleanup(lambda: shutil.rmtree(d, ignore_errors=True))
         self.assertEqual(missing_pages(str(d)), [])
+
+
+class ScanPublishedForReadingTest(TestCase):
+    """Страница источника обязана лежать там, где её просит экран вычитки.
+
+    Ссылку строит сериализатор банка: MEDIA_URL + scans/<прогон>/pNN.png. Конвейер
+    же превью кладёт рядом с распознанным текстом — без перекладки новая книга
+    показывала бы вычитчику битую картинку вместо бланка.
+    """
+
+    def setUp(self):
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: shutil.rmtree(self.root, ignore_errors=True))
+        self.out = self.root / 'run'
+        self.media = self.root / 'media'
+        (self.out / 'pages').mkdir(parents=True)
+        (self.out / 'scan').mkdir(parents=True)
+        self.media.mkdir()
+
+    def page(self, num, rel=None, blob=b'PNG'):
+        self.out.joinpath('pages', 'p%02d.json' % num).write_text(
+            json.dumps({'page': num, 'scan': rel}), encoding='utf-8')
+        if rel and blob is not None:
+            self.out.joinpath(rel).write_bytes(blob)
+
+    def publish(self, name='out_t'):
+        from .management.commands.run_book_ingest import publish_scans
+        with self.settings(MEDIA_ROOT=str(self.media)):
+            return publish_scans(str(self.out), name)
+
+    def test_file_is_named_by_page_number_not_by_the_raster(self):
+        """Превью страницы 3 в файле p07.png — вычитке всё равно нужна страница 3."""
+        self.page(3, 'scan/p07.png', b'PNG-3')
+        self.assertEqual(self.publish(), 1)
+        f = self.media / 'scans' / 'out_t' / 'p03.png'
+        self.assertTrue(f.is_file())
+        self.assertEqual(f.read_bytes(), b'PNG-3')
+
+    def test_second_pass_of_the_same_run_copies_nothing(self):
+        """Перегон той же книги не должен заново писать то, что уже на месте."""
+        self.page(1, 'scan/p01.png')
+        self.assertEqual(self.publish(), 1)
+        self.assertEqual(self.publish(), 0)
+
+    def test_republished_when_the_page_was_rewritten(self):
+        self.page(1, 'scan/p01.png', b'PNG')
+        self.publish()
+        self.page(1, 'scan/p01.png', b'PNG-INAYA-ZAPIS')
+        self.assertEqual(self.publish(), 1)
+        self.assertEqual((self.media / 'scans' / 'out_t' / 'p01.png').read_bytes(),
+                         b'PNG-INAYA-ZAPIS')
+
+    def test_page_without_raster_is_skipped(self):
+        """Страницу отбил фильтр модели — выдумывать для неё картинку нечем,
+        и молча положить чужую хуже, чем оставить пустое место."""
+        self.page(2, None)
+        self.page(3, 'scan/p03.png', None)
+        self.assertEqual(self.publish(), 0)
+        self.assertFalse((self.media / 'scans' / 'out_t').exists())
