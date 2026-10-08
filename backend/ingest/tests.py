@@ -491,6 +491,96 @@ class PrintedLevelLetterTest(TestCase):
         self.assertEqual(sum(acc.values()), len(md) + 1)
 
 
+class RunningHeadTest(TestCase):
+    """Сборник печатает имя главы сверху каждой страницы, и оцифровка отдаёт его первой
+    строкой — то решёткой, то без неё, то обрезав до «ГЛАВА 11».
+
+    Прогон Сканави (22 стр / 239 ед) лег без этой правки так: 4 решения, перенесённые
+    на следующую страницу, оборвались посреди фразы (ветка SECT сбрасывала cur), а 2
+    условия банка закончились именем главы (та же строка без решётки прилипла к телу
+    предыдущей задачи)."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent / 'pipeline'))
+        import tasks
+        cls.tasks = tasks
+
+    def parse(self, *markdown):
+        t = self.tasks
+        pages = [{'page': n + 1, 'markdown': md} for n, md in enumerate(markdown)]
+        by_page = {p['page']: p for p in pages}
+        units, answers, other, acc = t.walk(pages)
+        for u in units:
+            t.entities(u, by_page)
+        t.share_figures(units, by_page)
+        t.attach(units, answers, acc)
+        return ({(u['pages'][0], u['num']): u for u in units}, other, acc)
+
+    def test_head_hashed_is_not_a_task_boundary(self):
+        got, other, _ = self.parse(
+            '# ГЛАВА 11. Задачи по стереометрии\n\n**11.034.** Найдите объем призмы,\n',
+            '# ГЛАВА 11. Задачи по стереометрии\n\nу которой диагональ равна $d$.\n')
+        self.assertEqual(len(got), 1)
+        self.assertEqual(got[(1, '11.034')]['pages'], [1, 2])
+        self.assertIn('диагональ равна $d$', got[(1, '11.034')]['markdown'])
+        self.assertNotIn('межстраничная шапка', [o.get('note') for o in other])
+
+    def test_head_without_hash_stays_out_of_the_task_text(self):
+        got, other, _ = self.parse(
+            '# ГЛАВА 11. Задачи по стереометрии\n\n**11.035.** Дано основание $abc$.\n',
+            'ГЛАВА 11. Задачи по стереометрии\n\nВысота пирамиды равна $h$. Найдите объем.\n')
+        md = got[(1, '11.035')]['markdown']
+        self.assertNotIn('ГЛАВА 11', md)
+        self.assertIn('Найдите объем', md)
+        self.assertIn('межстраничная шапка', [o.get('note') for o in other])
+
+    def test_head_still_gives_the_units_their_scope(self):
+        """Имя главы в стеке остаётся: на страницах внутри главы без заголовков это
+        единственная подсказка области, а темы банка правит человек, не парсер."""
+        got, _, _ = self.parse(
+            '# ГЛАВА 11. Задачи по стереометрии\n\n**11.036.** Стороны 10 и 8.\n',
+            '## ГЛАВА 11. Задачи по стереометрии\n\n**11.037.** Диагональ 6.\n')
+        self.assertEqual({u['scope'] for u in got.values()},
+                         {'ГЛАВА 11. Задачи по стереометрии'})
+
+    def test_truncated_head_folds_into_the_full_one(self):
+        """Модель докупила или срезала хвост имени главы — это та же шапка, иначе
+        одна и та же страница дала бы два разных имени области."""
+        got, _, _ = self.parse(
+            '# ГЛАВА 11. Задачи по стереометрии\n\n**11.038.** Основание — параллелограмм\n',
+            '# ГЛАВА 11\n\nсо сторонами 10 и 8, а диагональ равна 6.\n',
+            '# ГЛАВА 11. Задачи по стереометрии\n\n**11.039.** Сторона 6.\n',
+            '# ГЛАВА 11. Задачи по стереометрии\n\n**11.040.** Высота 2.\n')
+        self.assertEqual(len(got), 3)
+        self.assertEqual(got[(1, '11.038')]['pages'], [1, 2])
+        self.assertIn('диагональ равна 6', got[(1, '11.038')]['markdown'])
+
+    def test_heading_of_two_pages_out_of_six_is_not_a_head(self):
+        """Заголовок раздела, который просто попал на верх листа, — структура, а не
+        мебель: по нему задачи находят свою область и свои ответы. Шапкой считаем то,
+        что повторяется на большинстве страниц."""
+        got, other, _ = self.parse(
+            '# ГЛАВА I\n\n**1)** $2 + 2$\n',
+            '## СРЕДНИЙ УРОВЕНЬ\n\n**2)** $3 + 3$\n',
+            '## СРЕДНИЙ УРОВЕНЬ\n\n**3)** $4 + 4$\n',
+            'Вычислите значения выражений.\n\n**4)** $5 + 5$\n',
+            '# ГЛАВА II\n\n**5)** $6 + 6$\n',
+            '### ОТВЕТЫ:\n\n1) 4\n\n2) 6\n\n3) 8\n\n4) 10\n\n5) 12\n')
+        self.assertEqual(got[(2, '2')]['scope'], 'СРЕДНИЙ УРОВЕНЬ')
+        self.assertEqual(got[(2, '2')]['answer'], '6')
+        self.assertNotIn('межстраничная шапка', [o.get('note') for o in other])
+
+    def test_balance_of_signs_survives_the_head_branch(self):
+        p1 = '# ГЛАВА 11. Задачи по стереометрии\n\n**11.040.** Дано $a=1$.\n'
+        p2 = 'ГЛАВА 11. Задачи по стереометрии\n\nНайти $V$.\n'
+        _, _, acc = self.parse(p1, p2)
+        self.assertEqual(sum(acc.values()), len(p1) + 1 + len(p2) + 1)
+        self.assertEqual(acc["межстраничная шапка"], len('ГЛАВА 11. Задачи по стереометрии') + 1)
+
+
 class MissingPagesTest(TestCase):
     """Прогон обязан сам сказать, что книга легла в банк с дыркой."""
     def test_pages_absent_from_the_source_are_listed(self):

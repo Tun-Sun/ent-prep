@@ -282,12 +282,54 @@ def page_footers(pages):
     return {pg: i for pg, (i, off) in cand.items() if agree[off] >= 2}
 
 
+# Межстраничная шапка набора: имя части и главы печатают сверху каждой страницы, и
+# модель отдаёт её первой строкой — то решёткой, то без неё, то обрезав до «ГЛАВА 11».
+HASH = re.compile(r"^\s*#{1,4}\s+")
+
+
+def head_key(line):
+    """Норма первой строки: решётка, курсив и регистр — игра наборщика, а не две
+    разные шапки."""
+    return re.sub(r"\s+", " ", clean(HASH.sub("", line))).strip().upper()
+
+
+def page_heads(pages):
+    """{страница: индекс}, если её первая содержательная строка — шапка набора.
+    Верим согласованности, как номеру страницы: то же имя на верху двух и более
+    страниц. Обрезок («ГЛАВА 11») складываем с полным именем, иначе одна шапка дала
+    бы две. Держимся большинства страниц — заголовок раздела, который просто попал на
+    верх листа, шапкой быть не может, а, убрав его из стека, мы потеряли бы область
+    всех задач под ним. Шапку «ОТВЕТЫ» не трогаем: по ней ветки узнают страницу
+    ответов, и без неё список значений свернулся бы задачами."""
+    cand = {}
+    for p in pages:
+        lines = (p.get("markdown") or "").split("\n")
+        first = next((i for i, l in enumerate(lines) if l.strip()), None)
+        if first is not None and head_key(lines[first]):
+            cand[p["page"]] = (first, head_key(lines[first]))
+    if len(cand) < 2:
+        return {}
+    seen = collections.Counter(k for _, k in cand.values())
+    rep = {k for k, n in seen.items() if n >= 2 and not ANS_HEAD.search(k)}
+    if sum(seen[k] for k in rep) * 2 < len(cand):
+        return {}
+
+    def is_head(k):
+        if k in rep:
+            return True
+        return len(k) >= 4 and any(o.startswith(k) and not re.match(r"\w", o[len(k):])
+                                   for o in rep - {k})
+
+    return {pg: i for pg, (i, k) in cand.items() if is_head(k)}
+
+
 def walk(pages):
     stack, tasks, answers, other, cur = [], [], {}, [], None
     cont = {}                       # (блок, слово, префикс) -> последний номер: отбраковка обманок
     worded = set()                  # блоки, где единицы размечены словом: там голый номер — пункт решения
     acc = collections.Counter()     # куда ушёл каждый знак markdown, чтобы баланс сходился
     foot = page_footers(pages)
+    heads = page_heads(pages)
 
     def take(rest, line, bucket):
         """Знаки строки делятся между телом и маркером: полного учёта без этого нет."""
@@ -374,6 +416,16 @@ def walk(pages):
                 else:
                     push_head(line)
                     acc["заголовки"] += len(line) + 1
+                    # Шапка набора — мебель листа, а не граница: под ней продолжается
+                    # то же решение, что и на предыдущей странице. Без этой уступки
+                    # сброс cur обрывал перенесённое решение, а его хвост уезжал в
+                    # «вне задач» (в Сканави так оборвались 4 задачи). В стек имя
+                    # главы уходит по-прежнему: на страницах внутри главы без
+                    # заголовков это единственная подсказка области, а темы банка
+                    # правит человек, не парсер.
+                    if heads.get(page) == i:
+                        blank, i = True, i + 1
+                        continue
                     cur, blank, i = None, True, i + 1
                     continue
 
@@ -449,6 +501,15 @@ def walk(pages):
                     cur["loc"].append([page, i])
                 take(rest, line, "задачи")
                 blank, i = False, i + 1
+                continue
+
+            if heads.get(page) == i:
+                # Та же шапка, набранная без решётки: ветке SECT она не видна и
+                # раньше доставалась телу предыдущей задачи — в Сканави два условия
+                # банка кончались именем главы.
+                other.append({"page": page, "markdown": line, "note": "межстраничная шапка"})
+                acc["межстраничная шапка"] += len(line) + 1
+                blank, i = True, i + 1
                 continue
 
             if cur is None:
