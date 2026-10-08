@@ -409,6 +409,88 @@ class NumberingRestartByBlockTest(TestCase):
         self.assertEqual(sum(acc.values()), len(md) + 1)
 
 
+class PrintedLevelLetterTest(TestCase):
+    """Буква напечатанного уровня — своё поле единицы, а не часть темы и не счёт.
+
+    В сборниках ЕНТ под «A» дают базовый уровень, под «B» — повышенный; по этой букве
+    банк потом собирает задачи по сложности. В живом прогоне Рустюмовой уровни стоят
+    внутри одного блока и по-разному набраны: жирной строкой без решётки («**B**») и
+    решёткой («### В»), а модель на 300 dpi пишет одну и ту же букву то латиницей,
+    то кириллическим гомоглифом. Без этого поля сложность книги в банк не доезжала."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent / 'pipeline'))
+        import tasks
+        cls.tasks = tasks
+
+    def parse(self, *markdown):
+        t = self.tasks
+        pages = [{'page': n + 1, 'markdown': md} for n, md in enumerate(markdown)]
+        by_page = {p['page']: p for p in pages}
+        units, answers, other, acc = t.walk(pages)
+        for u in units:
+            t.entities(u, by_page)
+        t.share_figures(units, by_page)
+        t.attach(units, answers, acc)
+        return {u['num']: u for u in units}, acc
+
+    def test_bold_letter_without_hash_is_a_level(self):
+        """«**B**» без решётки — сосед буквы «### B»: иначе строка ушла бы в тело
+        предыдущей задачи, и повышенный уровень начался бы с её условия."""
+        got, _ = self.parse(
+            '# ГЛАВА I\n\n**БЛОК 2. Найдите значение выражения:**\n\n**А**\n\n'
+            '**1)** $2{,}5 \\cdot 4$\n\n'
+            '**B**\n\n**2)** $\\frac{4}{3-\\sqrt{3}}$\n\n'
+            '### ОТВЕТЫ:\n\n| 1) 10 | 2) 4,6 |\n')
+        self.assertEqual(got['1']['level'], 'A')
+        self.assertEqual(got['2']['level'], 'B')
+        # уровень не разрывает блок: тема (scope) и счётный путь (run) у обоих
+        # уровней одного блока остаются общими — по ним ищется ответ блока
+        self.assertEqual(got['2']['scope'], got['1']['scope'])
+        self.assertEqual(got['2']['run'], got['1']['run'])
+        self.assertEqual(got['1']['scope'], 'БЛОК 2. Найдите значение выражения:')
+        self.assertEqual(got['2']['answer'], '4,6')
+
+    def test_homoglyph_and_hash_forms_fold_into_one_letter(self):
+        """Кириллическая «В» и латинская «B» — одна буква одного уровня: без свёртки
+        одна страница дала бы два разных уровня и сложность разъехалась бы по строчке."""
+        got, _ = self.parse(
+            '# ГЛАВА I\n\n**БЛОК 1. Вычислите:**\n\n### В\n\n'
+            '**1)** $5{,}4 : 0{,}6$\n\n**А**\n\n**2)** $3{,}7 - 1{,}2$\n\n'
+            '### ОТВЕТЫ:\n\n1) 9\n\n2) 2,5\n')
+        self.assertEqual(got['1']['level'], 'B')
+        self.assertEqual(got['2']['level'], 'A')
+
+    def test_task_above_any_letter_has_no_level(self):
+        """Книга без уровней (Касаткина, теория): поле пустое, а не угаданное —
+        иначе импорт поставил бы сложность там, где её никто не печатал."""
+        got, _ = self.parse(
+            '# ГЛАВА I\n\n## §1. СТЕПЕНИ\n\n**1)** $2^{5}$\n')
+        self.assertEqual(got['1']['level'], '')
+
+    def test_letters_across_pages_keep_the_block_numbering(self):
+        """Буква уровня на новой странице не перебивает счёт: блок нумерует задачи
+        сквозной лесенкой 1..30, и «B» посередине — ступень, а не новый раздел."""
+        got, _ = self.parse(
+            '# ГЛАВА I\n\n**БЛОК 1. Вычислите:**\n\n**A**\n\n'
+            '**1)** $2 + 2$\n\n**2)** $3 + 3$\n',
+            '**B**\n\n**3)** $4 + 4$\n\n'
+            '### ОТВЕТЫ:\n\n1) 4\n\n2) 6\n\n3) 8\n')
+        self.assertEqual(sorted(got), ['1', '2', '3'])
+        self.assertEqual([got[n]['level'] for n in ('1', '2', '3')], ['A', 'A', 'B'])
+        self.assertEqual(got['3']['answer'], '8')
+
+    def test_balance_of_signs_survives_the_level_branch(self):
+        md = ('# ГЛАВА I\n\n**БЛОК 1. Вычислите:**\n\n**A**\n\n**1)** $2{,}5 + 1$\n\n'
+              '### В\n\n**2)** $7 : 2$\n\n### ОТВЕТЫ:\n\n| 1) 3,5 | 2) 3,5 |\n')
+        _, acc = self.parse(md)
+        self.assertEqual(sum(acc.values()), len(md) + 1)
+
+
 class MissingPagesTest(TestCase):
     """Прогон обязан сам сказать, что книга легла в банк с дыркой."""
     def test_pages_absent_from_the_source_are_listed(self):

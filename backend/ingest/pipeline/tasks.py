@@ -160,6 +160,21 @@ def block_head(line):
     return clean(re.sub(r"^#{1,4}\s+|</?u>", "", s))
 
 
+# Буква уровня, набранная только жирным, без решётки: «**A**», «**А**».
+BOLD_LETTER = re.compile(r"^\*{1,2}\s*(\S.*?)\s*\*{1,2}$")
+
+
+def level_head(line):
+    """Буква напечатанного уровня жирным. Решёточную («### В») делает заголовком
+    ветка SECT, а эта строка без решётки ушла бы в тело предыдущей единицы.
+    Уровень нумерацию не перебивает: в сборнике счёт сквозной на весь блок."""
+    m = BOLD_LETTER.match(line.strip())
+    if not m:
+        return None
+    name = clean(m.group(1))
+    return name.upper() if VARIANT.fullmatch(name) else None
+
+
 def unit_scope(stack):
     """Область единицы — последний заголовок, который не буква варианта. Тема строки в
     банке строится по области, и «Рустюмова 2013 · A» вместо «· БЛОК 1. Вычислите:» —
@@ -176,6 +191,21 @@ def run_of(stack):
     под заголовком «ОТВЕТЫ», и связывает их именно этот путь."""
     return " / ".join(n for _, n in stack
                       if not ANS_HEAD.search(n) and not VARIANT.fullmatch(n))
+
+
+# Буква напечатанного уровня: в сборниках ЕНТ под «А» дают базовый, под «В» — повышенный.
+# Кириллические гомоглифы сводим к латинице тем же набором, что и варианты ответа
+# (OPTION_CYR): на 300 dpi модель пишет «B» и «В» для одного и того же заголовка, и без
+# этого одна страница дала бы два разных уровня.
+LEVEL_CYR = str.maketrans({"А": "A", "В": "B", "Е": "E", "К": "K"})
+
+
+def level_of(stack):
+    """Верхняя буква-заголовок над единицей, пустая строка — уровня в книге нет."""
+    for _, name in reversed(stack):
+        if VARIANT.fullmatch(name):
+            return name.upper().translate(LEVEL_CYR)
+    return ""
 
 
 def norm(n):
@@ -322,6 +352,17 @@ def walk(pages):
                 cur, blank, i = None, True, i + 1
                 continue
 
+            lname = level_head(line) if blank else None
+            if lname:
+                # Уровень — сосед буквы «### A», просто набранной жирным без решётки:
+                # тот же третий уровень, счёт задач не перебивает, в тему не лезет.
+                while stack and stack[-1][0] >= 3:
+                    stack.pop()
+                stack.append((3, lname))
+                acc["заголовки"] += len(line) + 1
+                cur, blank, i = None, True, i + 1
+                continue
+
             if SECT.match(line):
                 inner = SECT.match(line).group(2).strip()
                 mh = WORD.match(inner) if blank else None
@@ -427,6 +468,7 @@ def new_task(page, num, kind, stack, word=""):
     # loc — координаты тела в строках страницы: по ним стенд и правит конкретную задачу
     return {"num": num, "word": word or "", "kind": kind,
             "scope": unit_scope(stack), "block": block_of(stack), "run": run_of(stack),
+            "level": level_of(stack),
             "pages": [page], "lines": [], "loc": []}
 
 
@@ -444,7 +486,7 @@ def theory_pages(pages):
         head = next((SECT.match(l) for _, l in body), None)
         scope = clean(head.group(2)) if head else "теория"
         out.append({"num": str(p["page"]), "word": "Теория", "kind": "theory",
-                    "scope": scope, "block": scope, "run": scope,
+                    "scope": scope, "block": scope, "run": scope, "level": "",
                     "pages": [p["page"]],
                     "lines": [l for _, l in body], "loc": [[p["page"], i] for i, _ in body]})
     return out

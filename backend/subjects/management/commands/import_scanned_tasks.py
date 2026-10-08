@@ -19,6 +19,11 @@ external_id = "<прогон>:p<страница>:<слово><номер>:<те
 Отдельно стоит пакетная приёмка (provenance.accepted_by): она решена про статус,
 а не про текст, поэтому перегон оставляет «проверено», но условие обновляет —
 иначе принятая строка навсегда застыла бы в текущем состоянии оцифровки.
+
+Из книги в паспорт строки едут и её печатные метки: номер задачи (provenance.num)
+и буква уровня (provenance.level). По ним банк сверяют с разворотом, а по букве
+уровня ещё и проставляют сложность (A → Лёгкий, B → Сложный) — но только там, где
+её не решал человек: ни ручная правка, ни прежняя разметка не перемалываются.
 """
 import json
 from pathlib import Path
@@ -31,6 +36,12 @@ from subjects.models import Answer, Question, Subject, Topic, plain_from_latex
 
 def topic_name(book, scope):
     return f"{book} · {scope}" if book else scope
+
+
+# Буква напечатанного уровня в сборниках ЕНТ: под «A» дают базовый, под «B» —
+# повышенный. Парсер уже свёл кириллические гомоглифы к латинице, поэтому здесь
+# два символа, а не четыре. Перевод «А → Лёгкий, В → Сложный» решил владелец банка.
+LEVEL_TO_DIFFICULTY = {"A": "easy", "B": "hard"}
 
 
 def unit_format(t):
@@ -94,6 +105,7 @@ class Command(BaseCommand):
 
         made = upd = drawn = took = kept_edited = kept_accepted = orphaned = noted = relaid = 0
         opts_written = 0
+        levelled = 0
         tnew = len(scopes - known)
         for t in units:
             page = (t.get("pages") or [0])[0]
@@ -128,6 +140,13 @@ class Command(BaseCommand):
             # и так берётся из базы, там приёмка просто переезжает вместе с меткой).
             bank_accepted = bool((old.provenance or {}).get("accepted_by")) if old else False
             kept_accepted += bank_accepted
+            # Сложность из напечатанной буквы уровня. Ставим только там, где её ещё
+            # никто не решал: difficulty_source — след любого решённого уровня (этим
+            # импортом или командой разметки), а ручная правка — слово человека.
+            level = (t.get("level") or "").upper()
+            diff = LEVEL_TO_DIFFICULTY.get(level)
+            premarked = bool((old.provenance or {}).get("difficulty_source")) if old else False
+            sets_level = bool(diff) and not edited and not premarked
             if opt["dry_run"]:
                 # dry-run только считает: ни тему, ни вопрос, ни файл картинки не трогаем
                 made += old is None
@@ -140,6 +159,7 @@ class Command(BaseCommand):
                     drawn += 1
                 if is_test and not edited:
                     opts_written += len(opts)
+                levelled += sets_level
                 continue
             topic, _ = Topic.objects.get_or_create(subject=subject, name=topic_name(book, scope))
             defaults = {
@@ -153,6 +173,10 @@ class Command(BaseCommand):
                 "uncertain": t.get("uncertain") or [],
                 "provenance": {
                     "run": name, "page": page, "unit": t.get("word") or "задача",
+                    # напечатанный номер и буква уровня: по номеру строку и сверяют с
+                    # книгой («это задача 12 блока 2»), а в банке её раньше не было видно —
+                    # номер жил только внутри external_id, который никто не показывает
+                    "num": t.get("num") or "", "level": level,
                     "kind": t.get("kind"), "scope": t.get("scope"),
                     "book": book, "format": unit_format(t),
                     "pages": t.get("pages"), "loc": t.get("spans"),
@@ -172,6 +196,12 @@ class Command(BaseCommand):
             # «Средний» становилось неразличимым от «Средний, потому что никто не трогал».
             if old is not None and (old.provenance or {}).get("difficulty_source"):
                 defaults["provenance"]["difficulty_source"] = old.provenance["difficulty_source"]
+            if sets_level:
+                # дефолт «Средний» снят книгой: строка стоит на той ступени, которую
+                # напечатал составитель, и паспорт говорит, откуда это взялось
+                defaults["difficulty"] = diff
+                defaults["provenance"]["difficulty_source"] = f"буква уровня из книги: {level}"
+                levelled += 1
             if edited:
                 # тему тоже бережём: если тренер перенёс задачу в свою тему
                 # («это не книга, а отрывок»), перегон не должен вернуть её назад
@@ -229,8 +259,10 @@ class Command(BaseCommand):
             f"картинок снято по чужому кадру {orphaned}, переложено кадров {relaid}, "
             f"предмет «{subject.name}», язык {opt['language']}, принято человеком {took} из {len(review)} записей приёмки, "
             f"со заметкой со скана {noted}, ручных правок сохранено {kept_edited}, "
-            f"принято пакетом в банке {kept_accepted}"
+            f"принято пакетом в банке {kept_accepted}, сложности по букве уровня {levelled}"
             + (" — dry-run, в базу не писано" if opt["dry_run"] else "")))
         if not opt["dry_run"]:
-            self.stdout.write("сложность у всех проставлена дефолтом «Средний»: в оцифровке её нет, "
-                              "разметку сделаем отдельно — не принимать её за размеченную")
+            self.stdout.write(self.style.SUCCESS(
+                f"по букве уровня из книги сложность проставлена {levelled} строкам "
+                "(A → Лёгкий, B → Сложный), остальным — дефолт «Средний»: в оцифровке "
+                "своей сложности нет, и не принимать этот «Средний» за размеченный"))
