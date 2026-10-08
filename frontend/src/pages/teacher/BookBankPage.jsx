@@ -16,6 +16,56 @@ const chip = (bg, color) => ({
   padding: '2px 8px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: bg, color,
 })
 
+// Книжный блок печатает ответы не под задачей, а списком в своём конце, и порядок в
+// этом списке — по напечатанному номеру: «10» идёт за «9», а не за «1», как по буквам.
+const numKey = (num) => String(num || '').split(/\D+/).filter(Boolean).map(Number)
+const inBookOrder = (a, b) => {
+  const x = numKey((a.provenance || {}).num)
+  const y = numKey((b.provenance || {}).num)
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (x[i] === undefined ? 1e9 : x[i]) - (y[i] === undefined ? 1e9 : y[i])
+    if (d) return d
+  }
+  return a.id - b.id
+}
+
+// Доска ответов темы: те же данные, что лежат в строках (их правят в окне «Править»),
+// но собранные так, как их напечатал составитель — под последним условием блока.
+function AnswersBoard({ items }) {
+  // Теоретический лист — не задача с ответом: его «номер» в паспорте это страница,
+  // и в доске он выглядел бы как «12) —» там, где книга ничего не обещала.
+  const tasks = items.filter(q => (q.provenance || {}).format !== 'теория')
+  const sorted = [...tasks].sort(inBookOrder)
+  const missed = sorted.filter(q => !(q.latex_answer || '').trim()).length
+  if (!sorted.length) return null
+  return (
+    <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'rgba(245,158,11,0.05)' }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8 }}>
+        {/* без этой строки пустой ответ читался бы как потеря при оцифровке, хотя в
+            источнике ответа нет — карточка задачи больше его не показывает */}
+        ОТВЕТЫ · {sorted.length} строк{missed ? ` · без ответа ${missed}` : ''}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 18px', fontSize: 13 }}>
+        {sorted.map(q => {
+          const pr = q.provenance || {}
+          const ans = (q.latex_answer || '').trim()
+          return (
+            <span key={q.id} style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+              <b style={{ color: '#92400E' }}>{pr.num ? `${pr.num})` : '—)'}</b>
+              {pr.level && <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{pr.level}</span>}
+              {ans
+                ? <FormattedText text={ans} markdown />
+                : <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                    {pr.answer_note || 'в источнике ответа нет'}
+                  </span>}
+            </span>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 const label = { fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }
 const field = {
   width: '100%', borderRadius: 10, border: '1px solid var(--border)', padding: 10,
@@ -393,6 +443,17 @@ export default function BookBankPage() {
     fontSize: 13, background: '#fff', cursor: 'pointer', maxWidth: 260,
   }
 
+  // Доска ответов печатается под последним условием темы, поэтому строки страницы
+  // сгруппированы по темам: порядок выдачи (id) сам не знает, где блок кончается.
+  // Одна тема на двух страницах выдачи даст свою доску на каждой — она собирает то,
+  // что на этой странице видно, и честно об этом пишет числом строк.
+  const byTopic = new Map()
+  rows.forEach(q => {
+    const k = q.topic_name || ''
+    if (!byTopic.has(k)) byTopic.set(k, [])
+    byTopic.get(k).push(q)
+  })
+
   return (
     <div>
       <div className="page-header">
@@ -485,9 +546,9 @@ export default function BookBankPage() {
             <HelpCircle size={40} strokeWidth={1.5} style={{ opacity: 0.3, marginBottom: 12 }} />
             <p>Под этот фильтр оцифрованных задач нет.</p>
           </div>
-        ) : rows.map(q => {
+        ) : rows.map((q, i) => {
           const pr = q.provenance || {}
-          return (
+          const card = (
             <div key={q.id} style={{ padding: '18px 20px', borderBottom: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8, alignItems: 'center' }}>
                 {/* выбор для пакетной приёмки — здесь же, где человек видит строку */}
@@ -500,6 +561,18 @@ export default function BookBankPage() {
                   {/* у теста границей парсер считал слово «задача» — в чипе оно было бы ложью */}
                   {pr.format === 'тест' ? 'тест' : (pr.unit || 'задача')}{pr.page ? ` · с. ${pr.page}` : ''}
                 </span>
+                {pr.num && pr.format !== 'теория' && (
+                  // номер, как его напечатал составитель: по нему строку ищут в
+                  // развороте книги, и без него в банке остаётся только id строки.
+                  // Рядом — буква уровня и сложность, которую из неё сделал импорт:
+                  // сверка «B → Сложный» глазами иначе невозможна. У теоретического
+                  // листа печатного номера нет (его граница — вся страница), поэтому
+                  // чип «№» над ним был бы выдумкой.
+                  <span style={chip('rgba(37,99,235,0.1)', '#1E40AF')}>
+                    № {pr.num}
+                    {pr.level ? ` · уровень ${pr.level} → ${(DIFFICULTY.find(([v]) => v === q.difficulty) || [, ''])[1]}` : ''}
+                  </span>
+                )}
                 <span style={chip(q.verification_status === 'verified' ? 'rgba(16,185,129,0.12)' : 'rgba(107,114,128,0.12)',
                                   q.verification_status === 'verified' ? '#065F46' : '#374151')}>
                   {(STATUS.find(([v]) => v === q.verification_status) || [, 'Черновик'])[1].toLowerCase()}
@@ -539,18 +612,8 @@ export default function BookBankPage() {
                   <img src={q.image} alt="" style={{ maxWidth: '100%', maxHeight: 260, borderRadius: 8 }} />
                 </div>
               )}
-              {q.latex_answer ? (
-                <div style={{ fontSize: 14 }}>
-                  <b style={{ fontSize: 12, color: 'var(--text-secondary)' }}>ОТВЕТ: </b>
-                  <FormattedText text={q.latex_answer} markdown />
-                </div>
-              ) : (
-                // без этой строки пустой ответ читается как потеря при оцифровке,
-                // хотя в источнике ответа нет: у Примера разбор и есть итог
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                  В источнике ответа нет.
-                </div>
-              )}
+              {/* ответа под условием нет намеренно: в книге он в конце блока списком,
+                  и здесь те же строки собирает доска под темой */}
               <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>
                 {pr.run}{pr.model ? ` · ${pr.model}` : ''}{pr.src_sha256 ? ` · источник ${String(pr.src_sha256).slice(0, 8)}` : ''}
                 {pr.edited_at ? ` · правка ${String(pr.edited_at).slice(0, 10)} (${pr.edited_by})` : ''}
@@ -558,6 +621,10 @@ export default function BookBankPage() {
               </div>
             </div>
           )
+          // доска печатается под последней строкой темы — как ответы блока в книге;
+          // пока тема не кончилась, карточка идёт одна
+          if (i !== rows.length - 1 && rows[i + 1].topic_name === q.topic_name) return card
+          return [card, <AnswersBoard key={`otvety-${q.id}`} items={byTopic.get(q.topic_name || '')} />]
         })}
         {!loading && pages > 1 && (
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '14px 20px', borderTop: '1px solid var(--border)' }}>
