@@ -48,7 +48,7 @@ function TaskRow({ q, picked, onToggle }) {
               <AlertTriangle size={11} strokeWidth={1.5} style={{ verticalAlign: -1 }} /> спорных знаков: {q.uncertain.length}
             </span>
           )}
-          {pr.page && <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{pr.run} · с. {pr.page}</span>}
+          {pr.page && <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{pr.book || pr.run} · с. {pr.page}</span>}
         </div>
         <div style={{ fontSize: 14 }}><FormattedText text={q.latex || q.text} markdown /></div>
       </div>
