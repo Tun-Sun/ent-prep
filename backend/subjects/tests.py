@@ -964,6 +964,19 @@ class AttachBookAnswersTest(TestCase):
         self.assertIn('такого номера в банке нет', text)
         unsure = json.loads(listing.read_text(encoding='utf-8'))['unsure']
         self.assertEqual([u['num'] for u in unsure], ['11.999'])
+
+    def test_number_of_a_skipped_row_is_not_reported_as_absent_from_the_book(self):
+        """Доска отвечает и на номер строки, которую правил человек. Она уже посчитана
+        в «не участвует», и вторым списком выходить не должна: «такого номера в банке
+        нет» на номер, который в банке есть, — это ложь про данные, а не предупреждение.
+        """
+        self.row('11.198', edited=True)
+        text, listing = self.run_command(
+            answers_run=self.board(('11.198', 'ГЛАВА 11', 3, '$18$ см')), book=self.BOOK)
+        self.assertIn('не участвует: строка правилась человеком — ответ только редактурой — 1', text)
+        self.assertIn('спорных: 0', text)
+        self.assertEqual(json.loads(listing.read_text(encoding='utf-8'))['unsure'], [])
+
     def test_row_whose_number_is_not_on_the_board_is_counted(self):
         """«Подходит к приклеиванию: 1» не должно читаться как «больше нечего»:
         строка с напечатанным номером, которого на доске нет, видна в отчёте."""

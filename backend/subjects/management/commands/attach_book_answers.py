@@ -78,8 +78,8 @@ class Command(BaseCommand):
         if not qs.count():
             raise CommandError(f"в банке нет строк книги {opt['book']!r} — проверьте --book")
 
-        rows, skipped = self.index_rows(qs)
-        plan, unsure, no_board = self.match(rows, answers, run_name)
+        rows, skipped, seen = self.index_rows(qs)
+        plan, unsure, no_board = self.match(rows, answers, run_name, seen)
         if no_board:
             skipped["номера нет на доске ответов"] = no_board
 
@@ -156,12 +156,19 @@ class Command(BaseCommand):
     def index_rows(self, qs):
         """Ключ сверки — provenance.num, тот же напечатанный номер, что и в доске.
         Дубль номера в одной книге не разбираем: у Касаткиной задачи и разобранные
-        решения идут двумя независимыми счётами, и «первый по номеру» — чужое решение."""
-        rows, skipped = {}, {}
+        решения идут двумя независимыми счётами, и «первый по номеру» — чужое решение.
+
+        seen — все номера книги, включая отброшенные: без него номер строки, которую
+        правил человек, попал бы в «такого номера в банке нет», хотя строка в банке есть.
+        """
+        rows, skipped, seen = {}, {}, set()
         for q in qs.only("id", "latex_answer", "provenance"):
             prov = q.provenance or {}
+            num = norm(prov.get("num"))
+            if num:
+                seen.add(num)
             why = None
-            if not norm(prov.get("num")):
+            if not num:
                 why = "в паспорте нет напечатанного номера"
             elif (q.latex_answer or "").strip():
                 why = "ответ уже есть в банке"
@@ -170,14 +177,13 @@ class Command(BaseCommand):
             if why:
                 skipped[why] = skipped.get(why, 0) + 1
                 continue
-            num = norm(prov.get("num"))
             rows.setdefault(num, []).append({"id": q.id, "num": num,
                                              "scope": prov.get("scope") or "",
                                              "run": prov.get("run") or "",
                                              "page": prov.get("page")})
-        return rows, skipped
+        return rows, skipped, seen
 
-    def match(self, rows, answers, run_name=""):
+    def match(self, rows, answers, run_name="", seen=frozenset()):
         by_num = {}
         for a in answers:
             by_num.setdefault(a["num"], []).append(a)
@@ -226,7 +232,7 @@ class Command(BaseCommand):
             plan.append({"id": t["id"], "num": num, "scope": t["scope"], "answer": text,
                          "answer_page": sorted({g["page"] for g in same if g.get("page")}),
                          "answer_block": sorted(blocks), "old_answer": ""})
-        covered = {p["num"] for p in plan} | {u["num"] for u in unsure}
+        covered = {p["num"] for p in plan} | {u["num"] for u in unsure} | set(seen)
         for num in sorted(set(by_num) - covered):
             unsure.append({"id": None, "num": num, "why": "такого номера в банке нет"})
         return plan, unsure, no_board
