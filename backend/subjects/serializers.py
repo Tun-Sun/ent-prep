@@ -1,7 +1,8 @@
 from rest_framework import serializers
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.utils import timezone
-from .models import Subject, Topic, Question, Answer, plain_from_latex
+from .models import Subject, Topic, Question, Answer, Assignment, plain_from_latex
 
 class AnswerSerializer(serializers.ModelSerializer):
     class Meta:
@@ -205,3 +206,94 @@ class BookScanEditSerializer(serializers.ModelSerializer):
         instance.provenance = prov
         instance.save()
         return instance
+
+
+class AssignmentStudentSerializer(serializers.ModelSerializer):
+    """Кому ушло назначение — имя ученика экран обязан показывать, а не только id."""
+    class Meta:
+        model = get_user_model()
+        fields = ('id', 'username', 'full_name')
+
+
+class AssignmentListSerializer(serializers.ModelSerializer):
+    subject_name = serializers.CharField(source='subject.name', read_only=True)
+    difficulty_display = serializers.CharField(source='get_difficulty_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    teacher_name = serializers.CharField(source='teacher.full_name', read_only=True)
+    tasks = serializers.SerializerMethodField()
+    students = AssignmentStudentSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Assignment
+        fields = ('id', 'title', 'teacher', 'teacher_name', 'subject', 'subject_name',
+                  'difficulty', 'difficulty_display', 'tasks', 'students',
+                  'status', 'status_display', 'created_at')
+
+    def get_tasks(self, obj):
+        return len(obj.question_ids or [])
+
+
+class AssignmentDetailSerializer(AssignmentListSerializer):
+    # порядок тот, что набрал экран: свойство модели, а не сортировка БД
+    questions = QuestionListSerializer(many=True, read_only=True)
+
+    class Meta(AssignmentListSerializer.Meta):
+        fields = AssignmentListSerializer.Meta.fields + ('question_ids', 'questions')
+
+
+class AssignmentCreateSerializer(serializers.ModelSerializer):
+    """Создание назначения из того, что тренер видел на экране.
+
+    Экран присылает явный список задач, а не «набери сам по уровню»: между
+    предпросмотром и сохранением передумали, сняли галочку, добавили задачу —
+    и назначение обязано быть ровно этим набором.
+    """
+    students = serializers.PrimaryKeyRelatedField(
+        many=True, queryset=get_user_model().objects.filter(role='student'), required=False)
+    question_ids = serializers.ListField(child=serializers.IntegerField(min_value=1), allow_empty=False)
+
+    class Meta:
+        model = Assignment
+        fields = ('id', 'title', 'subject', 'difficulty', 'students', 'question_ids')
+        read_only_fields = ('id',)
+
+    def validate_difficulty(self, v):
+        if v not in dict(Question.DIFFICULTY_CHOICES):
+            raise serializers.ValidationError('Такого уровня нет: easy / medium / hard')
+        return v
+
+    def validate_question_ids(self, ids):
+        found = {q.pk: q for q in Question.objects.filter(pk__in=ids).select_related('topic')}
+        missing = [i for i in ids if i not in found]
+        if missing:
+            raise serializers.ValidationError(
+                f'Задач с такими id в банке нет: {", ".join(str(i) for i in missing[:10])}')
+        # черновик наружу не уходит: ученик не должен получать недооцифрованную
+        # формулу только потому, что предпросмотр успел её показать
+        drafts = [q for q in found.values() if q.verification_status != 'verified']
+        if drafts:
+            raise serializers.ValidationError(
+                f'В наборе {len(drafts)} черновиков — назначать можно только принятые задачи')
+        # порядок набора важнее порядка БД: экран показывал задачи в своём
+        self._questions = [found[i] for i in ids]
+        return ids
+
+    def validate(self, attrs):
+        subject = attrs.get('subject') or (self.instance.subject if self.instance else None)
+        # перекос предмета — это не мелочь: под «Математикой» ученик получил бы
+        # физику, и ни один фильтр банка после этого его не выправит
+        off = [q.pk for q in self._questions if subject and q.topic.subject_id != subject.pk]
+        if off:
+            raise serializers.ValidationError(
+                {'question_ids': f'{len(off)} задач из другого предмета — '
+                                 'назначение собирается в рамках одного'})
+        return attrs
+
+    def create(self, validated_data):
+        students = validated_data.pop('students', [])
+        validated_data.pop('question_ids')
+        assignment = super().create(validated_data)
+        assignment.question_ids = [q.pk for q in self._questions]
+        assignment.save()
+        assignment.students.set(students)
+        return assignment

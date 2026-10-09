@@ -3,7 +3,7 @@ from django.shortcuts import render
 from django.contrib import messages
 from functools import wraps
 
-from .models import Subject, Topic, Question, Answer, Variant
+from .models import Subject, Topic, Question, Answer, Variant, Assignment
 from .import_views import import_from_google_form
 
 
@@ -136,6 +136,25 @@ class QuestionAdmin(admin.ModelAdmin):
     def mark_rejected(self, request, queryset):
         updated = queryset.update(verification_status='rejected')
         self.message_user(request, f'Отклонено вопросов: {updated}')
+
+
+@admin.register(Assignment)
+class AssignmentAdmin(admin.ModelAdmin):
+    list_display = ('title', 'teacher', 'subject', 'difficulty', 'tasks_count',
+                    'students_count', 'status', 'created_at')
+    list_display_links = ('title',)
+    list_filter = ('difficulty', 'status', 'subject')
+    search_fields = ('title', 'teacher__username')
+    filter_horizontal = ('students',)
+    readonly_fields = ('created_at',)
+
+    @admin.display(description='Задач')
+    def tasks_count(self, obj):
+        return len(obj.question_ids or [])
+
+    @admin.display(description='Учеников')
+    def students_count(self, obj):
+        return obj.students.count()
 
 
 # ── Admin-страница импорта из Google Forms ────────────────────────────────

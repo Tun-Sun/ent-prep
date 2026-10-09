@@ -35,6 +35,7 @@ import AnalyticsPage from './pages/teacher/AnalyticsPage'
 import QuestionsPage from './pages/teacher/QuestionsPage'
 import BookBankPage from './pages/teacher/BookBankPage'
 import BookIngestPage from './pages/teacher/BookIngestPage'
+import AssignByLevelPage from './pages/teacher/AssignByLevelPage'
 import ImportPage from './pages/teacher/ImportPage'
 import GoogleFormsImportPage from './pages/teacher/GoogleFormsImportPage'
 import TestHistoryPage from './pages/teacher/TestHistoryPage'
@@ -80,6 +81,7 @@ export default function App() {
         <Route path="teacher/questions" element={<TeacherRoute><QuestionsPage /></TeacherRoute>} />
         <Route path="teacher/book-bank" element={<TeacherRoute><BookBankPage /></TeacherRoute>} />
         <Route path="teacher/book-ingest" element={<TeacherRoute><BookIngestPage /></TeacherRoute>} />
+        <Route path="teacher/assign" element={<TeacherRoute><AssignByLevelPage /></TeacherRoute>} />
         <Route path="teacher/import" element={<TeacherRoute><ImportPage /></TeacherRoute>} />
         <Route path="teacher/import/google-forms" element={<TeacherRoute><GoogleFormsImportPage /></TeacherRoute>} />
 

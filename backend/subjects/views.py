@@ -1,20 +1,22 @@
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, mixins
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q
+from django.db.models.functions import Random
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
-from .models import Subject, Topic, Question, Answer
+from .models import Subject, Topic, Question, Answer, Assignment
 from .permissions import IsTeacherOrAdmin
 from .serializers import (
     SubjectSerializer, SubjectMinimalSerializer,
     TopicSerializer, TopicListSerializer,
     QuestionListSerializer, QuestionDetailSerializer, QuestionCreateSerializer,
     BookScanEditSerializer,
+    AssignmentListSerializer, AssignmentDetailSerializer, AssignmentCreateSerializer,
 )
 
 
@@ -231,3 +233,99 @@ class QuestionViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         self.perform_destroy(instance)
         return Response({'message': 'Вопрос удалён'}, status=status.HTTP_200_OK)
+
+
+class AssignmentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
+                        mixins.CreateModelMixin, viewsets.GenericViewSet):
+    """Экран «Назначение по уровню»: набрать домашнее из банка по ступени сложности.
+
+    Здесь нет PUT/PATCH и нет удаления: набор frozen в `question_ids`, а отзыв —
+    отдельное решение, которое должно остаться в базе следом, а не стереть,
+    что ученик уже получил.
+    """
+    queryset = Assignment.objects.select_related('subject', 'teacher').prefetch_related('students')
+    permission_classes = [IsTeacherOrAdmin]
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return AssignmentCreateSerializer
+        if self.action == 'retrieve':
+            return AssignmentDetailSerializer
+        return AssignmentListSerializer
+
+    def perform_create(self, serializer):
+        # автор — тот, кто сидит за экраном: назначение это решение тренера,
+        # и по нему потом спрашивают, кто положил эти задачи ученику
+        serializer.save(teacher=self.request.user)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.request.user.role != 'admin':
+            qs = qs.filter(teacher=self.request.user)
+        subject = self.request.query_params.get('subject')
+        if subject:
+            qs = qs.filter(subject_id=subject)
+        return qs
+
+    @staticmethod
+    def _pool(params, subject_id, difficulty):
+        """Задачи уровня в банке. Черновики отсечены: наружу идёт только принятое.
+
+        `answerable()` здесь не нужен нарочно: он режет по ключу варианта, а
+        домашняя задача из книги answering именно открытым решением — ученик
+        пишет, а не угадывает букву.
+        """
+        qs = Question.objects.filter(topic__subject_id=subject_id,
+                                     difficulty=difficulty,
+                                     verification_status='verified')
+        topic = params.get('topic')
+        if topic:
+            qs = qs.filter(topic_id=topic)
+        src = params.get('source_type')
+        if src:
+            qs = qs.filter(source_type=src)
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def pick(self, request):
+        """Предпросмотр набора: сколько задач каждого уровня и сами задачи.
+
+        Порядок случайный на каждый вызов — это и есть кнопка «перемешать»,
+        без неё тренер получал бы одни и те же первые N строк банка.
+        """
+        subject_id = request.query_params.get('subject')
+        level = request.query_params.get('difficulty')
+        if not subject_id or not level:
+            return Response({'detail': 'Нужны subject и difficulty'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if level not in dict(Question.DIFFICULTY_CHOICES):
+            return Response({'detail': 'Такого уровня нет: easy / medium / hard'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            count = max(1, min(int(request.query_params.get('count', 10)), 50))
+        except ValueError:
+            return Response({'detail': 'count — целое число'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        pool = self._pool(request.query_params, subject_id, level)
+        picked = pool.annotate(_r=Random()).order_by('_r')[:count]
+        # размеры по всем уровням одним запросом: экран показывает, куда вообще
+        # хватает материала, и не даёт просить 30 задач там, где их 4
+        by_level = {k: 0 for k, _ in Question.DIFFICULTY_CHOICES}
+        rows = (Question.objects.filter(topic__subject_id=subject_id,
+                                        verification_status='verified')
+                .values('difficulty').annotate(n=Count('id')))
+        for row in rows:
+            by_level[row['difficulty']] = row['n']
+        return Response({
+            'pool': pool.count(),
+            'levels': by_level,
+            'questions': QuestionListSerializer(picked, many=True).data,
+        })
+
+    @action(detail=True, methods=['post'])
+    def revoke(self, request, pk=None):
+        """Отозвать назначение: ученик перестаёт его видеть, след в базе остаётся."""
+        assignment = self.get_object()
+        assignment.status = 'revoked'
+        assignment.save(update_fields=['status'])
+        return Response(AssignmentListSerializer(assignment).data)

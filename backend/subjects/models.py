@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 from django.db.models import Q
 import re
 
@@ -243,3 +244,48 @@ class Answer(models.Model):
 
     def __str__(self):
         return f'{self.text} ({("✓" if self.is_correct else "✗")})'
+
+
+class Assignment(models.Model):
+    """Домашнее задание, набранное по уровню сложности из банка.
+
+    Список задач фиксируется в момент создания (`question_ids`, как у `Duel`):
+    ученик обязан видеть ровно то, что утвердил тренер, а не то, что через
+    неделю покажет тот же фильтр по уровню — банк пополняется и правится.
+    Проверкой на «балл» это не является, и специально: задачи оцифровки открытые,
+    ключа варианта у них нет, поэтому здесь не нужен `answerable()` —
+    ученик пишет решение, а не выбирает букву.
+    """
+    STATUS_CHOICES = [
+        ('active', 'Назначено'),
+        ('revoked', 'Отозвано'),
+    ]
+
+    title = models.CharField(max_length=200, verbose_name='Название')
+    teacher = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name='assignments', verbose_name='Учитель')
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE,
+                                related_name='assignments', verbose_name='Предмет')
+    # уровень — тот же вопрос, что и у задачи: один список подписей на банк и на назначение
+    difficulty = models.CharField(max_length=10, choices=Question.DIFFICULTY_CHOICES,
+                                  verbose_name='Уровень')
+    students = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True,
+                                      related_name='student_assignments', verbose_name='Ученики')
+    question_ids = models.JSONField(default=list, verbose_name='ID задач')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='active',
+                              verbose_name='Статус')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создано')
+
+    class Meta:
+        verbose_name = 'Назначение'
+        verbose_name_plural = 'Назначения'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.title} — {self.get_difficulty_display()} ({len(self.question_ids or [])} задач)'
+
+    @property
+    def questions(self):
+        """Задачи в том порядке, в каком их набрал экран, а не в порядке БД."""
+        found = {q.pk: q for q in Question.objects.filter(pk__in=self.question_ids)}
+        return [found[i] for i in (self.question_ids or []) if i in found]

@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { User, TrendingUp, BookOpen, Library, ScanText, Wallet, Clock, LayoutDashboard, HelpCircle, FileEdit, Download, Users, BarChart3, Settings, Layers, Swords } from 'lucide-react'
+import { User, TrendingUp, BookOpen, Library, ScanText, Wallet, Clock, LayoutDashboard, HelpCircle, FileEdit, Download, Users, BarChart3, Settings, Layers, Swords, ClipboardList } from 'lucide-react'
 
 const iconMap = {
   'profile': User,
@@ -14,6 +14,7 @@ const iconMap = {
   'questions': HelpCircle,
   'book-bank': Library,
   'book-ingest': ScanText,
+  'assign': ClipboardList,
   'authorial': FileEdit,
   'import': Download,
   'students': Users,
@@ -42,6 +43,7 @@ const teacherLinks = [
   { to: '/teacher/questions', label: 'Вопросы', icon: 'questions' },
   { to: '/teacher/book-bank', label: 'Банк из книг', icon: 'book-bank' },
   { to: '/teacher/book-ingest', label: 'Оцифровка', icon: 'book-ingest' },
+  { to: '/teacher/assign', label: 'Назначения', icon: 'assign' },
   { to: '/teacher/tests/authorial', label: 'Авторские', icon: 'authorial' },
   { to: '/teacher/import/google-forms', label: 'Импорт', icon: 'import' },
   { to: '/teacher/students', label: 'Ученики', icon: 'students' },

@@ -24,7 +24,7 @@ from django.test import TestCase
 from subjects.google_forms.dto import AnswerDTO, QuestionDTO
 from subjects.google_forms.importer import ImporterError, import_payload
 from subjects.google_forms.parser import ParseError, parse_dict
-from subjects.models import Answer, Question, Subject, Topic
+from subjects.models import Answer, Assignment, Question, Subject, Topic, Assignment
 
 
 # === Фикстуры / хелперы ====================================================
@@ -650,3 +650,117 @@ class AutoacceptBookDraftsTest(TestCase):
             self.run_command(decision='не для того')
         other.refresh_from_db()
         self.assertEqual(other.verification_status, 'draft')
+
+
+# === Назначение по уровню ==================================================
+
+class AssignByLevelTest(TestCase):
+    """Экран «Назначение по уровню»: предпросмотр набора, создание, отзыв."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from users.models import User
+        cls.math = Subject.objects.create(name='Математика', slug='math', icon='📐')
+        cls.phys = Subject.objects.create(name='Физика', slug='phys', icon='⚡')
+        mtopic = Topic.objects.create(subject=cls.math, name='Сканави · Глава 11')
+        ptopic = Topic.objects.create(subject=cls.phys, name='Касаткина · Глава 1')
+        cls.teacher = User.objects.create_user(username='t1', password='x', role='teacher')
+        cls.other_teacher = User.objects.create_user(username='t2', password='x', role='teacher')
+        cls.student = User.objects.create_user(username='s1', password='x', role='student')
+        cls.easy = [cls.task(mtopic, 'easy', f'лёгкая {i}') for i in range(6)]
+        cls.medium = [cls.task(mtopic, 'medium', f'средняя {i}') for i in range(2)]
+        cls.hard_draft = cls.task(mtopic, 'hard', 'черновик', status='draft')
+        cls.foreign = cls.task(ptopic, 'easy', 'чужой предмет')
+
+    @staticmethod
+    def task(topic, difficulty, text, status='verified'):
+        return Question.objects.create(
+            topic=topic, text=text, latex=f'$x$ {text}', difficulty=difficulty,
+            source_type='book_scan', question_type='open_answer',
+            verification_status=status,
+        )
+
+    def _auth(self, user):
+        from rest_framework.test import APIClient
+        c = APIClient()
+        c.force_authenticate(user=user)
+        return c
+
+    def test_pick_gives_only_verified_tasks_of_the_level(self):
+        r = self._auth(self.teacher).get('/api/assignments/pick/',
+                                         {'subject': self.math.pk, 'difficulty': 'easy'})
+        self.assertEqual(r.status_code, 200)
+        ids = [q['id'] for q in r.data['questions']]
+        self.assertEqual(sorted(ids), sorted(q.pk for q in self.easy))
+        # уровни экрана: тренер обязан видеть, где материала нет, до того как просить
+        self.assertEqual(r.data['levels'], {'easy': 6, 'medium': 2, 'hard': 0})
+        self.assertEqual(r.data['pool'], 6)
+
+    def test_pick_count_limits_and_reroll_changes_the_set(self):
+        c = self._auth(self.teacher)
+        params = {'subject': self.math.pk, 'difficulty': 'easy', 'count': 3}
+        first = c.get('/api/assignments/pick/', params)
+        self.assertEqual(len(first.data['questions']), 3)
+        seen = {tuple(sorted(q['id'] for q in
+                             c.get('/api/assignments/pick/', params).data['questions']))
+                for _ in range(10)}
+        # «перемешать» обязано давать другой набор: иначе шесть лёгких задач
+        # превращались бы в одни и те же первые три для всех учеников
+        self.assertGreater(len(seen), 1)
+
+    def test_create_freezes_the_order_the_teacher_saw(self):
+        order = [self.easy[3].pk, self.medium[0].pk, self.easy[0].pk]
+        c = self._auth(self.teacher)
+        r = c.post('/api/assignments/', {
+            'title': 'Домашка 11.2', 'subject': self.math.pk, 'difficulty': 'easy',
+            'students': [self.student.pk], 'question_ids': list(reversed(order)),
+        }, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        a = Assignment.objects.get(pk=r.data['id'])
+        self.assertEqual(a.question_ids, list(reversed(order)))
+        d = c.get(f'/api/assignments/{a.pk}/')
+        self.assertEqual([q['id'] for q in d.data['questions']], list(reversed(order)))
+        self.assertEqual([s['id'] for s in d.data['students']], [self.student.pk])
+
+    def test_draft_and_foreign_subject_do_not_pass(self):
+        c = self._auth(self.teacher)
+        body = {'title': 'Т', 'subject': self.math.pk, 'difficulty': 'easy',
+                'students': [self.student.pk]}
+        r = c.post('/api/assignments/', {**body, 'question_ids': [self.easy[0].pk,
+                                                                  self.hard_draft.pk]},
+                   format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('черновик', str(r.data))
+        r = c.post('/api/assignments/', {**body, 'question_ids': [self.easy[0].pk,
+                                                                  self.foreign.pk]},
+                   format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('другого предмета', str(r.data['question_ids']))
+        self.assertEqual(Assignment.objects.count(), 0)
+
+    def test_student_cannot_assign(self):
+        r = self._auth(self.student).post('/api/assignments/', {
+            'title': 'Т', 'subject': self.math.pk, 'difficulty': 'easy',
+            'question_ids': [self.easy[0].pk],
+        }, format='json')
+        self.assertEqual(r.status_code, 403)
+
+    def test_revoke_keeps_the_record(self):
+        a = Assignment.objects.create(teacher=self.teacher, subject=self.math,
+                                      difficulty='easy', title='Т',
+                                      question_ids=[self.easy[0].pk])
+        c = self._auth(self.teacher)
+        r = c.post(f'/api/assignments/{a.pk}/revoke/')
+        self.assertEqual(r.status_code, 200)
+        a.refresh_from_db()
+        self.assertEqual(a.status, 'revoked')
+        # отзыв не стирает, что ученик уже получил
+        self.assertTrue(Assignment.objects.filter(pk=a.pk).exists())
+
+    def test_teacher_sees_only_own_assignments(self):
+        Assignment.objects.create(teacher=self.teacher, subject=self.math,
+                                  difficulty='easy', title='моё', question_ids=[])
+        Assignment.objects.create(teacher=self.other_teacher, subject=self.math,
+                                  difficulty='easy', title='чужое', question_ids=[])
+        r = self._auth(self.teacher).get('/api/assignments/')
+        self.assertEqual([a['title'] for a in r.data], ['моё'])

@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
-from .views import SubjectViewSet, TopicViewSet, QuestionViewSet
+from .views import SubjectViewSet, TopicViewSet, QuestionViewSet, AssignmentViewSet
 from .import_views import (
     ExcelTemplateView,
     ExcelImportView,
@@ -13,6 +13,7 @@ router = DefaultRouter()
 router.register(r'subjects', SubjectViewSet, basename='subject')
 router.register(r'topics', TopicViewSet, basename='topic')
 router.register(r'questions', QuestionViewSet, basename='question')
+router.register(r'assignments', AssignmentViewSet, basename='assignment')
 
 urlpatterns = router.urls + [
     path('import/template/', ExcelTemplateView.as_view(), name='excel-template'),

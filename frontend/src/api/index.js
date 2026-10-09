@@ -88,6 +88,16 @@ export const questionsAPI = {
   delete: (id) => api.delete(`/questions/${id}/`),
 }
 
+// Назначение по уровню: экран набирает домашнее из банка и раздаёт ученикам
+export const assignmentsAPI = {
+  list: (params) => api.get('/assignments/', { params }),
+  detail: (id) => api.get(`/assignments/${id}/`),
+  create: (data) => api.post('/assignments/', data),
+  // предпросмотр набора: сколько задач каждого уровня и сами задачи
+  pick: (params) => api.get('/assignments/pick/', { params }),
+  revoke: (id) => api.post(`/assignments/${id}/revoke/`),
+}
+
 // Импорт Excel
 export const importAPI = {
   // Скачивание шаблона (возвращает blob)
