@@ -35,28 +35,53 @@ def counted_units(out):
     return len((json.loads(f.read_text(encoding="utf-8")) or {}).get("tasks") or [])
 
 
-def missing_pages(out):
-    """Номера страниц, которых нет в pages/, хотя они есть в источнике.
+def source_pages(pdf):
+    """Номера страниц источника — только из самого PDF, больше спрашивать не у кого.
 
-    index.json считает страницы PDF, pages/*.json — то, что реально вернула модель.
-    Расхождение означает «книга легла в банк дырявой», а коды выхода шагов при этом
-    ноль: потерянная страница молчала бы до самой вычитки.
+    index.json для этого опорой быть не может: index.py собирает его по pages/*.json,
+    то есть по тем страницам, которые модель уже вернула. Сверять пропавшие страницы с
+    таким списком — доказательство по кругу: страница, отбитая фильтром, отсутствует с
+    обеих сторон, и журнал звенел «готово · страниц 18» о книге в 19 страниц.
     """
-    idx = Path(out) / "index.json"
-    if not idx.is_file():
-        return []
+    import pymupdf
     try:
-        expected = {int(p["page"]) for p in json.loads(idx.read_text(encoding="utf-8"))}
-    except (ValueError, KeyError, TypeError):
-        return []
+        with pymupdf.open(pdf) as doc:
+            return set(range(1, doc.page_count + 1))
+    except Exception:
+        return set()
+
+
+def got_pages(out):
+    """Какие страницы реально получены — по номеру внутри pages/*.json, а не по
+    имени файла: превью и ссылка экрана вычитки строятся тоже по этому номеру."""
     d = Path(out) / "pages"
     got = set()
     for f in d.glob("*.json") if d.is_dir() else []:
+        num = None
         try:
-            got.add(int(f.stem.lstrip("p")))
-        except ValueError:
+            num = json.loads(f.read_text(encoding="utf-8") or "{}").get("page")
+        except (ValueError, AttributeError):
             pass
-    return sorted(expected - got)
+        if num is None:
+            try:
+                num = int(f.stem.lstrip("p"))
+            except ValueError:
+                continue
+        try:
+            got.add(int(num))
+        except (TypeError, ValueError):
+            continue
+    return got
+
+
+def missing_pages(out, pdf):
+    """Номера страниц, которых нет в pages/, хотя они есть в источнике.
+
+    Расхождение означает «книга легла в банк дырявой», а коды выхода шагов при этом
+    ноль: потерянная страница молчала бы до самой вычитки. Нечитаемый источник —
+    пустой список: выдумывать пропавшие страницы хуже, чем промолчать.
+    """
+    return sorted(source_pages(pdf) - got_pages(out))
 
 
 def spent(out):
@@ -145,13 +170,14 @@ class Command(BaseCommand):
         if run.pages == 0:
             self.fail(run, "ни одной страницы не распознано — в банке нечего строить")
             return
-        holes = missing_pages(out)
+        holes = missing_pages(out, pdf)
         if holes:
             listing = ", ".join(f"с.{p}" for p in holes[:10])
             if len(holes) > 10:
                 listing += f" и ещё {len(holes) - 10}"
-            run.error = (f"страниц не получено: {listing} — их отбил фильтр модели или "
-                         f"обрыв; книга легла в банк без них")
+            run.error = (f"распознано {run.pages} страниц из {len(source_pages(pdf))}: "
+                         f"не получено {listing} — их отбил фильтр модели или обрыв; "
+                         f"книга легла в банк без них")
             run.save(update_fields=["error"])
             self.log(run, f"!!! {run.error}")
 

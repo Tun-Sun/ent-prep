@@ -125,6 +125,18 @@ def unit(num='1', **over):
     return base
 
 
+def pdf_bytes(pages=2, width=595, height=842):
+    """Настоящий PDF на n страниц: только он может быть опорой для вопроса «сколько
+    страниц в источнике». Страницы делаются размером с бланк, а не в ноль точек:
+    распознавание такой лист тоже отбрасывает, и проверка совала бы в журнал дыру,
+    которой нет."""
+    import pymupdf
+    doc = pymupdf.open()
+    for _ in range(pages):
+        doc.new_page(width=width, height=height)
+    return doc.tobytes()
+
+
 class RunBookIngestCommandTest(TestCase):
     """Команда прогона: счётчики берутся из файлов прогона, а не из воздуха,
     и в банк доезжает ровно то, что разобрал парсер."""
@@ -141,13 +153,13 @@ class RunBookIngestCommandTest(TestCase):
         self.addCleanup(lambda: shutil.rmtree(self.tmp, ignore_errors=True))
         out = runner.run_dir('книга')
         (out / 'pages').mkdir(parents=True)
-        (out / 'source.pdf').write_bytes(b'%PDF')
+        (out / 'source.pdf').write_bytes(pdf_bytes(2))
         self.out = out
         self.run = IngestRun.objects.create(name='книга', pdf_path=str(out / 'source.pdf'),
                                             subject=self.physics, language='ru', book='Книга')
 
-    def fake_steps(self, ok=True, price=(10.0, 60.0), money=3.5, source_pages=None,
-                   pages=('p08', 'p09')):
+    def fake_steps(self, ok=True, price=(10.0, 60.0), money=3.5,
+                   pages=('p01', 'p02')):
         from unittest import mock
 
         def run(argv, **kw):
@@ -155,16 +167,20 @@ class RunBookIngestCommandTest(TestCase):
                 returncode = 0 if ok else 1
             if 'ocr.py' in argv[1]:
                 for n in pages:
-                    (self.out / 'pages' / f'{n}.json').write_text('{"page": 8}', encoding='utf-8')
+                    (self.out / 'pages' / f'{n}.json').write_text(
+                        json.dumps({'page': int(n[1:])}), encoding='utf-8')
                 json.dump({'price_per_mtok': {'in': price[0], 'out': price[1]}, 'money_total': money},
                           (self.out / 'usage.json').open('w', encoding='utf-8'))
-            if 'index.py' in argv[1] and source_pages is not None:
-                # сколько страниц в источнике — считает index.py, а не распознавание
-                json.dump([{'page': p} for p in source_pages],
+            if 'index.py' in argv[1]:
+                # превью по каждой полученной странице — и ни одной лишней:
+                # index.json собран по pages/, дыру источника он не знает
+                json.dump([{'page': int(n[1:])} for n in pages],
                           (self.out / 'index.json').open('w', encoding='utf-8'))
             if 'tasks.py' in argv[1]:
                 json.dump({'run': 'книга', 'pages': len(pages),
-                           'tasks': [unit(str(i + 1)) for i in range(len(pages))],
+                           'tasks': [unit(str(i + 1), pages=[i + 1],
+                                          spans=[{'page': i + 1, 'l0': 3, 'l1': 12}])
+                                     for i in range(len(pages))],
                            'answers': [], 'other': []},
                           (self.out / 'tasks.json').open('w', encoding='utf-8'))
             return R()
@@ -178,7 +194,7 @@ class RunBookIngestCommandTest(TestCase):
         self.assertEqual(self.run.status, STATUS_DONE, self.run.error)
         self.assertEqual((self.run.pages, self.run.units, self.run.money), (2, 2, 3.5))
         self.assertIn('книга: создано 2', self.run.report)
-        q = Question.objects.get(external_id='книга:p8:Задача1:Раздел')
+        q = Question.objects.get(external_id='книга:p1:Задача1:Раздел')
         # Черновиком: прогон никто не вычитывал, а «проверено» ставит только человек
         self.assertEqual(q.verification_status, 'draft')
         self.assertEqual(q.topic.name, 'Книга · Раздел')
@@ -202,16 +218,23 @@ class RunBookIngestCommandTest(TestCase):
 
     def test_hole_in_the_book_is_named_but_the_run_still_lands(self):
         """Фильтр отбил страницу навсегда: статус остаётся «готово» — остальное в
-        банке всё равно надо вычитывать, — но дырявая книга обязана быть названа."""
-        with self.fake_steps(source_pages=(8, 9, 10)):
+        банке всё равно надо вычитывать, — но дырявая книга обязана быть названа.
+
+        Источник — PDF в 3 страницы, получено 2. index.json при этом честно говорит
+        «2 страницы»: он построен по pages/, и сверять с ним дыру бессмысленно —
+        именно так журнал и молчал.
+        """
+        (self.out / 'source.pdf').write_bytes(pdf_bytes(3))
+        with self.fake_steps():
             call_command('run_book_ingest', self.run.pk)
         self.run.refresh_from_db()
         self.assertEqual(self.run.status, STATUS_DONE, self.run.error)
-        self.assertIn('с.10', self.run.error)
+        self.assertIn('распознано 2 страниц из 3', self.run.error)
+        self.assertIn('с.3', self.run.error)
         self.assertEqual(Question.objects.count(), 2)
 
     def test_book_without_a_single_page_fails_instead_of_importing_nothing(self):
-        with self.fake_steps(source_pages=(8, 9), pages=()):
+        with self.fake_steps(pages=()):
             with self.assertRaises(SystemExit):
                 call_command('run_book_ingest', self.run.pk)
         self.run.refresh_from_db()
@@ -583,26 +606,56 @@ class RunningHeadTest(TestCase):
 
 class MissingPagesTest(TestCase):
     """Прогон обязан сам сказать, что книга легла в банк с дыркой."""
+
+    def folder(self, pdf_pages, got, index_pages=None):
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: shutil.rmtree(d, ignore_errors=True))
+        (d / 'pages').mkdir()
+        pdf = d / 'source.pdf'
+        pdf.write_bytes(pdf_bytes(pdf_pages))
+        for name, num in got:
+            (d / 'pages' / f'{name}.json').write_text(json.dumps({'page': num}), encoding='utf-8')
+        if index_pages is not None:
+            # index.json пишет index.py, обходя pages/*.json: своей дыры у него нет
+            json.dump([{'page': p} for p in index_pages],
+                      (d / 'index.json').open('w', encoding='utf-8'))
+        return d, pdf
+
     def test_pages_absent_from_the_source_are_listed(self):
+        from .management.commands.run_book_ingest import missing_pages
+
+        d, pdf = self.folder(3, (('p01', 1), ('p02', 2)))
+        self.assertEqual(missing_pages(str(d), str(pdf)), [3])
+
+    def test_index_json_built_from_recognition_does_not_hide_the_hole(self):
+        """Сверять пропавшие страницы с index.json — доказательство по кругу: отбитая
+        фильтром страница отсутствует в обеих выборках, и журнал звал это «готово»."""
+        from .management.commands.run_book_ingest import missing_pages
+
+        d, pdf = self.folder(3, (('p01', 1), ('p02', 2)), index_pages=(1, 2))
+        self.assertEqual(json.loads((d / 'index.json').read_text(encoding='utf-8')),
+                         [{'page': 1}, {'page': 2}])
+        self.assertEqual(missing_pages(str(d), str(pdf)), [3])
+
+    def test_page_is_counted_by_its_number_not_by_the_file_name(self):
+        """Страница 3 в файле p07.png — вычитке всё равно нужна страница 3 (так же
+        ищет её publish_scans), поэтому дырой считать её нельзя."""
+        from .management.commands.run_book_ingest import missing_pages
+
+        d, pdf = self.folder(3, (('p01', 1), ('p07', 2), ('p03', 3)))
+        self.assertEqual(missing_pages(str(d), str(pdf)), [])
+
+    def test_unreadable_source_means_no_claims(self):
+        """Без читаемого источника утверждать нечего: выдумать список пропавших
+        страниц хуже, чем промолчать."""
         from .management.commands.run_book_ingest import missing_pages
 
         d = Path(tempfile.mkdtemp())
         self.addCleanup(lambda: shutil.rmtree(d, ignore_errors=True))
         (d / 'pages').mkdir()
-        (d / 'pages' / 'p08.json').write_text('{}', encoding='utf-8')
-        (d / 'pages' / 'p09.json').write_text('{}', encoding='utf-8')
-        json.dump([{'page': 8}, {'page': 9}, {'page': 10}],
-                  (d / 'index.json').open('w', encoding='utf-8'))
-        self.assertEqual(missing_pages(str(d)), [10])
-
-    def test_no_index_means_no_claims(self):
-        """Без index.json утверждать нечего: выдумать список пропавших страниц
-        хуже, чем промолчать."""
-        from .management.commands.run_book_ingest import missing_pages
-
-        d = Path(tempfile.mkdtemp())
-        self.addCleanup(lambda: shutil.rmtree(d, ignore_errors=True))
-        self.assertEqual(missing_pages(str(d)), [])
+        pdf = d / 'source.pdf'
+        pdf.write_bytes(b'%PDF')
+        self.assertEqual(missing_pages(str(d), str(pdf)), [])
 
 
 class ScanPublishedForReadingTest(TestCase):
