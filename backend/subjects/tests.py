@@ -19,7 +19,7 @@ import tempfile
 from pathlib import Path
 
 from django.core.management import CommandError, call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from subjects.google_forms.dto import AnswerDTO, QuestionDTO
 from subjects.google_forms.importer import ImporterError, import_payload
@@ -764,3 +764,249 @@ class AssignByLevelTest(TestCase):
                                   difficulty='easy', title='чужое', question_ids=[])
         r = self._auth(self.teacher).get('/api/assignments/')
         self.assertEqual([a['title'] for a in r.data], ['моё'])
+
+
+# === Ответы из другого прогона =============================================
+
+class AttachBookAnswersTest(TestCase):
+    """Команда attach_book_answers: ответ берётся из доски ответов другого прогона
+    и кладётся по напечатанному номеру. Всё, что не сходится однозначно, наружу
+    списком, а не в базу.
+
+    Главная опасность — не пустой ответ, а чужой: номер в книге может стоять на
+    двух задачах разных счётов (Касаткина), а запись доски — оказаться разбором
+    всей задачи. Тихая ошибка в поле ответа уходит ученику быстрее, чем отсутствие
+    ответа, поэтому неоднозначное здесь не пишется ни при каких флагах.
+    """
+
+    BOOK = 'Сканави, стериометрия'
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.math = Subject.objects.create(name='Математика', slug='math-attach', icon='📐')
+        cls.topic = Topic.objects.create(subject=cls.math, name='Сканави · Глава 11')
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+
+    def row(self, num, answer='', scope='ГЛАВА 11', edited=False, book=BOOK):
+        prov = {'run': 'сканави_253_274', 'page': 19, 'book': book,
+                'num': num, 'scope': scope, 'format': 'задача',
+                'answer_note': 'ответа в отсканированной части нет'}
+        if edited:
+            prov['human_edited'] = True
+        return Question.objects.create(
+            topic=self.topic, text='условие ' + num, latex='условие ' + num,
+            latex_answer=answer, source_type='book_scan', verification_status='verified',
+            provenance=prov)
+
+    def board(self, *entries, name='сканави_ответы'):
+        """tasks.json прогона с ответами ровно в том виде, как его пишет tasks.py."""
+        folder = self.tmp / name
+        folder.mkdir(parents=True, exist_ok=True)
+        answers = [{'num': n, 'scope': sc,
+                    'values': [{'page': p, 'text': t, 'block': '', 'run': ''}]}
+                   for (n, sc, p, t) in entries]
+        (folder / 'tasks.json').write_text(
+            json.dumps({'run': name, 'pages': 4, 'tasks': [], 'answers': answers},
+                       ensure_ascii=False), encoding='utf-8')
+        return name
+
+    def run_command(self, **opt):
+        out, listing = io.StringIO(), self.tmp / 'listing.json'
+        opt.setdefault('out', str(listing))
+        with override_settings(INGEST_RUNS_DIR=str(self.tmp)):
+            call_command('attach_book_answers', stdout=out, stderr=out, **opt)
+        return out.getvalue(), listing
+
+    def test_dry_run_leaves_the_answer_where_it_was(self):
+        q = self.row('11.198')
+        text, listing = self.run_command(
+            answers_run=self.board(('11.198', 'ГЛАВА 11', 3, '$18$ см')), book=self.BOOK)
+        q.refresh_from_db()
+        self.assertEqual(q.latex_answer, '')
+        self.assertIn('подходит к приклеиванию: 1', text)
+        self.assertIn('сухой прогон: база не тронута', text)
+        plan = json.loads(listing.read_text(encoding='utf-8'))['plan']
+        self.assertEqual([p['answer'] for p in plan], ['$18$ см'])
+
+    def test_apply_writes_answer_and_its_source_and_nothing_else(self):
+        q = self.row('11.198')
+        before = (q.text, q.latex, q.topic_id, q.verification_status, q.provenance['answer_note'])
+        self.run_command(answers_run=self.board(('11.198', 'ГЛАВА 11', 3, '$18$ см')),
+                         book=self.BOOK, apply=True,
+                         decision='скан ответов главы 11, сверено глазами')
+        q.refresh_from_db()
+        self.assertEqual(q.latex_answer, '$18$ см')
+        self.assertEqual((q.text, q.latex, q.topic_id, q.verification_status,
+                          q.provenance['answer_note']), before)
+        src = q.provenance['answer_from']
+        self.assertEqual(src['run'], 'сканави_ответы')
+        self.assertEqual(src['pages'], [3])
+        self.assertEqual(src['by'], 'скан ответов главы 11, сверено глазами')
+
+    def test_dot_at_the_number_is_not_a_different_number(self):
+        # в доске точка при числе — конец записи, в условии — часть нумерации главы
+        q = self.row('11.198')
+        self.run_command(answers_run=self.board(('11.198.', 'ГЛАВА 11', 3, '$18$ см')),
+                         book=self.BOOK, apply=True, decision='номер сверен')
+        q.refresh_from_db()
+        self.assertEqual(q.latex_answer, '$18$ см')
+
+    def test_number_on_two_rows_of_the_book_is_not_resolved(self):
+        a, b = self.row('11.198'), self.row('11.198', scope='Группа Б')
+        text, _ = self.run_command(answers_run=self.board(('11.198.', 'ГЛАВА 11', 3, '$18$ см')),
+                                   book=self.BOOK, apply=True, decision='два счёта в книге')
+        a.refresh_from_db()
+        b.refresh_from_db()
+        self.assertEqual([a.latex_answer, b.latex_answer], ['', ''])
+        self.assertIn('нескольких строках', text)
+
+    def test_answer_under_several_headings_stays_unsure(self):
+        q = self.row('11.198', scope='')
+        text, _ = self.run_command(
+            answers_run=self.board(('11.198', 'Группа А', 3, '$18$ см'),
+                                   ('11.198', 'Группа Б', 3, '$24$ см')),
+            book=self.BOOK, apply=True, decision='заголовков два')
+        q.refresh_from_db()
+        self.assertEqual(q.latex_answer, '')
+        self.assertIn('под несколькими заголовками', text)
+
+    def test_board_entry_longer_than_an_answer_is_not_an_answer(self):
+        q = self.row('11.198')
+        text, _ = self.run_command(
+            answers_run=self.board(('11.198', 'ГЛАВА 11', 3, 'Решение. ' + 'по рассуждению ' * 60)),
+            book=self.BOOK, apply=True, decision='подозрительно длинно')
+        q.refresh_from_db()
+        self.assertEqual(q.latex_answer, '')
+        self.assertIn('разбор, а не ответ', text)
+
+    def test_same_heading_printed_three_times_is_not_one_answer(self):
+        """Имя области повторяется в книге сколько угодно раз (у Касаткиной «Решение
+        отдельных задач» — трижды), поэтому две записи под ним — это два разных счёта,
+        а не два куска одного ответа."""
+        folder = self.tmp / 'сканави_ответы'
+        folder.mkdir()
+        (folder / 'tasks.json').write_text(json.dumps(
+            {'run': 'сканави_ответы', 'pages': 4, 'tasks': [],
+             'answers': [{'num': '11.198', 'scope': 'ГЛАВА 11',
+                          'values': [{'page': 21, 'text': '$q_0 = 0{,}95q$', 'block': '§1'},
+                                     {'page': 61, 'text': '$r_1 = r/3$', 'block': '§2'}]}]},
+            ensure_ascii=False), encoding='utf-8')
+        q = self.row('11.198')
+        text, _ = self.run_command(answers_run='сканави_ответы', book=self.BOOK,
+                                   apply=True, decision='два параграфа')
+        q.refresh_from_db()
+        self.assertEqual(q.latex_answer, '')
+        self.assertIn('в нескольких разделах', text)
+
+    def test_answer_already_in_the_bank_is_not_overwritten(self):
+        q = self.row('11.198', answer='было из скана условий')
+        self.run_command(answers_run=self.board(('11.198', 'ГЛАВА 11', 3, '$18$ см')),
+                         book=self.BOOK, apply=True, decision='не перетирать')
+        q.refresh_from_db()
+        self.assertEqual(q.latex_answer, 'было из скана условий')
+
+    def test_human_edited_row_goes_to_the_editor_not_the_database(self):
+        q = self.row('11.198', edited=True)
+        text, _ = self.run_command(answers_run=self.board(('11.198', 'ГЛАВА 11', 3, '$18$ см')),
+                                   book=self.BOOK, apply=True, decision='строка вычитана')
+        q.refresh_from_db()
+        self.assertEqual(q.latex_answer, '')
+        self.assertIn('только редактурой', text)
+
+    def test_other_book_is_out_of_scope(self):
+        q = self.row('11.198', book='Звавич. 11кл. стереометрия')
+        with self.assertRaises(CommandError):
+            self.run_command(answers_run=self.board(('11.198', 'ГЛАВА 11', 3, '$18$ см')),
+                             book=self.BOOK)
+        q.refresh_from_db()
+        self.assertEqual(q.latex_answer, '')
+
+    def test_empty_board_is_an_error_not_a_quiet_zero(self):
+        self.row('11.198')
+        with self.assertRaises(CommandError) as ctx:
+            self.run_command(answers_run=self.board(), book=self.BOOK)
+        self.assertIn('нет ни одной записи ответа', str(ctx.exception))
+
+    def test_answer_printed_inside_the_unit_counts_as_a_source_too(self):
+        """Не только отдельная страница «Ответы»: у Касаткиной ответ напечатан в теле
+        задачи, и тогда источником служит тот же разбор единиц, а не доска."""
+        folder = self.tmp / 'касаткина_глава1'
+        folder.mkdir()
+        (folder / 'tasks.json').write_text(json.dumps(
+            {'run': 'касаткина_глава1', 'pages': 2,
+             'tasks': [{'num': '11.198', 'scope': 'ГЛАВА 11', 'pages': [7],
+                        'markdown': 'условие', 'answer': '',
+                        'answer_in': ['$18$ см', '$4$ см²']}],
+             'answers': []}, ensure_ascii=False), encoding='utf-8')
+        q = self.row('11.198')
+        self.run_command(answers_run='касаткина_глава1', book=self.BOOK, apply=True,
+                         decision='ответ напечатан в задаче')
+        q.refresh_from_db()
+        self.assertEqual(q.latex_answer, '$18$ см; $4$ см²')
+        self.assertEqual(q.provenance['answer_from']['run'], 'касаткина_глава1')
+
+    def test_apply_without_whose_decision_is_refused(self):
+        self.row('11.198')
+        with self.assertRaises(CommandError):
+            self.run_command(answers_run=self.board(('11.198', 'ГЛАВА 11', 3, '$18$ см')),
+                             book=self.BOOK, apply=True)
+
+    def test_board_number_absent_from_the_bank_is_reported(self):
+        self.row('11.198')
+        text, listing = self.run_command(
+            answers_run=self.board(('11.198', 'ГЛАВА 11', 3, '$18$ см'),
+                                   ('11.999', 'ГЛАВА 11', 3, '$7$ см')),
+            book=self.BOOK)
+        self.assertIn('такого номера в банке нет', text)
+        unsure = json.loads(listing.read_text(encoding='utf-8'))['unsure']
+        self.assertEqual([u['num'] for u in unsure], ['11.999'])
+    def test_row_whose_number_is_not_on_the_board_is_counted(self):
+        """«Подходит к приклеиванию: 1» не должно читаться как «больше нечего»:
+        строка с напечатанным номером, которого на доске нет, видна в отчёте."""
+        self.row('11.198')
+        q = self.row('11.200')
+        text, listing = self.run_command(
+            answers_run=self.board(('11.198', 'ГЛАВА 11', 3, '$18$ см')), book=self.BOOK)
+        self.assertIn('номера нет на доске ответов — 1', text)
+        d = json.loads(listing.read_text(encoding='utf-8'))
+        self.assertEqual(d['counts']['bank_rows'], 2)
+        self.assertEqual(d['counts']['candidates'], 2)
+        self.assertEqual(d['counts']['skipped']['номера нет на доске ответов'], 1)
+        q.refresh_from_db()
+        self.assertEqual(q.latex_answer, '')
+    def unit_board(self, *tasks, name='сканави_253_274'):
+        """Прогон с ответами = тот же прогон, что у строк банка: ответы напечатаны
+        внутри единиц, и различает их только страница."""
+        folder = self.tmp / name
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / 'tasks.json').write_text(json.dumps(
+            {'run': name, 'pages': 120, 'answers': [],
+             'tasks': [{'num': n, 'scope': 'ГЛАВА 11', 'pages': p, 'block': b,
+                        'markdown': 'условие', 'answer': '',
+                        'answer_in': a if isinstance(a, list) else [a]}
+                       for (n, p, b, a) in tasks]}, ensure_ascii=False), encoding='utf-8')
+        return name
+
+    def test_answer_from_another_page_of_the_same_run_is_not_the_row_s_answer(self):
+        """Номер в книге идёт счётом по главам: строка с.19 не может получить ответ
+        задачи с.99 того же прогона, даже если обе напечатаны под «ГЛАВА 11»."""
+        q = self.row('11.198')
+        text, _ = self.run_command(
+            answers_run=self.unit_board(('11.198', [99, 100], '3. РАБОТА ЗАРЯДА / Решение',
+                                         '$q_0 = 0{,}95q$')),
+            book=self.BOOK, apply=True, decision='тот же прогон')
+        q.refresh_from_db()
+        self.assertEqual(q.latex_answer, '')
+        self.assertIn('в другой задаче с тем же номером', text)
+
+    def test_answer_inside_the_unit_of_the_same_page_is_attached(self):
+        q = self.row('11.198')
+        self.run_command(
+            answers_run=self.unit_board(('11.198', [19, 20], 'ГЛАВА 11 / Решение', '$18$ см')),
+            book=self.BOOK, apply=True, decision='страница совпала')
+        q.refresh_from_db()
+        self.assertEqual(q.latex_answer, '$18$ см')
