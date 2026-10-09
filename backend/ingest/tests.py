@@ -233,6 +233,23 @@ class RunBookIngestCommandTest(TestCase):
         self.assertIn('с.3', self.run.error)
         self.assertEqual(Question.objects.count(), 2)
 
+    def test_later_failure_does_not_erase_the_hole(self):
+        """Дыра книги обязана остаться в журнале, если после неё споткнулся импорт:
+        «импорт упал» без «распознано 2 из 3» прячет, что книга дырявая, и перегон
+        по ошибке импорта её не лечит."""
+        from unittest import mock
+
+        (self.out / 'source.pdf').write_bytes(pdf_bytes(3))
+        with self.fake_steps():
+            with mock.patch('ingest.management.commands.run_book_ingest.call_command',
+                            side_effect=RuntimeError('импорт упал')):
+                with self.assertRaises(SystemExit):
+                    call_command('run_book_ingest', self.run.pk)
+        self.run.refresh_from_db()
+        self.assertEqual(self.run.status, STATUS_FAILED)
+        self.assertIn('распознано 2 страниц из 3', self.run.error)
+        self.assertIn('импорт упал', self.run.error)
+
     def test_book_without_a_single_page_fails_instead_of_importing_nothing(self):
         with self.fake_steps(pages=()):
             with self.assertRaises(SystemExit):

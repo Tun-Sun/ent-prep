@@ -205,7 +205,9 @@ class Command(BaseCommand):
 
     def fail(self, run, text):
         run.status = STATUS_FAILED
-        run.error = text
+        # дыра книги — факт про распознавание: перезаписать её падением импорта
+        # значит оставить журнал с более поздней бедой и без названных страниц
+        run.error = f"{run.error} | {text}" if run.error else text
         run.step = ""
         run.finished_at = timezone.now()
         run.save(update_fields=["status", "error", "step", "finished_at"])
