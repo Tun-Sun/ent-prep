@@ -307,7 +307,7 @@ export default function QuestionsPage() {
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, marginBottom: 6, fontSize: 14 }}><FormattedText text={q.text} /></div>
+                    <div style={{ fontWeight: 600, marginBottom: 6, fontSize: 14 }}><FormattedText text={q.text} markdown /></div>
                     {q.image && (
                       <div style={{ textAlign: 'center', margin: '8px 0' }}>
                         <img src={q.image} alt="" style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8 }} />
