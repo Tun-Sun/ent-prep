@@ -4,7 +4,7 @@ from django.db.models import Q
 import re
 
 FIGURE_LINE = re.compile(r"^!\[[^\]]*\]\(([^)]+)\)\s*$")
-MATH_NOISE = re.compile(r"\*\*|\$|\\tag\{[^}]*\}")
+MATH_NOISE = re.compile(r"\*\*|\\tag\{[^}]*\}")
 
 # Типы, на которые ученик может ответить выбором. Открытый ответ варианта не имеет.
 CHOICE_TYPES = ('single_choice', 'multiple_choice', 'matching')
@@ -27,7 +27,9 @@ class QuestionQuerySet(models.QuerySet):
 def plain_from_latex(latex):
     """Условие по-человечески из Markdown+LaTeX.
 
-    Поле text существующему UI нужно читаемым: он рендерит HTML, а не KaTeX.
+    Ограничители формул остаются в тексте: весь UI читает text через FormattedText, а без
+    `$…$` ему нечего отдавать KaTeX — на экране стояло `10\\text{ м}` вместо 10 м. Снимаем
+    markdown-шум и напечатанный номер формулы (\\tag), он в external_id.
     Это не замена latex, а то, что видно везде, где банк из книг не подключён
     (игровой тест, админка, выгрузка). Одна функция на генератор и на правку:
     иначе отредактированная задача разошлась бы по text с импортированной.

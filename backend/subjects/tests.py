@@ -362,6 +362,9 @@ class BookScanBankTest(TestCase):
         self.do_import()
         self.assertEqual(Question.objects.filter(source_type='book_scan').count(), 1)
         self.assertEqual(Question.objects.get().latex, '$x = 2$')
+        # text читают тест и результаты: ограничители в нём — единственное, что KaTeX
+        # там может найти
+        self.assertEqual(Question.objects.get().text, '$x = 2$')
 
     def test_test_unit_gets_options_as_answer_rows(self):
         """Тест остаётся тестом: варианты печатаются в условии и едут строками ответа.
@@ -1023,3 +1026,111 @@ class AttachBookAnswersTest(TestCase):
             book=self.BOOK, apply=True, decision='страница совпала')
         q.refresh_from_db()
         self.assertEqual(q.latex_answer, '$18$ см')
+
+
+class RefreshScanTextTest(TestCase):
+    """Вернуть формулы экранам, которые читают text: тест, результаты, «Вопросы».
+
+    plain_from_latex снимал `$…$`, поэтому KaTeX там нечего было выделять и на экране
+    стояло сырое `10\\text{ м}`. Пересборка берёт latex — содержательного она не меняет,
+    поэтому и права ровно одно поле; всё остальное (тема, сложность, статус приёмки,
+    ответ) остаётся чужими решениями.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.physics = Subject.objects.create(name='Физика', slug='refresh-ph', icon='⚡')
+        cls.topic = Topic.objects.create(subject=cls.physics, name='Сканави · ГЛАВА 11')
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+
+    def book_row(self, num, latex, **extra_prov):
+        """Строка банка так, как её оставил старый plain_from_latex: текст без `$`.
+
+        Экран банка при этом показывал формулу — он читает latex; здесь важен text.
+        """
+        prov = {'run': 'out_t', 'book': 'Сканави, стериометрия', 'num': num,
+                'format': 'задача'}
+        prov.update(extra_prov)
+        return Question.objects.create(
+            topic=self.topic, text=latex.replace('$', ''), latex=latex,
+            source_type='book_scan', verification_status='verified', provenance=prov)
+
+    def run_command(self, **opt):
+        opt.setdefault('out', str(self.tmp / 'list.json'))
+        out = io.StringIO()
+        call_command('refresh_scan_text', stdout=out, stderr=out, **opt)
+        listing = Path(opt['out'])
+        data = json.loads(listing.read_text(encoding='utf-8')) if listing.exists() else {}
+        return out.getvalue(), data
+
+    def test_dry_run_leaves_the_database_alone(self):
+        q = self.book_row('11.1', '$v = 10\\text{ м}$')
+        text, data = self.run_command()
+        q.refresh_from_db()
+        self.assertEqual(q.text, 'v = 10\\text{ м}')
+        self.assertIn('сухой прогон: база не тронута', text)
+        self.assertEqual([p['id'] for p in data['plan']], [q.id])
+        self.assertEqual(data['plan'][0]['new'], '$v = 10\\text{ м}$')
+
+    def test_apply_writes_only_text_and_keeps_every_decision(self):
+        q = self.book_row('11.2', 'Тело массой $m = 2\\text{ кг}$ движется')
+        before = (q.latex, q.topic_id, q.verification_status, q.difficulty,
+                  q.question_type, q.provenance['num'])
+        text, _ = self.run_command(apply=True, decision='пересборка по правке plain_from_latex')
+        q.refresh_from_db()
+        self.assertEqual(q.text, 'Тело массой $m = 2\\text{ кг}$ движется')
+        self.assertEqual((q.latex, q.topic_id, q.verification_status, q.difficulty,
+                          q.question_type, q.provenance['num']), before)
+        self.assertEqual(q.provenance['text_refresh']['by'],
+                         'пересборка по правке plain_from_latex')
+        self.assertIn('пересобрано: 1', text)
+
+    def test_row_without_latex_is_never_touched(self):
+        """Собранные вопросы живут в text: пересобирать их из пустого latex — стереть банк."""
+        other = Question.objects.create(topic=self.topic, text='$x$ из Excel',
+                                        source_type='collected')
+        naked = Question.objects.create(topic=self.topic, text='условие без latex',
+                                        source_type='book_scan')
+        text, data = self.run_command(apply=True, decision='только банк')
+        other.refresh_from_db()
+        naked.refresh_from_db()
+        self.assertEqual(other.text, '$x$ из Excel')
+        self.assertEqual(naked.text, 'условие без latex')
+        self.assertEqual(data['counts']['without_latex'], 1)
+        self.assertNotIn(other.id, [p['id'] for p in data['plan']])
+
+    def test_human_edited_row_goes_to_the_list_not_the_database(self):
+        q = self.book_row('11.3', '$a = 5$', human_edited=True)
+        text, data = self.run_command(apply=True, decision='строку правил человек')
+        q.refresh_from_db()
+        self.assertEqual(q.text, 'a = 5')
+        self.assertEqual([p['id'] for p in data['unsure']], [q.id])
+        self.assertIn('правил человек', text)
+
+    def test_second_run_writes_nothing_new(self):
+        self.book_row('11.4', '$b = 7$')
+        self.run_command(apply=True, decision='первый проход')
+        text, data = self.run_command(apply=True, decision='второй проход')
+        self.assertEqual(data['counts']['plan'], 0)
+        self.assertIn('уже совпадает', text)
+
+    def test_book_filter_limits_scope_to_one_book(self):
+        a = self.book_row('11.5', '$c = 1$')
+        b = self.book_row('11.6', '$d = 2$')
+        Question.objects.filter(pk=b.id).update(provenance={**b.provenance,
+                                                            'book': 'Касаткина'})
+        _, data = self.run_command(book='Касаткина', apply=True, decision='одна книга')
+        a.refresh_from_db()
+        b.refresh_from_db()
+        self.assertEqual(a.text, 'c = 1')
+        self.assertEqual(b.text, '$d = 2$')
+
+    def test_plain_from_latex_keeps_the_delimiters(self):
+        from subjects.models import plain_from_latex
+        self.assertEqual(plain_from_latex('Дано: $x = 2$ м, **важно**'),
+                         'Дано: $x = 2$ м, важно')
+        # номер, напечатанный у формулы, в text не идёт: он в external_id, а KaTeX
+        # ругается на \tag в строчной формуле
+        self.assertEqual(plain_from_latex('$x = 2\\tag{11.198}$'), '$x = 2$')
