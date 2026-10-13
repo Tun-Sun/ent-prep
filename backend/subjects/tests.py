@@ -1109,6 +1109,35 @@ class RefreshScanTextTest(TestCase):
         self.assertEqual([p['id'] for p in data['unsure']], [q.id])
         self.assertIn('правил человек', text)
 
+    def test_human_flag_takes_the_row_the_eyes_already_cleared(self):
+        """Строка «правил человек», вычитанная по скану, пересобирается по названному id.
+
+        Без флага она ушла бы списком «спорно» — и 12.10 такие четыре строки гоняли
+        отдельным скриптом. Флаг нужен, чтобы обход отсека не был тихим.
+        """
+        q = self.book_row('11.3а', '$a = 5$', human_edited=True)
+        text, data = self.run_command(human=str(q.id), apply=True,
+                                      decision='вычитано глазами 12.10')
+        q.refresh_from_db()
+        self.assertEqual(q.text, '$a = 5$')
+        self.assertTrue(q.provenance['human_edited'])          # метку не снимаем
+        self.assertEqual(q.provenance['text_refresh']['by'], 'вычитано глазами 12.10')
+        self.assertTrue(data['plan'][0]['правил человек'])
+        self.assertEqual(data['counts']['human_named'], 1)
+        self.assertIn('[правил человек]', text)
+
+    def test_human_flag_on_an_id_outside_the_slice_says_so(self):
+        """Названный id, которого в этом срезе нет, не должен теряться молча."""
+        q = self.book_row('11.3б', '$b = 6$', human_edited=True)
+        self.book_row('11.3в', '$c = 7$')            # фильтр по книге требует хоть одну строку
+        Question.objects.filter(pk=q.id).update(provenance={**q.provenance, 'book': 'Касаткина'})
+        text, data = self.run_command(book='Сканави, стериометрия', human=str(q.id),
+                                      apply=True, decision='не та книга')
+        q.refresh_from_db()
+        self.assertEqual(q.text, 'b = 6')
+        self.assertEqual(data['counts']['human_missed'], [q.id])
+        self.assertIn('таких id в этом срезе нет', text)
+
     def test_second_run_writes_nothing_new(self):
         self.book_row('11.4', '$b = 7$')
         self.run_command(apply=True, decision='первый проход')
