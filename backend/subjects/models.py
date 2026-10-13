@@ -225,7 +225,7 @@ class Question(models.Model):
         for f in ('latex', 'latex_answer'):
             if f in orig:
                 setattr(self, f, orig[f])
-        self.text = plain_from_latex(self.latex)[:4000] or '(пустое условие)'
+        self.text = plain_from_latex(self.latex) or '(пустое условие)'
         for k in ('ocr_original', 'human_edited', 'edited_at', 'edited_by'):
             prov.pop(k, None)
         self.provenance = prov

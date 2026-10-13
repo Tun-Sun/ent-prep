@@ -197,7 +197,7 @@ class BookScanEditSerializer(serializers.ModelSerializer):
         if 'latex' in changed:
             # text читает весь остальной UI (тест, админка, выгрузка) — он обязан
             # идти за latex, иначе на экране теста останется исправленная опечатка
-            instance.text = plain_from_latex(instance.latex)[:4000] or '(пустое условие)'
+            instance.text = plain_from_latex(instance.latex) or '(пустое условие)'
         if orig:
             prov['ocr_original'] = orig
         prov['human_edited'] = True

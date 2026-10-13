@@ -1145,6 +1145,33 @@ class RefreshScanTextTest(TestCase):
         self.assertEqual(data['counts']['plan'], 0)
         self.assertIn('уже совпадает', text)
 
+    def test_long_condition_is_not_cut_mid_formula(self):
+        """Длинное условие живёт целиком: `text` — колонка без лимита.
+
+        Срез [:4000] резал восемь строк Касаткиной (latex до 7031 знака) посередине
+        формулы: хвост решения терялся, а незакрытый `$$` печатался на экране сырыми
+        долларами — шаг 1 не находит пару.
+        """
+        latex = 'условие ' * 700 + ' $$E = 2\\text{ В/м}$$'
+        q = self.book_row('11.7', latex)
+        self.run_command(apply=True, decision='хвост длинного условия')
+        q.refresh_from_db()
+        self.assertGreater(len(latex), 4000)
+        self.assertEqual(q.text, latex)
+        self.assertEqual(q.text.count('$$') % 2, 0)
+
+    def test_rollback_to_the_scan_snapshot_keeps_the_whole_text(self):
+        latex = 'условие ' * 700 + ' $\\varphi$'
+        q = self.book_row('11.8', latex)
+        prov = dict(q.provenance)
+        prov['ocr_original'] = {'latex': latex}
+        prov['human_edited'] = True
+        Question.objects.filter(pk=q.id).update(text='короткая правка человека', provenance=prov)
+        q.refresh_from_db()
+        self.assertTrue(q.restore_ocr_original())
+        self.assertEqual(q.text, latex)
+        self.assertTrue(q.text.endswith('$\\varphi$'))
+
     def test_book_filter_limits_scope_to_one_book(self):
         a = self.book_row('11.5', '$c = 1$')
         b = self.book_row('11.6', '$d = 2$')

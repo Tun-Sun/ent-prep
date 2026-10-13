@@ -164,7 +164,7 @@ class Command(BaseCommand):
             topic, _ = Topic.objects.get_or_create(subject=subject, name=topic_name(book, scope))
             defaults = {
                 "topic": topic,
-                "text": plain_from_latex(t.get("markdown"))[:4000] or "(пустое условие)",
+                "text": plain_from_latex(t.get("markdown")) or "(пустое условие)",
                 "latex": t.get("markdown") or "",
                 "latex_answer": t.get("answer") or "; ".join(t.get("answer_in") or []),
                 "question_type": "single_choice" if is_test else "open_answer",

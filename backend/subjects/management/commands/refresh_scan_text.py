@@ -59,7 +59,7 @@ class Command(BaseCommand):
 
         plan, edited, same, named_rows, seen = [], [], 0, [], set()
         for q in qs.order_by("id"):
-            new = plain_from_latex(q.latex)[:4000] or "(пустое условие)"
+            new = plain_from_latex(q.latex) or "(пустое условие)"
             if q.id in named:
                 seen.add(q.id)
             if new == q.text:
