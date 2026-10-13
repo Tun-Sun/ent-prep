@@ -117,11 +117,18 @@ def figure_order(body):
 def share_figures(tasks, pages):
     """Задача без своей строки картинок берёт тот вырез, который называет текстом.
 
-    В книге строка «![Рис. 1.37] … ![Рис. 1.40]» одна на несколько задач и физически
-    стоит под последней: ей и доставались все четыре выкройки, а предыдущие оставались
-    без рисунка. Одну выкройку могут показать две задачи — условие и его решение, —
-    поэтому соседа не обиранем: у соседа первым стоит названный им самим рисунок.
+    Искать приходится по всему прогону, а не по страницам самой задачи: в Сканави
+    пример со стр. 5 зовёт рис. 11.5 со стр. 4, в Касаткиной задача со стр. 118 —
+    рис. 2.19 со стр. 64, потому что чертёж напечатан в блоке теории или примеров.
+    Ближайшая к задаче страница выигрывает, чтобы дубль номера на двух страницах не
+    брал дальний. Свой кадр ставит figure_order и он остаётся первым: импорт берёт
+    figures[0].
     """
+    caps = collections.defaultdict(list)   # номер рисунка -> [(страница, путь)] по возрастанию
+    for pg in sorted(pages):
+        for m in FIG_CAP.finditer((pages[pg].get("markdown") or "")):
+            if fig_key(m.group(1)):
+                caps[fig_key(m.group(1))].append((pg, m.group(2)))
     for t in tasks:
         if t.get("figures"):
             continue
@@ -129,9 +136,10 @@ def share_figures(tasks, pages):
         want = {fig_key(n) for n in RIS.findall(prose)} - {""}
         if not want:
             continue
-        for pg in t.get("pages") or []:
-            hit = next((m.group(2) for m in FIG_CAP.finditer((pages.get(pg) or {}).get("markdown") or "")
-                        if fig_key(m.group(1)) in want), None)
+        own = t.get("pages") or []
+        near = lambda pg: min((abs(pg - p) for p in own), default=pg)
+        for key in sorted(want):
+            hit = next((p for _, p in sorted(caps.get(key, ()), key=lambda c: near(c[0]))), None)
             if hit:
                 t["figures"] = [hit]
                 break

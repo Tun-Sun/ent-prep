@@ -621,6 +621,80 @@ class RunningHeadTest(TestCase):
         self.assertEqual(acc["межстраничная шапка"], len('ГЛАВА 11. Задачи по стереометрии') + 1)
 
 
+class FigureFromAnotherPageTest(TestCase):
+    """Чертёж печатают на странице примера или теории, а задачу это не оставляет без
+    картинки. Живой банк: 6 строк называют «рис. …» и не показывают кадр — поиск
+    `share_figures` был заперт в страницах самой единицы (Сканави пример №1 зовёт
+    рис. 11.5 со стр. 4, живя на стр. 5; Касаткина №11 на стр. 118 зовёт рис. 2.19
+    со стр. 64)."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent / 'pipeline'))
+        import tasks
+        cls.tasks = tasks
+
+    def parse(self, pages_md):
+        t = self.tasks
+        pages = [{'page': i + 1, 'markdown': md} for i, md in enumerate(pages_md)]
+        by_page = {p['page']: p for p in pages}
+        units, answers, other, acc = t.walk(pages)
+        for u in units:
+            t.entities(u, by_page)
+        t.share_figures(units, by_page)
+        t.attach(units, answers, acc)
+        return {u['num']: u for u in units}
+
+    def unit(self, num, pages_md_pages, md):
+        return {'num': num, 'pages': list(pages_md_pages), 'markdown': md, 'figures': []}
+
+    def share(self, pages_md, units):
+        """Прямой вызов share_figures. Сквозь walk() та же проверка стала бы тестом
+        разметки страниц: голые «**1.** … **4.**» парсер считает одним блоком и
+        сливает в единицу, а ломается здесь поиск кадра по прогону."""
+        pages = {i + 1: {'page': i + 1, 'markdown': md} for i, md in enumerate(pages_md)}
+        self.tasks.share_figures(units, pages)
+        return units
+
+    def test_named_figure_from_an_earlier_page_lands_on_the_task(self):
+        got = self.parse([
+            '# Глава 1\n\n**1.** Проведена плоскость. Найти объем.\n\n'
+            '![Рис. 11.5](assets/p02_fig1.png)\n',
+            '**2.** Та же пирамида, другое сечение. Найти $V$.\n'])
+        self.assertEqual(got['1']['figures'], ['assets/p02_fig1.png'])
+
+    def test_nearest_page_wins_when_the_number_is_printed_twice(self):
+        """Один и тот же номер на двух страницах — берём кадр ближе к задаче, а не
+        первый попавшийся в прогоне (у Касаткиной номер чертёжа встречается дважды)."""
+        u = self.unit('11', [4], '**11.** Дано $a=1$. См. рис. 2.19.')
+        self.share([
+            '![Рис. 2.19](assets/p01_fig1.png)\n',
+            'Теория.\n',
+            '![Рис. 2.19](assets/p03_fig1.png)\n',
+            ''], [u])
+        self.assertEqual(u['figures'], ['assets/p03_fig1.png'])
+
+    def test_own_figure_stays_first_even_when_another_is_named(self):
+        """Свой кадр обязан остаться первым: импорт берёт figures[0], и под задачей
+        про рис. 1.32 не должна лечь картинка рис. 1.30."""
+        got = self.parse([
+            '# Глава 1\n\n**1.** Дано $a=1$. См. рис. 1.31.\n\n'
+            '![Рис. 1.30](assets/p01_fig1.png) ![Рис. 1.31](assets/p01_fig2.png)\n'])
+        self.assertEqual(got['1']['figures'][0], 'assets/p01_fig2.png')
+
+    def test_no_invented_frame(self):
+        """Без слова задачи в прогоне рисунок не появляется: не назвала — пусто, и
+        назвала чертёж, которого в этом прогоне нет, — тоже пусто («если нет в книге,
+        значит нет»)."""
+        quiet = self.unit('1', [2], '**1.** Дано $a=1$. Найти $V$.')
+        missing = self.unit('2', [2], '**2.** См. рис. 9.9.')
+        self.share(['![Рис. 2.4](assets/p01_fig1.png)\n', ''], [quiet, missing])
+        self.assertEqual(quiet['figures'], [])
+        self.assertEqual(missing['figures'], [])
+
+
 class MissingPagesTest(TestCase):
     """Прогон обязан сам сказать, что книга легла в банк с дыркой."""
 
