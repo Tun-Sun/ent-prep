@@ -600,6 +600,59 @@ class BulkVerifyTest(TestCase):
                                 format='json').status_code, 400)
 
 
+class BankEndpointPermissionTest(TestCase):
+    """Дыра `/api/questions/`: список и.retrieve банка были под `IsAuthenticated`.
+
+    Сериализатор ученика `latex_answer` скрывал, а этот эндпоинт — нет: открытый
+    DevTools выдавал весь банк с эталонами. Регрессия стоит здесь, а не только в
+    тесте страницы ученика, потому что закрываем мы именно вход в банк.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.physics = Subject.objects.create(name='Физика', slug='physics', icon='⚡')
+        cls.topic = Topic.objects.create(subject=cls.physics, name='Кинематика')
+        from users.models import User
+        cls.teacher = User.objects.create_user(username='bt', password='x', role='teacher')
+        cls.admin = User.objects.create_user(username='ba', password='x', role='admin')
+        cls.student = User.objects.create_user(username='bs', password='x', role='student')
+        cls.q = Question.objects.create(
+            topic=cls.topic, text='Задача с эталоном', latex_answer='$18$ см',
+            source_type='book_scan', verification_status='verified')
+
+    def api(self, user=None):
+        from rest_framework.test import APIClient
+        c = APIClient()
+        if user is not None:
+            c.force_authenticate(user=user)
+        return c
+
+    def test_student_cannot_list_the_bank(self):
+        self.assertEqual(self.api(self.student).get('/api/questions/').status_code, 403)
+
+    def test_student_cannot_retrieve_a_bank_row(self):
+        r = self.api(self.student).get('/api/questions/%d/' % self.q.pk)
+        self.assertEqual(r.status_code, 403)
+        self.assertNotIn('18', json.dumps(getattr(r, 'data', {}), ensure_ascii=False,
+                                         default=str))
+
+    def test_anonymous_has_no_access(self):
+        self.assertIn(self.api().get('/api/questions/').status_code, (401, 403))
+
+    def test_teacher_and_admin_keep_the_bank(self):
+        for user in (self.teacher, self.admin):
+            r = self.api(user).get('/api/questions/')
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r.data['results'][0]['id'], self.q.pk)
+            self.assertEqual(
+                self.api(user).get('/api/questions/%d/' % self.q.pk).status_code, 200)
+
+    def test_filter_params_still_work_for_a_teacher(self):
+        r = self.api(self.teacher).get('/api/questions/', {'grade': 'none'})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data['count'], 1)
+
+
 class AutoacceptBookDraftsTest(TestCase):
     """Приёмка автоматом: статус тот же, но метка говорит, что человека не было.
 
@@ -1028,6 +1081,31 @@ class LessonResultsTest(TestCase):
             r = self._answer(self._auth(self.student), self.homework, self.with_answer, '18')
         self.assertEqual(r.data['verdict'], 'pending_review')
         self.assertEqual(r.data['judged_by'], '')
+
+    def test_multiline_answer_keeps_which_part_the_machine_matched(self):
+        """Правило от 14.10: словесная часть уводит всю задачу к человеку, но подсказка
+        обязана говорить, какую часть сверка уже прошла, и ученику её не показывать."""
+        topic = Topic.objects.create(subject=self.math, name='Сканави · Глава 12')
+        q = self.task(topic, 'два действия',
+                      answer='а) $18$ см; б) направление — по чертежу', points=2)
+        block = AssignmentBlock.objects.create(assignment=self.lesson, kind='simplified',
+                                               order=2, question_ids=[q.pk])
+        r = self._answer(self._auth(self.student), block, q, 'а) 18 см; б) вверх')
+        self.assertEqual(r.data['verdict'], 'pending_review')
+        self.assertIsNone(AssignmentAnswer.objects.get(question=q).points_earned)
+        # ученику — только то, что ответ ждёт человека
+        self.assertIn('преподавателя', r.data['feedback']['note'])
+        self.assertNotIn('совпало', r.data['feedback']['note'])
+        note = AssignmentAnswer.objects.get(question=q).verdict_note
+        self.assertIn('не решается автоматически: 1 из 2 частей', note)
+        self.assertIn('а): совпало', note)
+        self.assertIn('б): текст — проверьте глазами', note)
+        # тренер в матрице видит подсказку целиком, потому что задача стоит в очереди
+        self._submit(self._auth(self.student), block)
+        row = self._auth(self.teacher).get(f'/api/assignments/{self.lesson.pk}/matrix/').data
+        cell = [x for x in row['pending_review'] if x['question'] == q.pk]
+        self.assertEqual(len(cell), 1)
+        self.assertIn('а): совпало', cell[0]['verdict_note'])
 
     def test_answer_of_a_task_that_is_not_in_the_block_is_refused(self):
         r = self._answer(self._auth(self.student), self.homework, self.classwork_task, '18 см')

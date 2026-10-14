@@ -10,7 +10,7 @@
 from django.conf import settings
 from django.utils import timezone
 
-from .openanswer import score_open_answer
+from .openanswer import parts_hint, score_open_answer
 from .openanswer.normalize import normalize_answer
 
 
@@ -48,6 +48,11 @@ def grade_assignment_answer(answer):
     answer.verdict = res['verdict']
     answer.judged_by = res['judged_by'] or ''
     answer.verdict_note = res['why']
+    # Многочастный ответ, застрявший у человека: балл за всю задачу всё равно
+    # ставит тренер, но сверять заново то, что уже сошлось, он не обязан —
+    # подсказка говорит, какую именно часть смотреть.
+    if res['verdict'] == 'pending_review' and len(res.get('parts') or []) > 1:
+        answer.verdict_note = '%s · %s' % (res['why'], parts_hint(res['parts']))
     answer.save(update_fields=['normalized_answer', 'verdict', 'judged_by',
                                'verdict_note', 'updated_at'])
     return answer

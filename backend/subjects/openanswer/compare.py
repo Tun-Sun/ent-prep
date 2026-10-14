@@ -2,12 +2,17 @@
 
 Никакого угадывания: если часть эталона не переводится ни в число, ни в выражение,
 которое решает SymPy, вся задача уходит к человеку с вердиктом pending_review.
+При этом каждая часть получает свой статус (`parts`): задача без балла — не задача
+без информации, и тренер обязан видеть, что уже сошлось.
 """
 import re
 
 from . import cas
 from .normalize import split_items, strip_wrappers, to_value, tail_after_eq, greek_to_latin
 
+# Политика округления, утверждённая тренером 14.10: 0,5 % от значения.
+# Абсолютный пол отсутствует нарочно — иначе он проглотил бы атомные ответы
+# вида 1,1·10⁻¹⁰.
 TOL_REL = 0.005
 
 
@@ -75,15 +80,20 @@ def _alt_pair(ev, sv, strict_units=False):
 
 
 def compare(etalon_raw, student_raw, strict_units=False):
-    """-> {'verdict', 'judged_by', 'matched', 'total', 'why'}."""
+    """-> {'verdict', 'judged_by', 'matched', 'total', 'parts', 'why'}."""
     student = [to_value(it['text']) for it in split_items(student_raw or '')]
-    etalon = [to_value(it['text']) for it in split_items(etalon_raw or '')]
+    etalon_items = split_items(etalon_raw or '')
+    # часть держит и метку из ответа (`а)`, `1)`), и свой номер: подсказка тренеру
+    # обязана называть именно ту часть, которую он читает в строке ученика
+    etalon = [dict(to_value(it['text']), label=it['label'], n=i + 1)
+              for i, it in enumerate(etalon_items)]
     if not student:
         return {'verdict': 'incorrect', 'judged_by': 'level1', 'matched': 0,
-                'total': len(etalon), 'why': 'пустой ответ'}
+                'total': len(etalon), 'parts': [], 'why': 'пустой ответ'}
     if not etalon:
         return {'verdict': 'pending_review', 'judged_by': None, 'matched': 0,
-                'matched_total': 0, 'total': 0, 'why': 'эталон не разобран'}
+                'matched_total': 0, 'total': 0, 'parts': [],
+                'why': 'эталон не разобран'}
 
     text_items = [e for e in etalon if e['kind'] == 'text'] + \
                  [s for s in student if s['kind'] == 'text']
@@ -91,23 +101,30 @@ def compare(etalon_raw, student_raw, strict_units=False):
     matched = 0
     cas_used = False
     undecided = 0
+    parts = []
     for ev in etalon:
+        name = ev['label'] or ('Часть %d' % ev['n'])
         if ev['kind'] == 'text':
             undecided += 1
+            parts.append({'part': name, 'status': 'text'})
             continue
         hit = None
         unresolved = False
+        examined = False
         for i, sv in enumerate(student):
             if used[i] or sv['kind'] == 'text':
                 continue
             if ev['kind'] == 'number' and sv['kind'] == 'number':
                 r = _values_comparable(ev, sv, strict_units)
+                if r is not None:
+                    examined = True
                 if r is True:
                     hit = i
                     break
                 if r is None:
                     unresolved = True
             elif ev['kind'] == 'expr' or sv['kind'] == 'expr':
+                examined = True
                 eq, how = _expr_equal(ev, sv)
                 if eq is not True:
                     alt = _alt_pair(ev, sv, strict_units)
@@ -123,28 +140,57 @@ def compare(etalon_raw, student_raw, strict_units=False):
         if hit is not None:
             used[hit] = True
             matched += 1
+            parts.append({'part': name, 'status': 'matched'})
         elif unresolved:
             undecided += 1
+            parts.append({'part': name, 'status': 'undecided'})
+        elif not examined and any(s['kind'] == 'text' for s in student):
+            # ученик ответил словами там, где эталон — число или формула: сравнивать
+            # машине было не с чем, и «не совпало» стало бы ложным нулём. Если же
+            # неподходящее число в строке есть, оно уже отработано выше как `mismatched`.
+            undecided += 1
+            parts.append({'part': name, 'status': 'student_text'})
+        else:
+            parts.append({'part': name, 'status': 'mismatched'})
 
     total = len(etalon)
     if undecided:
         return {'verdict': 'pending_review',
                 'judged_by': 'model_suggestion' if text_items else None,
-                'matched': matched, 'total': total,
+                'matched': matched, 'total': total, 'parts': parts,
                 'why': 'не решается автоматически: %d из %d частей' % (undecided, total)}
     judged = 'cas' if cas_used else 'level1'
     if matched == total:
         return {'verdict': 'correct', 'judged_by': judged, 'matched': matched,
-                'total': total, 'why': 'все части совпали'}
+                'total': total, 'parts': parts, 'why': 'все части совпали'}
     if matched == 0:
         return {'verdict': 'incorrect', 'judged_by': judged, 'matched': 0,
-                'total': total, 'why': 'ни одна часть не совпала'}
+                'total': total, 'parts': parts, 'why': 'ни одна часть не совпала'}
     return {'verdict': 'partial', 'judged_by': judged, 'matched': matched,
-            'total': total, 'why': 'совпало %d из %d' % (matched, total)}
+            'total': total, 'parts': parts, 'why': 'совпало %d из %d' % (matched, total)}
 
 
 # Чем выставлен вердикт: пустое значение — «машина не решила», и это не чья-то подсказка.
 DECIDED = ('level1', 'cas')
+
+# Что тренер читает про каждую часть многочастного ответа, когда машина встала.
+PART_STATUS_RU = {
+    'matched': 'совпало',
+    'mismatched': 'не совпало',
+    'undecided': 'машина не решила',
+    'text': 'текст — проверьте глазами',
+    'student_text': 'словом вместо числа — проверьте глазами',
+}
+
+
+def parts_hint(parts):
+    """`а) совпало, б) текст — проверьте глазами` — одна строка по всем частям.
+
+    Нужна ровно в `pending_review`: балла машина не начислила, но тренер не обязан
+    заново сверять то, что уже сошлось, — он смотрит только спорные части.
+    """
+    return ', '.join('%s: %s' % (p['part'], PART_STATUS_RU.get(p['status'], p['status']))
+                     for p in parts)
 
 
 def score_open_answer(etalon_raw, student_raw, strict_units=False):

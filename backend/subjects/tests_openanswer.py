@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from django.test import SimpleTestCase
 
-from subjects.openanswer import compare, score_open_answer
+from subjects.openanswer import compare, parts_hint, score_open_answer
 
 # эталон (как в банке), ответ ученика, ожидаемый вердикт, строгость по единицам
 CASES = [
@@ -98,3 +98,65 @@ class ScoreOpenAnswerEntryTest(SimpleTestCase):
     def test_decided_verdicts_pass_through(self):
         self.assertEqual(score_open_answer(r'$2$ м', '2 м')['judged_by'], 'level1')
         self.assertEqual(score_open_answer(r'$2$ м', '')['verdict'], 'incorrect')
+
+
+class ApprovedScoringRulesTest(SimpleTestCase):
+    """Три правила, которые тренер утвердил 14.10, уже после переноса порта.
+
+    В лабораторном фикстуре их не было, поэтому они под отдельным замком: порог
+    округления, научная запись с `e` и судьба многочастного ответа со словесной
+    частью. Правка в любом из трёх меняет вердикты живых задач.
+    """
+
+    def test_half_percent_relative_is_the_line(self):
+        """0,5 % от значения: 18,09 ещё проходит, 18,1 — уже нет."""
+        self.assertEqual(compare(r'$18$ см', '18,09 см')['verdict'], 'correct')
+        self.assertEqual(compare(r'$18$ см', '18,1 см')['verdict'], 'incorrect')
+        # атомный ответ: абсолютный пол его проглотил бы, поэтому порог относительный
+        self.assertEqual(compare(r'$1{,}1 \cdot 10^{-10}$ Кл', '1,104e-10 Кл')['verdict'], 'correct')
+        self.assertEqual(compare(r'$1{,}1 \cdot 10^{-10}$ Кл', '1,12e-10 Кл')['verdict'], 'incorrect')
+
+    def test_a_word_answer_goes_to_the_human_instead_of_a_false_zero(self):
+        """Словом вместо числа — машина не читала эту пару, и `incorrect` был бы ложным нулём."""
+        got = compare(r'$\frac{a^3}{6}$', 'шесть делить на куб')
+        self.assertEqual(got['verdict'], 'pending_review')
+        self.assertEqual(got['parts'][0]['status'], 'student_text')
+        self.assertIn('словом вместо числа', parts_hint(got['parts']))
+        # но число, которое машина прочитала и отвергла, остаётся числом: слово рядом
+        # не превращает честный `не совпало` в «проверьте глазами»
+        got = compare('а) $18$ см; б) $5$ м/с', '18 см; 9 м/с; около пяти')
+        self.assertEqual([p['status'] for p in got['parts']], ['matched', 'mismatched'])
+        self.assertEqual(got['verdict'], 'partial')
+
+    def test_scientific_notation_reads_every_way_the_keyboard_types_it(self):
+        for student in ('1,1e-10', '1.1e-10', '1.1E-10', '1,1 · 10^-10', '1,1·10^(-10)'):
+            got = compare(r'$1{,}1 \cdot 10^{-10}$ Кл', student)
+            self.assertEqual(got['verdict'], 'correct', (student, got['why']))
+
+    def test_a_bare_letter_after_the_number_is_still_a_unit_not_an_exponent(self):
+        """`2 E` — напряжённость, `5 eV` — электрон-вольт: экспонента это только цифра сразу за знаком."""
+        got = compare('2 E', '2 E')
+        self.assertEqual(got['verdict'], 'correct')
+        self.assertEqual(score_open_answer('2 E', '2')['verdict'], 'correct')
+
+    def test_parts_say_which_subanswer_the_machine_matched(self):
+        got = compare('а) $18$ см; б) вверх; в) $5$ м/с', 'а) 18 см; б) вниз; в) 9 м/с')
+        self.assertEqual(got['verdict'], 'pending_review')
+        self.assertEqual((got['matched'], got['total']), (1, 3))
+        self.assertEqual([p['status'] for p in got['parts']],
+                         ['matched', 'text', 'mismatched'])
+        self.assertEqual(parts_hint(got['parts']),
+                         'а): совпало, б): текст — проверьте глазами, в): не совпало')
+
+    def test_unlabeled_parts_are_numbered_for_the_teacher(self):
+        got = compare(r'$18$ см; $5$ м/с; вверх', '18 см; 6 м/с; вверх')
+        self.assertEqual(got['verdict'], 'pending_review')
+        self.assertEqual([p['part'] for p in got['parts']],
+                         ['Часть 1', 'Часть 2', 'Часть 3'])
+        self.assertIn('Часть 1: совпало', parts_hint(got['parts']))
+
+    def test_single_part_pending_adds_no_hint(self):
+        """Одна часть и так видна целиком: «Часть 1» вnotes — шум."""
+        got = compare(r'$\frac{a^3}{6}$', 'шесть делить на куб')
+        self.assertEqual(len(got['parts']), 1)
+        self.assertEqual(got['verdict'], 'pending_review')

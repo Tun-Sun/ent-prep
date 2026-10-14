@@ -110,8 +110,10 @@ class QuestionViewSet(viewsets.ModelViewSet):
     pagination_class = QuestionPagination
 
     def get_permissions(self):
-        if self.action in ['list', 'retrieve']:
-            return [IsAuthenticated()]
+        # Банк целиком — учительский: `list` и `retrieve` под `IsAuthenticated`
+        # отдавали ученику весь банк вместе с `latex_answer`. Свой сериализатор
+        # ответ скрывал, этот эндпоинт — нет. Ученик видит свою задачу только
+        # через `/api/my/assignments/`.
         return [IsTeacherOrAdmin()]
 
     def get_serializer_class(self):

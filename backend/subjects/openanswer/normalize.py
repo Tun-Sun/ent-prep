@@ -147,10 +147,14 @@ def parse_number(text):
         shift = 10 ** len(frac) if frac else 1
         val = sign * (abs(val) + int(period) / (shift * (10 ** len(period) - 1)))
     rest = t[mm.end():]
-    sci = re.match(r'^\s*[*x·]\s*10\s*(?:\^\s*)?\{?\(?\s*([-−–]?\d+)\s*\)?\}?', rest)
+    # Научная запись двумя дорогами: `2,5·10^-3` как печатает книга и `2.5e-3` как
+    # печатает ученик. `e` без цифры сразу за знаком — это не экспонента, а буква
+    # (например напряжённость `E`), и она остаётся на стороне единиц.
+    sci = re.match(r'^\s*(?:[eE]\s*([-−–+]?\s*\d{1,3})'
+                   r'|[*x·]\s*10\s*(?:\^\s*)?\{?\(?\s*([-−–]?\d+)\s*\)?\}?)', rest)
     if sci:
-        exp = int(re.sub(r'[-−–]', '-', sci.group(1)))
-        val = val * 10 ** exp
+        exp = re.sub(r'\s|[−–]', '-', sci.group(1) or sci.group(2))
+        val = val * 10 ** int(exp.lstrip('+'))
         rest = rest[sci.end():]
     # `24\pi см³` — множитель пи, а не единица: иначе Level 1 теряет π, а SymPy съедает степень см.
     m_pi = re.match(r'^\s*(?:pi|π)(?![A-Za-z])', rest)
