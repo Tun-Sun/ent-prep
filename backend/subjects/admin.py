@@ -3,7 +3,7 @@ from django.shortcuts import render
 from django.contrib import messages
 from functools import wraps
 
-from .models import Subject, Topic, Question, Answer, Variant, Assignment
+from .models import Subject, Topic, Question, Answer, Variant, Assignment, AssignmentBlock
 from .import_views import import_from_google_form
 
 
@@ -138,19 +138,28 @@ class QuestionAdmin(admin.ModelAdmin):
         self.message_user(request, f'Отклонено вопросов: {updated}')
 
 
+class AssignmentBlockInline(admin.TabularInline):
+    model = AssignmentBlock
+    extra = 0
+    fields = ('kind', 'title', 'order', 'question_ids')
+
+
 @admin.register(Assignment)
 class AssignmentAdmin(admin.ModelAdmin):
-    list_display = ('title', 'teacher', 'subject', 'difficulty', 'tasks_count',
-                    'students_count', 'status', 'created_at')
+    list_display = ('title', 'teacher', 'subject', 'tasks_count',
+                    'students_count', 'status', 'due_at', 'created_at')
     list_display_links = ('title',)
-    list_filter = ('difficulty', 'status', 'subject')
+    # `difficulty` из списка убран: ступени теперь разложены по блокам, и пустая
+    # колонка вводила бы в заблждение, что урок набран «на лёгкий»
+    list_filter = ('status', 'subject')
     search_fields = ('title', 'teacher__username')
     filter_horizontal = ('students',)
-    readonly_fields = ('created_at',)
+    readonly_fields = ('created_at', 'published_at')
+    inlines = (AssignmentBlockInline,)
 
     @admin.display(description='Задач')
     def tasks_count(self, obj):
-        return len(obj.question_ids or [])
+        return obj.questions_count
 
     @admin.display(description='Учеников')
     def students_count(self, obj):

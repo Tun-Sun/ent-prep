@@ -1,8 +1,11 @@
 from rest_framework import serializers
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.utils import timezone
-from .models import Subject, Topic, Question, Answer, Assignment, plain_from_latex
+from users.models import StudyGroup
+from .models import (Subject, Topic, Question, Answer, Assignment, AssignmentBlock,
+                     AssignmentSubmission, AssignmentAnswer, plain_from_latex)
 
 class AnswerSerializer(serializers.ModelSerializer):
     class Meta:
@@ -225,85 +228,293 @@ class AssignmentStudentSerializer(serializers.ModelSerializer):
         fields = ('id', 'username', 'full_name')
 
 
+class AssignmentBlockSerializer(serializers.ModelSerializer):
+    kind_display = serializers.CharField(source='get_kind_display', read_only=True)
+    label = serializers.CharField(read_only=True)
+    autocheck = serializers.BooleanField(read_only=True)
+    tasks = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AssignmentBlock
+        fields = ('id', 'kind', 'kind_display', 'title', 'label', 'order',
+                  'question_ids', 'autocheck', 'tasks')
+        # вид блока не переименовывают: четыре блока — это схема, а не подпись
+        read_only_fields = ('kind',)
+
+    def get_tasks(self, obj):
+        return len(obj.question_ids or [])
+
+    def validate_order(self, v):
+        if v < 0:
+            raise serializers.ValidationError('Порядок не бывает отрицательным')
+        return v
+
+    def validate_question_ids(self, ids):
+        clean_block_questions(ids, self.instance.assignment.subject)
+        return ids
+
+
+class AssignmentBlockQuestionsSerializer(AssignmentBlockSerializer):
+    """Блок вместе с задачами: карточка урока и страница ученика."""
+    questions = serializers.SerializerMethodField()
+
+    class Meta(AssignmentBlockSerializer.Meta):
+        fields = AssignmentBlockSerializer.Meta.fields + ('questions',)
+
+    def get_questions(self, obj):
+        return QuestionListSerializer(obj.questions, many=True).data
+
+
 class AssignmentListSerializer(serializers.ModelSerializer):
     subject_name = serializers.CharField(source='subject.name', read_only=True)
     difficulty_display = serializers.CharField(source='get_difficulty_display', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     teacher_name = serializers.CharField(source='teacher.full_name', read_only=True)
+    group_name = serializers.SerializerMethodField()
     tasks = serializers.SerializerMethodField()
     students = AssignmentStudentSerializer(many=True, read_only=True)
+    blocks = AssignmentBlockSerializer(many=True, read_only=True)
 
     class Meta:
         model = Assignment
         fields = ('id', 'title', 'teacher', 'teacher_name', 'subject', 'subject_name',
-                  'difficulty', 'difficulty_display', 'tasks', 'students',
+                  'difficulty', 'difficulty_display', 'tasks', 'students', 'blocks',
+                  'group', 'group_name', 'due_at', 'published_at',
                   'status', 'status_display', 'created_at')
 
     def get_tasks(self, obj):
-        return len(obj.question_ids or [])
+        return obj.questions_count
+
+    def get_group_name(self, obj):
+        return obj.group.name if obj.group_id else ''
 
 
 class AssignmentDetailSerializer(AssignmentListSerializer):
-    # порядок тот, что набрал экран: свойство модели, а не сортировка БД
-    questions = QuestionListSerializer(many=True, read_only=True)
+    blocks = AssignmentBlockQuestionsSerializer(many=True, read_only=True)
+    expired = serializers.BooleanField(source='is_expired', read_only=True)
 
     class Meta(AssignmentListSerializer.Meta):
-        fields = AssignmentListSerializer.Meta.fields + ('question_ids', 'questions')
+        fields = AssignmentListSerializer.Meta.fields + ('expired',)
 
 
-class AssignmentCreateSerializer(serializers.ModelSerializer):
-    """Создание назначения из того, что тренер видел на экране.
+class AssignmentBlockWriteSerializer(serializers.Serializer):
+    """Один блок в payload тренера: kind обязателен, порядок и заголовок — нет."""
+    kind = serializers.ChoiceField(choices=AssignmentBlock.KIND_CHOICES)
+    title = serializers.CharField(max_length=200, required=False, allow_blank=True, default='')
+    order = serializers.IntegerField(required=False, min_value=0)
+    question_ids = serializers.ListField(child=serializers.IntegerField(min_value=1),
+                                         required=False, default=list)
 
-    Экран присылает явный список задач, а не «набери сам по уровню»: между
-    предпросмотром и сохранением передумали, сняли галочку, добавили задачу —
-    и назначение обязано быть ровно этим набором.
+
+def clean_block_questions(ids, subject):
+    """Задачи блока: существующие, принятые, одного предмета. Порядок набора сохраняем.
+
+    Одна функция на запись whole-урока и на правку одного блока: иначе PATCH блока
+    пропускал бы черновик или чужой предмет, которые create уже отвергает.
+    """
+    if not ids:
+        return []
+    found = {q.pk: q for q in Question.objects.filter(pk__in=ids).select_related('topic')}
+    missing = [i for i in ids if i not in found]
+    if missing:
+        raise serializers.ValidationError(
+            {'question_ids': 'Задач с такими id в банке нет: ' +
+                             ', '.join(str(i) for i in missing[:10])})
+    # черновик наружу не уходит: ученик не должен получать недооцифрованную
+    # формулу только потому, что предпросмотр успел её показать
+    drafts = [q for q in found.values() if q.verification_status != 'verified']
+    if drafts:
+        raise serializers.ValidationError(
+            {'question_ids': f'В наборе {len(drafts)} черновиков — назначать можно только принятые задачи'})
+    # перекос предмета — это не мелочь: под «Математикой» ученик получил бы
+    # физику, и ни один фильтр банка после этого его не выправит
+    off = [q.pk for q in found.values() if subject and q.topic.subject_id != subject.pk]
+    if off:
+        raise serializers.ValidationError(
+            {'question_ids': f'{len(off)} задач из другого предмета — урок собирается в рамках одного'})
+    return [found[i] for i in ids]
+
+
+
+class AssignmentWriteSerializer(serializers.ModelSerializer):
+    """Создание и правка урока: четыре блока тем же списком задач, что видел экран.
+
+    Экран присылает явные наборы, а не «набери сам по уровню»: между предпросмотром
+    и сохранением сняли галочку, добавили задачу — и урок обязан быть ровно этим
+    набором. Порядок внутри блока — позиция в списке.
     """
     students = serializers.PrimaryKeyRelatedField(
         many=True, queryset=get_user_model().objects.filter(role='student'), required=False)
-    question_ids = serializers.ListField(child=serializers.IntegerField(min_value=1), allow_empty=False)
+    group = serializers.PrimaryKeyRelatedField(
+        queryset=StudyGroup.objects.all(), required=False, allow_null=True)
+    blocks = AssignmentBlockWriteSerializer(many=True)
 
     class Meta:
         model = Assignment
-        fields = ('id', 'title', 'subject', 'difficulty', 'students', 'question_ids')
+        fields = ('id', 'title', 'subject', 'students', 'group', 'due_at', 'blocks')
         read_only_fields = ('id',)
 
-    def validate_difficulty(self, v):
-        if v not in dict(Question.DIFFICULTY_CHOICES):
-            raise serializers.ValidationError('Такого уровня нет: easy / medium / hard')
-        return v
+    def _clean_questions(self, ids, subject):
+        return clean_block_questions(ids, subject)
 
-    def validate_question_ids(self, ids):
-        found = {q.pk: q for q in Question.objects.filter(pk__in=ids).select_related('topic')}
-        missing = [i for i in ids if i not in found]
-        if missing:
+    def validate_blocks(self, blocks):
+        kinds = [b['kind'] for b in blocks]
+        dupes = sorted({k for k in kinds if kinds.count(k) > 1})
+        if dupes:
             raise serializers.ValidationError(
-                f'Задач с такими id в банке нет: {", ".join(str(i) for i in missing[:10])}')
-        # черновик наружу не уходит: ученик не должен получать недооцифрованную
-        # формулу только потому, что предпросмотр успел её показать
-        drafts = [q for q in found.values() if q.verification_status != 'verified']
-        if drafts:
-            raise serializers.ValidationError(
-                f'В наборе {len(drafts)} черновиков — назначать можно только принятые задачи')
-        # порядок набора важнее порядка БД: экран показывал задачи в своём
-        self._questions = [found[i] for i in ids]
-        return ids
+                {'blocks': 'Блок может быть только один: ' + ', '.join(dupes)})
+        return blocks
 
     def validate(self, attrs):
         subject = attrs.get('subject') or (self.instance.subject if self.instance else None)
-        # перекос предмета — это не мелочь: под «Математикой» ученик получил бы
-        # физику, и ни один фильтр банка после этого его не выправит
-        off = [q.pk for q in self._questions if subject and q.topic.subject_id != subject.pk]
-        if off:
-            raise serializers.ValidationError(
-                {'question_ids': f'{len(off)} задач из другого предмета — '
-                                 'назначение собирается в рамках одного'})
+        for i, b in enumerate(attrs.get('blocks', [])):
+            try:
+                b['questions'] = self._clean_questions(b.get('question_ids') or [], subject)
+            except serializers.ValidationError as e:
+                detail = e.detail if isinstance(e.detail, list) else list(e.detail.values())
+                raise serializers.ValidationError({'blocks': f'Блок {i + 1}: {detail[0]}'})
+            b.setdefault('order', i)
+        group = attrs.get('group')
+        user = self.context['request'].user
+        if group and user.role != 'admin' and group.teacher_id != user.pk:
+            raise serializers.ValidationError({'group': 'Это не ваша группа'})
+        if group and 'students' not in attrs:
+            attrs['students_to_add'] = list(group.students.all())
         return attrs
 
     def create(self, validated_data):
+        blocks = validated_data.pop('blocks')
         students = validated_data.pop('students', [])
-        validated_data.pop('question_ids')
-        assignment = super().create(validated_data)
-        assignment.question_ids = [q.pk for q in self._questions]
-        assignment.save()
-        assignment.students.set(students)
+        to_add = validated_data.pop('students_to_add', [])
+        with transaction.atomic():
+            assignment = Assignment.objects.create(**validated_data)
+            assignment.students.set(list({*students, *to_add}))
+            for b in blocks:
+                assignment.blocks.create(kind=b['kind'], title=b.get('title', ''),
+                                         order=b.get('order', 0),
+                                         question_ids=[q.pk for q in b['questions']])
         return assignment
+
+    def update(self, instance, validated_data):
+        blocks = validated_data.pop('blocks', None)
+        students = validated_data.pop('students', None)
+        to_add = validated_data.pop('students_to_add', [])
+        with transaction.atomic():
+            for field, value in validated_data.items():
+                setattr(instance, field, value)
+            instance.save()
+            if students is not None:
+                instance.students.set(list({*students, *to_add}))
+            if blocks is not None:
+                self._replace_blocks(instance, blocks)
+        return instance
+
+    def _replace_blocks(self, instance, blocks):
+        """Сверяем набор блоков с тем, что прислал экран.
+
+        Блок с ответами учеников не удаляем: вместе с ним ушли бы и результаты,
+        а этого тренер не просил — он просил править состав.
+        """
+        keep = set()
+        for b in blocks:
+            ids = [q.pk for q in b['questions']]
+            obj, _created = instance.blocks.update_or_create(
+                kind=b['kind'],
+                defaults={'title': b.get('title', ''), 'order': b.get('order', 0),
+                          'question_ids': ids})
+            keep.add(obj.pk)
+        for old in instance.blocks.exclude(pk__in=keep):
+            if old.submissions.exists():
+                raise serializers.ValidationError(
+                    {'blocks': f'Блок «{old.get_kind_display()}» уже сдавали — '
+                               'удалить его нельзя, правьте состав'})
+            old.delete()
+
+
+class AssignmentAnswerSerializer(serializers.ModelSerializer):
+    """Ячейка матрицы тренера: ответ ученика, эталон книги и чем решён вердикт."""
+    verdict_display = serializers.CharField(source='get_verdict_display', read_only=True)
+    judged_by_display = serializers.CharField(source='get_judged_by_display', read_only=True)
+    etalon = serializers.CharField(source='question.latex_answer', read_only=True)
+    points_max = serializers.FloatField(source='question.points', read_only=True)
+    points_earned = serializers.FloatField(read_only=True)
+    student_name = serializers.CharField(source='submission.student.full_name', read_only=True)
+    student_id = serializers.IntegerField(source='submission.student_id', read_only=True)
+    block_kind = serializers.CharField(source='submission.block.kind', read_only=True)
+    question_text = serializers.CharField(source='question.text', read_only=True)
+
+    class Meta:
+        model = AssignmentAnswer
+        fields = ('id', 'submission', 'student_id', 'student_name', 'block_kind',
+                  'question', 'question_text', 'raw_answer', 'normalized_answer',
+                  'etalon', 'verdict', 'verdict_display', 'judged_by', 'judged_by_display',
+                  'verdict_note', 'points_earned', 'points_max',
+                  'reviewed_by', 'reviewed_at', 'updated_at')
+
+
+class StudentAnswerSerializer(serializers.ModelSerializer):
+    """Ответ ученика ему самому: только то, что показывает `AssignmentAnswer.feedback`."""
+    feedback = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AssignmentAnswer
+        fields = ('id', 'question', 'raw_answer', 'verdict', 'feedback')
+
+    def get_feedback(self, obj):
+        return obj.feedback
+
+
+class MyAssignmentListSerializer(serializers.ModelSerializer):
+    """«Мои уроки»: что назначено, когда срок и из каких блоков состоит."""
+    subject_name = serializers.CharField(source='subject.name', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    expired = serializers.BooleanField(source='is_expired', read_only=True)
+    blocks = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Assignment
+        fields = ('id', 'title', 'subject', 'subject_name', 'status', 'status_display',
+                  'due_at', 'expired', 'published_at', 'blocks')
+
+    def get_blocks(self, obj):
+        return [{'kind': b.kind, 'label': b.label, 'order': b.order,
+                 'tasks': len(b.question_ids or []), 'autocheck': b.autocheck}
+                for b in obj.blocks_ordered]
+
+
+class StudentQuestionSerializer(serializers.ModelSerializer):
+    """Задача глазами ученика: условие, картинка, ступень и балл.
+
+    `latex_answer` тут нет нарочно. Страница ученика собиралась тем же
+    `QuestionListSerializer`, что и экран банка, — и вместе с условием уносила ключ
+    книги: правило «эталон показываем только после вердикта человека» обходилось
+    одним открытым DevTools. Внутренности приёмки (`provenance`, `uncertain`,
+    `verification_status`) ученику тоже нечего делать в ответе.
+    """
+    class Meta:
+        model = Question
+        fields = ('id', 'text', 'latex', 'image', 'difficulty', 'points')
+
+
+class MyAssignmentBlockSerializer(AssignmentBlockQuestionsSerializer):
+    """Один блок глазами ученика: задачи, его ответы по ним и итог сдачи."""
+    expired = serializers.BooleanField(source='assignment.is_expired', read_only=True)
+    answers = serializers.SerializerMethodField()
+    progress = serializers.SerializerMethodField()
+
+    class Meta(AssignmentBlockQuestionsSerializer.Meta):
+        fields = AssignmentBlockQuestionsSerializer.Meta.fields + ('expired', 'answers', 'progress')
+
+    def get_questions(self, obj):
+        return StudentQuestionSerializer(obj.questions, many=True).data
+
+    def get_answers(self, obj):
+        submission = self.context.get('submissions', {}).get(obj.pk)
+        if submission is None:
+            return []
+        return StudentAnswerSerializer(submission.answers.all(), many=True).data
+
+    def get_progress(self, obj):
+        return self.context.get('scores', {}).get(obj.pk)
+
+

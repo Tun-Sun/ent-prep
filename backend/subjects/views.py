@@ -9,15 +9,19 @@ from django.db.models.functions import Random
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
-from .models import Subject, Topic, Question, Answer, Assignment
+from .models import (Subject, Topic, Question, Answer, Assignment, AssignmentBlock,
+                     AssignmentSubmission, AssignmentAnswer)
 from .permissions import IsTeacherOrAdmin
 from .serializers import (
     SubjectSerializer, SubjectMinimalSerializer,
     TopicSerializer, TopicListSerializer,
     QuestionListSerializer, QuestionDetailSerializer, QuestionCreateSerializer,
     BookScanEditSerializer,
-    AssignmentListSerializer, AssignmentDetailSerializer, AssignmentCreateSerializer,
+    AssignmentListSerializer, AssignmentDetailSerializer, AssignmentWriteSerializer,
+    AssignmentBlockSerializer, AssignmentAnswerSerializer,
+    MyAssignmentListSerializer, MyAssignmentBlockSerializer,
 )
+from .lesson_grading import grade_assignment_answer, score_submission, close_submission
 
 
 class SubjectViewSet(viewsets.ModelViewSet):
@@ -242,27 +246,37 @@ class QuestionViewSet(viewsets.ModelViewSet):
 
 
 class AssignmentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
-                        mixins.CreateModelMixin, viewsets.GenericViewSet):
-    """Экран «Назначение по уровню»: набрать домашнее из банка по ступени сложности.
+                        mixins.CreateModelMixin, mixins.UpdateModelMixin,
+                        viewsets.GenericViewSet):
+    """Конструктор уроков: собрать четыре блока, опубликовать, смотреть матрицу результатов.
 
-    Здесь нет PUT/PATCH и нет удаления: набор frozen в `question_ids`, а отзыв —
-    отдельное решение, которое должно остаться в базе следом, а не стереть,
-    что ученик уже получил.
+    Здесь нет удаления: отзыв — отдельное решение, которое должно остаться в базе
+    следом, а не стереть, что ученик уже получил и что по нему уже спросили.
     """
-    queryset = Assignment.objects.select_related('subject', 'teacher').prefetch_related('students')
+    queryset = Assignment.objects.select_related('subject', 'teacher', 'group') \
+        .prefetch_related('students', 'blocks')
     permission_classes = [IsTeacherOrAdmin]
 
     def get_serializer_class(self):
-        if self.action == 'create':
-            return AssignmentCreateSerializer
+        if self.action in ('create', 'partial_update', 'update'):
+            return AssignmentWriteSerializer
         if self.action == 'retrieve':
             return AssignmentDetailSerializer
+        if self.action == 'matrix':
+            return AssignmentAnswerSerializer
         return AssignmentListSerializer
 
     def perform_create(self, serializer):
-        # автор — тот, кто сидит за экраном: назначение это решение тренера,
+        # автор — тот, кто сидит за экраном: урок это решение тренера,
         # и по нему потом спрашивают, кто положил эти задачи ученику
         serializer.save(teacher=self.request.user)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(AssignmentDetailSerializer(self.get_object(), context={'request': request}).data)
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -271,47 +285,58 @@ class AssignmentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         subject = self.request.query_params.get('subject')
         if subject:
             qs = qs.filter(subject_id=subject)
+        status_ = self.request.query_params.get('status')
+        if status_:
+            qs = qs.filter(status=status_)
         return qs
 
     @staticmethod
     def _pool(params, subject_id, difficulty):
-        """Задачи уровня в банке. Черновики отсечены: наружу идёт только принятое.
+        """Задачи в пуле блока. Черновики отсечены: наружу идёт только принятое.
 
         `answerable()` здесь не нужен нарочно: он режет по ключу варианта, а
         домашняя задача из книги answering именно открытым решением — ученик
         пишет, а не угадывает букву.
         """
         qs = Question.objects.filter(topic__subject_id=subject_id,
-                                     difficulty=difficulty,
                                      verification_status='verified')
+        if difficulty:
+            qs = qs.filter(difficulty=difficulty)
         topic = params.get('topic')
         if topic:
             qs = qs.filter(topic_id=topic)
         src = params.get('source_type')
         if src:
             qs = qs.filter(source_type=src)
+        grade = params.get('grade')
+        if grade:
+            qs = qs.filter(grade=grade)
         return qs
 
     @action(detail=False, methods=['get'])
     def pick(self, request):
-        """Предпросмотр набора: сколько задач каждого уровня и сами задачи.
+        """Предпросмотр набора для одного блока: размеры пула и сами задачи.
 
         Порядок случайный на каждый вызов — это и есть кнопка «перемешать»,
         без неё тренер получал бы одни и те же первые N строк банка.
+        `difficulty` больше не обязателен: ступень блока задаёт сам блок
+        (`advanced` пулит hard, `simplified` — easy), а тренер поверх этого
+        фильтрует по теме, книге и классу.
         """
         subject_id = request.query_params.get('subject')
-        level = request.query_params.get('difficulty')
-        if not subject_id or not level:
-            return Response({'detail': 'Нужны subject и difficulty'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        if level not in dict(Question.DIFFICULTY_CHOICES):
+        if not subject_id:
+            return Response({'detail': 'Нужен subject'}, status=status.HTTP_400_BAD_REQUEST)
+        level = request.query_params.get('difficulty', '')
+        kind = request.query_params.get('kind', '')
+        if kind in ('advanced', 'simplified') and not level:
+            level = 'hard' if kind == 'advanced' else 'easy'
+        if level and level not in dict(Question.DIFFICULTY_CHOICES):
             return Response({'detail': 'Такого уровня нет: easy / medium / hard'},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
             count = max(1, min(int(request.query_params.get('count', 10)), 50))
         except ValueError:
-            return Response({'detail': 'count — целое число'},
-                            status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': 'count — целое число'}, status=status.HTTP_400_BAD_REQUEST)
         pool = self._pool(request.query_params, subject_id, level)
         picked = pool.annotate(_r=Random()).order_by('_r')[:count]
         # размеры по всем уровням одним запросом: экран показывает, куда вообще
@@ -329,9 +354,233 @@ class AssignmentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
         })
 
     @action(detail=True, methods=['post'])
+    def publish(self, request, pk=None):
+        """Черновик становится уроком: ученик начинает его видеть, состав больше не гадают."""
+        assignment = self.get_object()
+        if not assignment.publish():
+            return Response({'detail': 'В уроке нет ни одной задачи — публиковать нечего'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(AssignmentDetailSerializer(assignment, context={'request': request}).data)
+
+    @action(detail=True, methods=['get'])
+    def matrix(self, request, pk=None):
+        """Матрица результатов: строки — ученики, колонки — блоки, ячейка — итог сдачи.
+
+        Процент считается по проверенным задачам; `pending` показан рядом, потому что
+        75 % при трёх из четырёх нерешённых руками задачах — это не тот процент,
+        который можно показать родителю.
+        """
+        assignment = self.get_object()
+        blocks = assignment.blocks_ordered
+        submissions = {(s.block_id, s.student_id): s
+                       for s in AssignmentSubmission.objects.filter(assignment=assignment)
+                       .prefetch_related('answers__question')}
+        rows = []
+        for student in assignment.students.filter(role='student').order_by('full_name', 'username'):
+            cells = []
+            for block in blocks:
+                sub = submissions.get((block.pk, student.pk))
+                score = score_submission(sub) if sub else None
+                cells.append({
+                    'block': block.pk, 'kind': block.kind, 'label': block.label,
+                    'state': sub.state if sub else '',
+                    'submitted_at': sub.last_submitted_at if sub else None,
+                    **(score or {'total': len(block.question_ids or []), 'answered': 0,
+                                 'checked': 0, 'pending': 0, 'earned': None,
+                                 'possible': None, 'percent': None}),
+                })
+            rows.append({'student': student.pk, 'name': student.full_name or student.username,
+                         'blocks': cells})
+        pending = (AssignmentAnswer.objects.filter(submission__assignment=assignment,
+                                                   verdict='pending_review')
+                   .order_by('created_at'))
+        return Response({
+            'assignment': assignment.pk,
+            'blocks': [{'id': b.pk, 'kind': b.kind, 'label': b.label, 'order': b.order,
+                        'autocheck': b.autocheck, 'tasks': len(b.question_ids or [])}
+                       for b in blocks],
+            'rows': rows,
+            'pending_review': self.get_serializer(pending, many=True).data,
+        })
+
+    @action(detail=True, methods=['post'])
     def revoke(self, request, pk=None):
-        """Отозвать назначение: ученик перестаёт его видеть, след в базе остаётся."""
+        """Отозвать урок: ученик перестаёт его видеть, след в базе остаётся."""
         assignment = self.get_object()
         assignment.status = 'revoked'
         assignment.save(update_fields=['status'])
-        return Response(AssignmentListSerializer(assignment).data)
+        return Response(AssignmentDetailSerializer(assignment, context={'request': request}).data)
+
+
+class AssignmentBlockViewSet(mixins.UpdateModelMixin, viewsets.GenericViewSet):
+    """Состав и порядок одного блока: PATCH /api/assignment-blocks/<id>/.
+
+    Отдельно от урока блок правят стрелками «вверх/вниз» и галочками задач —
+    whole-урок для этого выгружать и перезаливать не нужно.
+    """
+    queryset = AssignmentBlock.objects.select_related('assignment', 'assignment__subject')
+    permission_classes = [IsTeacherOrAdmin]
+    serializer_class = AssignmentBlockSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.request.user.role != 'admin':
+            qs = qs.filter(assignment__teacher=self.request.user)
+        return qs
+
+    def update(self, request, *args, **kwargs):
+        block = self.get_object()
+        if block.submissions.exists():
+            return Response({'detail': 'Блок уже сдавали: править состав нельзя, '
+                                       'иначе ответы учеников останутся без своей задачи'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        serializer = self.get_serializer(block, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(self.get_serializer(block).data)
+
+
+class AssignmentAnswerViewSet(mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    """Ручная проверка: вердикт преподавателя по одной задаче сдачи."""
+    queryset = AssignmentAnswer.objects.select_related('question', 'submission',
+                                                      'submission__student',
+                                                      'submission__block')
+    permission_classes = [IsTeacherOrAdmin]
+    serializer_class = AssignmentAnswerSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if self.request.user.role != 'admin':
+            qs = qs.filter(submission__assignment__teacher=self.request.user)
+        verdict = self.request.query_params.get('verdict')
+        if verdict:
+            qs = qs.filter(verdict=verdict)
+        assignment = self.request.query_params.get('assignment')
+        if assignment:
+            qs = qs.filter(submission__assignment_id=assignment)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def review(self, request, pk=None):
+        """Итоговый балл по задаче выставляет только человек.
+
+        `judged_by='human'` — и после этого задача входит в процент блока; машина к
+        строке уже не вернётся, даже если эталон потом поправят в банке.
+        """
+        answer = self.get_object()
+        verdict = request.data.get('verdict', '')
+        if verdict not in ('correct', 'partial', 'incorrect'):
+            return Response({'detail': 'Нужен вердикт: correct / partial / incorrect'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        answer.verdict = verdict
+        answer.judged_by = 'human'
+        answer.verdict_note = (request.data.get('note') or '').strip()[:2000]
+        answer.reviewed_by = request.user
+        answer.reviewed_at = timezone.now()
+        answer.save()
+        left = close_submission(answer.submission, reviewer=request.user)
+        return Response({
+            'answer': self.get_serializer(answer).data,
+            'submission_state': answer.submission.state,
+            'pending_left': left,
+            'score': score_submission(answer.submission),
+        })
+
+
+class MyAssignmentViewSet(viewsets.GenericViewSet):
+    """Ученик: свои уроки, ответ по задаче, сдача блока и фидбек по нему.
+
+    До этого шага у ученика не было ни одного эндпоинта назначений: `AssignmentViewSet`
+    закрыт `IsTeacherOrAdmin`, и назначенное домой ученик платформой не видел.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Assignment.objects.filter(students=self.request.user, status='active') \
+            .select_related('subject').prefetch_related('blocks')
+
+    def get_assignment(self):
+        return get_object_or_404(self.get_queryset(), pk=self.kwargs['pk'])
+
+    def list(self, request):
+        qs = self.get_queryset().order_by('-published_at')
+        return Response(MyAssignmentListSerializer(qs, many=True).data)
+
+    def retrieve(self, request, pk=None):
+        assignment = self.get_assignment()
+        blocks = assignment.blocks_ordered
+        subs = {s.block_id: s for s in
+                AssignmentSubmission.objects.filter(assignment=assignment, student=request.user)
+                .prefetch_related('answers__question')}
+        context = {'submissions': subs,
+                   'scores': {b.pk: score_submission(subs[b.pk]) for b in blocks if b.pk in subs}}
+        return Response({
+            'id': assignment.pk,
+            'title': assignment.title,
+            'subject_name': assignment.subject.name,
+            'due_at': assignment.due_at,
+            'expired': assignment.is_expired,
+            'blocks': MyAssignmentBlockSerializer(blocks, many=True, context=context).data,
+        })
+
+    @staticmethod
+    def _submission(assignment, student, block):
+        sub, _created = AssignmentSubmission.objects.get_or_create(
+            assignment=assignment, student=student, block=block)
+        return sub
+
+    def _block_and_question(self, request, assignment):
+        block = get_object_or_404(assignment.blocks, pk=request.data.get('block'))
+        question = get_object_or_404(Question, pk=request.data.get('question'))
+        if question.pk not in (block.question_ids or []):
+            return None, None, Response({'detail': 'Этой задачи в блоке нет'},
+                                        status=status.HTTP_400_BAD_REQUEST)
+        return block, question, None
+
+    @action(detail=True, methods=['post'], url_path='answer')
+    def answer(self, request, pk=None):
+        """Сохранить ответ одной задачи: правка ученика обнуляет прежний вердикт.
+
+        Блок без автопроверки (`in_class`, `advanced`) ответ сохраняет, но сверки не
+        делает: вердикт по нему ставит человек, и ложного нуля тут не будет.
+        """
+        assignment = self.get_assignment()
+        block, question, error = self._block_and_question(request, assignment)
+        if error:
+            return error
+        if assignment.is_expired:
+            return Response({'detail': 'Срок сдачи вышел'}, status=status.HTTP_400_BAD_REQUEST)
+        sub = self._submission(assignment, request.user, block)
+        raw = (request.data.get('raw_answer') or '').strip()[:5000]
+        answer, _created = AssignmentAnswer.objects.update_or_create(
+            submission=sub, question=question,
+            defaults={'raw_answer': raw, 'verdict': 'pending_review', 'judged_by': '',
+                      'verdict_note': '', 'normalized_answer': '',
+                      'reviewed_by': None, 'reviewed_at': None})
+        if raw and block.autocheck:
+            grade_assignment_answer(answer)
+        return Response({'id': answer.pk, 'verdict': answer.verdict,
+                         'judged_by': answer.judged_by, 'feedback': answer.feedback})
+
+    @action(detail=True, methods=['post'])
+    def submit(self, request, pk=None):
+        """Сдать блок: сохранённые ответы проверяются заново, итог идёт в матрицу.
+
+        Ответ, который ученик правил после первой сверки, обязан получить вердикт по
+        последней редакции, а не по той строке, что была в момент сохранения.
+        """
+        assignment = self.get_assignment()
+        block = get_object_or_404(assignment.blocks, pk=request.data.get('block'))
+        if assignment.is_expired:
+            return Response({'detail': 'Срок сдачи вышел'}, status=status.HTTP_400_BAD_REQUEST)
+        sub = self._submission(assignment, request.user, block)
+        if block.autocheck:
+            for answer in sub.answers.select_related('question'):
+                if answer.raw_answer.strip():
+                    grade_assignment_answer(answer)
+        sub.state = 'submitted'
+        sub.last_submitted_at = timezone.now()
+        sub.save(update_fields=['state', 'last_submitted_at'])
+        return Response({'state': sub.state, 'autocheck': block.autocheck,
+                         'score': score_submission(sub),
+                         'pending': sub.answers.filter(verdict='pending_review').count()})

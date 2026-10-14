@@ -209,3 +209,10 @@ INGEST_WORKERS = int(os.environ.get('INGEST_WORKERS', '4'))
 INGEST_PRICE_IN = float(os.environ.get('INGEST_PRICE_IN', '0') or 0)
 INGEST_PRICE_OUT = float(os.environ.get('INGEST_PRICE_OUT', '0') or 0)
 INGEST_MAX_PDF_MB = int(os.environ.get('INGEST_MAX_PDF_MB', '60'))
+
+# ── Автопроверка открытых ответов урока (Конструктор, Шаг 4.3) ─────────────
+# Ответ ученика без единицы при эталоне «2575 км»: False — зачитываем число,
+# True — такой ответ уходит преподавателю, а не получает вердикт машины.
+# Политика округления — относительный допуск 0,5% (внутри `openanswer.compare`):
+# абсолютного порога нет намеренно, он проглатывал атомные ответы вида 1e-10 м.
+OPEN_ANSWER_STRICT_UNITS = os.environ.get('OPEN_ANSWER_STRICT_UNITS', '0') == '1'

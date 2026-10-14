@@ -1,12 +1,17 @@
 """
-Тесты конвейера импорта из Google Forms.
+Тесты банка и Конструктора уроков.
 
 Покрывают:
-- парсер (валидный JSON, ошибки структуры, не-quiz, без subject/topic);
-- importer (создание вопросов, дедупликация по external_id,
-  маркировка verified/draft по наличию правильного ответа);
-- DRF-эндпоинт (401 без токена, 403 студенту, dry_run, happy path,
-  обработка невалидного JSON).
+- парсер и importer Google Forms (валидный JSON, ошибки структуры, дедупликация
+  по external_id, маркировка verified/draft), DRF-эндпоинт (401/403, dry_run);
+- команды приёмки и приклеивания ответов книги (`attach_book_answers`,
+  `refresh_scan_text`) — сухой прогон не трогает базу, неоднозначное наружу;
+- конструктор уроков (Шаг 4.3): урок из четырёх блоков по `kind` + `order`,
+  предпросмотр набора, публикация пустого урока отвергнута, состав сданного
+  блока не перестилается;
+- сдачу блока: чем решён вердикт, что `pending_review` не даёт ложного нуля
+  в процентах, эталон книги не уходит ученику до вердикта человека и итоговый
+  балл ставит только человек.
 
 Drive API (скачивание картинок) тестируется на моках в images.py —
 здесь внешних вызовов нет.
@@ -16,15 +21,20 @@ from __future__ import annotations
 import io
 import json
 import tempfile
+from datetime import timedelta
 from pathlib import Path
 
 from django.core.management import CommandError, call_command
+from django.db import transaction
+from django.db.utils import IntegrityError
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from subjects.google_forms.dto import AnswerDTO, QuestionDTO
 from subjects.google_forms.importer import ImporterError, import_payload
 from subjects.google_forms.parser import ParseError, parse_dict
-from subjects.models import Answer, Assignment, Question, Subject, Topic, Assignment
+from subjects.models import (Answer, Assignment, AssignmentAnswer, AssignmentBlock,
+                             AssignmentSubmission, Question, Subject, Topic)
 
 
 # === Фикстуры / хелперы ====================================================
@@ -655,10 +665,15 @@ class AutoacceptBookDraftsTest(TestCase):
         self.assertEqual(other.verification_status, 'draft')
 
 
-# === Назначение по уровню ==================================================
+# === Конструктор уроков: набор и публикация ================================
 
 class AssignByLevelTest(TestCase):
-    """Экран «Назначение по уровню»: предпросмотр набора, создание, отзыв."""
+    """Экран «Назначение по уровню»: предпросмотр набора для блока, урок из блоков, отзыв.
+
+    Схема одна и она единственная: у `Assignment` нет плоского списка задач, состав
+    живёт в блоках по `kind` + `order`. Поэтому и тест собирает урок блоками —
+    другой формы payload экран не присылает, и поддерживать её было бы слоями.
+    """
 
     @classmethod
     def setUpTestData(cls):
@@ -672,15 +687,16 @@ class AssignByLevelTest(TestCase):
         cls.student = User.objects.create_user(username='s1', password='x', role='student')
         cls.easy = [cls.task(mtopic, 'easy', f'лёгкая {i}') for i in range(6)]
         cls.medium = [cls.task(mtopic, 'medium', f'средняя {i}') for i in range(2)]
+        cls.hard = cls.task(mtopic, 'hard', 'сложная')
         cls.hard_draft = cls.task(mtopic, 'hard', 'черновик', status='draft')
         cls.foreign = cls.task(ptopic, 'easy', 'чужой предмет')
 
     @staticmethod
-    def task(topic, difficulty, text, status='verified'):
+    def task(topic, difficulty, text, status='verified', answer=''):
         return Question.objects.create(
             topic=topic, text=text, latex=f'$x$ {text}', difficulty=difficulty,
             source_type='book_scan', question_type='open_answer',
-            verification_status=status,
+            verification_status=status, latex_answer=answer,
         )
 
     def _auth(self, user):
@@ -689,6 +705,17 @@ class AssignByLevelTest(TestCase):
         c.force_authenticate(user=user)
         return c
 
+    def _lesson(self, c, *blocks, **extra):
+        body = {'title': 'Т', 'subject': self.math.pk, 'blocks': list(blocks)}
+        body.update(extra)
+        return c.post('/api/assignments/', body, format='json')
+
+    def _draft(self):
+        """Черновик урока с одним домашним блоком — то, что экран делает первым шагом."""
+        r = self._lesson(self._auth(self.teacher),
+                         {'kind': 'homework', 'question_ids': [self.easy[0].pk]})
+        return Assignment.objects.get(pk=r.data['id'])
+
     def test_pick_gives_only_verified_tasks_of_the_level(self):
         r = self._auth(self.teacher).get('/api/assignments/pick/',
                                          {'subject': self.math.pk, 'difficulty': 'easy'})
@@ -696,8 +723,30 @@ class AssignByLevelTest(TestCase):
         ids = [q['id'] for q in r.data['questions']]
         self.assertEqual(sorted(ids), sorted(q.pk for q in self.easy))
         # уровни экрана: тренер обязан видеть, где материала нет, до того как просить
-        self.assertEqual(r.data['levels'], {'easy': 6, 'medium': 2, 'hard': 0})
+        self.assertEqual(r.data['levels'], {'easy': 6, 'medium': 2, 'hard': 1})
         self.assertEqual(r.data['pool'], 6)
+
+    def test_pick_without_level_pools_the_whole_subject(self):
+        """Ступень блока задаёт сам блок, поэтому предпросмотр без `difficulty` —
+        норма, а не ошибка: тренер смотрит, что вообще есть по теме или книге."""
+        r = self._auth(self.teacher).get('/api/assignments/pick/', {'subject': self.math.pk})
+        self.assertEqual(r.data['pool'], 9)
+        self.assertEqual({q['difficulty'] for q in r.data['questions']},
+                         {'easy', 'medium', 'hard'})
+
+    def test_pick_kind_maps_to_the_step_of_the_block(self):
+        c = self._auth(self.teacher)
+        for kind, want in (('advanced', [self.hard.pk]),
+                           ('simplified', [q.pk for q in self.easy])):
+            r = c.get('/api/assignments/pick/', {'subject': self.math.pk, 'kind': kind})
+            self.assertEqual(sorted(q['id'] for q in r.data['questions']), sorted(want), kind)
+
+    def test_pick_refuses_without_subject_or_wrong_level(self):
+        c = self._auth(self.teacher)
+        self.assertEqual(c.get('/api/assignments/pick/').status_code, 400)
+        r = c.get('/api/assignments/pick/', {'subject': self.math.pk, 'difficulty': 'expert'})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('Такого уровня нет', str(r.data))
 
     def test_pick_count_limits_and_reroll_changes_the_set(self):
         c = self._auth(self.teacher)
@@ -711,47 +760,139 @@ class AssignByLevelTest(TestCase):
         # превращались бы в одни и те же первые три для всех учеников
         self.assertGreater(len(seen), 1)
 
-    def test_create_freezes_the_order_the_teacher_saw(self):
+    def test_create_freezes_blocks_and_the_order_inside_them(self):
         order = [self.easy[3].pk, self.medium[0].pk, self.easy[0].pk]
         c = self._auth(self.teacher)
-        r = c.post('/api/assignments/', {
-            'title': 'Домашка 11.2', 'subject': self.math.pk, 'difficulty': 'easy',
-            'students': [self.student.pk], 'question_ids': list(reversed(order)),
-        }, format='json')
+        r = self._lesson(c,
+                         {'kind': 'homework', 'title': 'Домашка 11.2',
+                          'question_ids': list(reversed(order))},
+                         {'kind': 'in_class', 'question_ids': [self.easy[1].pk]},
+                         title='Урок 11.2', students=[self.student.pk])
         self.assertEqual(r.status_code, 201, r.data)
         a = Assignment.objects.get(pk=r.data['id'])
-        self.assertEqual(a.question_ids, list(reversed(order)))
+        self.assertEqual(a.status, 'draft')
+        self.assertEqual([b.kind for b in a.blocks_ordered], ['homework', 'in_class'])
+        self.assertEqual(a.blocks.get(kind='homework').question_ids, list(reversed(order)))
+        self.assertEqual([q.pk for q in a.questions],
+                         list(reversed(order)) + [self.easy[1].pk])
         d = c.get(f'/api/assignments/{a.pk}/')
-        self.assertEqual([q['id'] for q in d.data['questions']], list(reversed(order)))
+        self.assertEqual([b['kind'] for b in d.data['blocks']], ['homework', 'in_class'])
+        self.assertEqual([q['id'] for q in d.data['blocks'][0]['questions']],
+                         list(reversed(order)))
+        self.assertEqual(d.data['tasks'], 4)
         self.assertEqual([s['id'] for s in d.data['students']], [self.student.pk])
+
+    def test_explicit_order_is_kept(self):
+        r = self._lesson(self._auth(self.teacher),
+                         {'kind': 'in_class', 'order': 0, 'question_ids': [self.easy[0].pk]},
+                         {'kind': 'homework', 'order': 1, 'question_ids': [self.easy[1].pk]})
+        a = Assignment.objects.get(pk=r.data['id'])
+        self.assertEqual([b.kind for b in a.blocks_ordered], ['in_class', 'homework'])
+        self.assertEqual([b.order for b in a.blocks_ordered], [0, 1])
+
+    def test_one_block_of_a_kind(self):
+        r = self._lesson(self._auth(self.teacher),
+                         {'kind': 'homework', 'question_ids': [self.easy[0].pk]},
+                         {'kind': 'homework', 'question_ids': [self.easy[1].pk]})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('Блок может быть только один', str(r.data))
+        self.assertEqual(Assignment.objects.count(), 0)
+
+    def test_a_second_homework_block_is_refused_by_the_database_too(self):
+        """Четыре блока — это схема, а не договорённость экрана: второй «Домашкой»
+        не станет ни через API, ни прямой записью в базу."""
+        a = self._draft()
+        # ошибочная запись должна остаться внутри атомика: иначе она отравит
+        # транзакцию теста, и следующие проверки упадут не по своей причине
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            AssignmentBlock.objects.create(assignment=a, kind='homework', question_ids=[])
+        self.assertEqual(a.blocks.count(), 1)
 
     def test_draft_and_foreign_subject_do_not_pass(self):
         c = self._auth(self.teacher)
-        body = {'title': 'Т', 'subject': self.math.pk, 'difficulty': 'easy',
-                'students': [self.student.pk]}
-        r = c.post('/api/assignments/', {**body, 'question_ids': [self.easy[0].pk,
-                                                                  self.hard_draft.pk]},
-                   format='json')
+        r = self._lesson(c, {'kind': 'homework',
+                             'question_ids': [self.easy[0].pk, self.hard_draft.pk]})
         self.assertEqual(r.status_code, 400)
         self.assertIn('черновик', str(r.data))
-        r = c.post('/api/assignments/', {**body, 'question_ids': [self.easy[0].pk,
-                                                                  self.foreign.pk]},
-                   format='json')
+        r = self._lesson(c, {'kind': 'homework',
+                             'question_ids': [self.easy[0].pk, self.foreign.pk]})
         self.assertEqual(r.status_code, 400)
-        self.assertIn('другого предмета', str(r.data['question_ids']))
+        self.assertIn('другого предмета', str(r.data['blocks']))
+        r = self._lesson(c, {'kind': 'homework', 'question_ids': [999999]})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('в банке нет', str(r.data['blocks']))
         self.assertEqual(Assignment.objects.count(), 0)
+
+    def test_group_merges_its_students_and_a_foreign_group_is_refused(self):
+        from users.models import StudyGroup
+        mine = StudyGroup.objects.create(name='11-А', teacher=self.teacher)
+        mine.students.add(self.student)
+        theirs = StudyGroup.objects.create(name='11-Б', teacher=self.other_teacher)
+        block = {'kind': 'homework', 'question_ids': [self.easy[0].pk]}
+        r = self._lesson(self._auth(self.teacher), block, group=mine.pk)
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual([s.pk for s in
+                          Assignment.objects.get(pk=r.data['id']).students.all()],
+                         [self.student.pk])
+        r = self._lesson(self._auth(self.teacher), block, group=theirs.pk)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('не ваша группа', str(r.data))
+
+    def test_publish_needs_a_task_and_then_the_lesson_goes_live(self):
+        c = self._auth(self.teacher)
+        r = self._lesson(c, {'kind': 'homework', 'question_ids': []},
+                         students=[self.student.pk])
+        a = Assignment.objects.get(pk=r.data['id'])
+        r = c.post(f'/api/assignments/{a.pk}/publish/')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('ни одной задачи', str(r.data))
+        self.assertEqual(a.status, 'draft')
+        self.assertIsNone(a.published_at)
+
+        block = a.blocks.get(kind='homework')
+        # пустой блок правят стрелками и галочками на экране, а не всей страницей урока
+        r = c.patch(f'/api/assignment-blocks/{block.pk}/',
+                    {'question_ids': [self.easy[0].pk], 'order': 0}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['autocheck'], True)
+        r = c.post(f'/api/assignments/{a.pk}/publish/')
+        self.assertEqual(r.status_code, 200, r.data)
+        a.refresh_from_db()
+        self.assertEqual(a.status, 'active')
+        self.assertIsNotNone(a.published_at)
+        # опубликованный состав ученик видит в том же порядке, что утвердил тренер
+        mine = self._auth(self.student).get(f'/api/my/assignments/{a.pk}/')
+        self.assertEqual([q['id'] for q in mine.data['blocks'][0]['questions']],
+                         [self.easy[0].pk])
+
+    def test_block_patch_refuses_the_foreign_or_draft_task(self):
+        a = self._draft()
+        block = a.blocks.get(kind='homework')
+        r = self._auth(self.teacher).patch(f'/api/assignment-blocks/{block.pk}/',
+                                          {'question_ids': [self.foreign.pk]}, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('другого предмета', str(r.data))
+        block.refresh_from_db()
+        self.assertEqual(block.question_ids, [self.easy[0].pk])
+
+    def test_block_kind_is_not_renamed(self):
+        a = self._draft()
+        block = a.blocks.get(kind='homework')
+        r = self._auth(self.teacher).patch(f'/api/assignment-blocks/{block.pk}/',
+                                          {'kind': 'advanced'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        block.refresh_from_db()
+        self.assertEqual(block.kind, 'homework')
 
     def test_student_cannot_assign(self):
         r = self._auth(self.student).post('/api/assignments/', {
-            'title': 'Т', 'subject': self.math.pk, 'difficulty': 'easy',
-            'question_ids': [self.easy[0].pk],
+            'title': 'Т', 'subject': self.math.pk,
+            'blocks': [{'kind': 'homework', 'question_ids': [self.easy[0].pk]}],
         }, format='json')
         self.assertEqual(r.status_code, 403)
 
     def test_revoke_keeps_the_record(self):
-        a = Assignment.objects.create(teacher=self.teacher, subject=self.math,
-                                      difficulty='easy', title='Т',
-                                      question_ids=[self.easy[0].pk])
+        a = self._draft()
         c = self._auth(self.teacher)
         r = c.post(f'/api/assignments/{a.pk}/revoke/')
         self.assertEqual(r.status_code, 200)
@@ -759,14 +900,296 @@ class AssignByLevelTest(TestCase):
         self.assertEqual(a.status, 'revoked')
         # отзыв не стирает, что ученик уже получил
         self.assertTrue(Assignment.objects.filter(pk=a.pk).exists())
+        self.assertEqual(a.blocks.count(), 1)
 
     def test_teacher_sees_only_own_assignments(self):
-        Assignment.objects.create(teacher=self.teacher, subject=self.math,
-                                  difficulty='easy', title='моё', question_ids=[])
-        Assignment.objects.create(teacher=self.other_teacher, subject=self.math,
-                                  difficulty='easy', title='чужое', question_ids=[])
-        r = self._auth(self.teacher).get('/api/assignments/')
+        c = self._auth(self.teacher)
+        self._lesson(c, {'kind': 'homework', 'question_ids': [self.easy[0].pk]}, title='моё')
+        self._lesson(self._auth(self.other_teacher),
+                     {'kind': 'homework', 'question_ids': [self.easy[1].pk]}, title='чужое')
+        r = c.get('/api/assignments/')
         self.assertEqual([a['title'] for a in r.data], ['моё'])
+        self.assertEqual(r.data[0]['blocks'][0]['tasks'], 1)
+
+
+# === Урок: сдача блока, автопроверка и ручная проверка ======================
+
+class LessonResultsTest(TestCase):
+    """Что делает платформа, когда ученик пишет ответ открытой задачи.
+
+    Главная опасность — ложный ноль. У 75 строк банка напечатанного ответа нет, и
+    если автопроверка отдаст за них `incorrect`, ученик получит балл, который никто
+    не выставлял, а тренер потом не найдёт, где проверка не делалась. Поэтому
+    `pending_review` не входит ни в числитель, ни в знаменатель процента, а очередь
+    ручной проверки обязана такие задачи показывать, пока вердикта человека нет.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from users.models import User
+        cls.math = Subject.objects.create(name='Математика', slug='math-lesson', icon='📐')
+        topic = Topic.objects.create(subject=cls.math, name='Сканави · Глава 11')
+        cls.teacher = User.objects.create_user(username='tl', password='x', role='teacher')
+        cls.student = User.objects.create_user(username='sl', password='x', role='student')
+        cls.second = User.objects.create_user(username='sl2', password='x', role='student')
+        cls.outsider = User.objects.create_user(username='sx', password='x', role='student')
+        cls.with_answer = cls.task(topic, 'объём', answer='$18$ см', points=2)
+        cls.no_answer = cls.task(topic, 'доказать', answer='', points=1)
+        cls.classwork_task = cls.task(topic, 'чертёж', answer='$5$ м', points=1)
+        cls.lesson = Assignment.objects.create(teacher=cls.teacher, subject=cls.math,
+                                               title='Урок 11.2', status='active',
+                                               published_at=timezone.now())
+        cls.homework = AssignmentBlock.objects.create(
+            assignment=cls.lesson, kind='homework', order=0,
+            question_ids=[cls.with_answer.pk, cls.no_answer.pk])
+        cls.classwork = AssignmentBlock.objects.create(
+            assignment=cls.lesson, kind='in_class', order=1,
+            question_ids=[cls.classwork_task.pk])
+        cls.lesson.students.set([cls.student, cls.second])
+
+    @staticmethod
+    def task(topic, text, answer='', points=1):
+        return Question.objects.create(
+            topic=topic, text=text, latex=text, latex_answer=answer, difficulty='easy',
+            source_type='book_scan', question_type='open_answer',
+            verification_status='verified', points=points,
+        )
+
+    def _auth(self, user):
+        from rest_framework.test import APIClient
+        c = APIClient()
+        c.force_authenticate(user=user)
+        return c
+
+    def _answer(self, c, block, question, raw):
+        return c.post(f'/api/my/assignments/{self.lesson.pk}/answer/',
+                      {'block': block.pk, 'question': question.pk, 'raw_answer': raw},
+                      format='json')
+
+    def _submit(self, c, block):
+        return c.post(f'/api/my/assignments/{self.lesson.pk}/submit/',
+                      {'block': block.pk}, format='json')
+
+    def test_machine_grades_what_the_book_prints_and_leaves_the_rest(self):
+        c = self._auth(self.student)
+        r = self._answer(c, self.homework, self.with_answer, '18 см')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['verdict'], 'correct')
+        self.assertEqual(r.data['judged_by'], 'level1')
+        r = self._answer(c, self.homework, self.no_answer, '12 см')
+        self.assertEqual(r.data['verdict'], 'pending_review')
+        # пустой judged_by — это «машина не решила», а не чьё-то молчаливое согласие
+        self.assertEqual(r.data['judged_by'], '')
+        # ученику показываем, что дальше решает человек, а не внутреннюю причину сверки
+        self.assertIn('преподавателя', r.data['feedback']['note'])
+        self.assertEqual(r.data['feedback']['etalon'], '')
+        self.assertIn('в книге ответа нет',
+                      AssignmentAnswer.objects.get(question=self.no_answer).verdict_note)
+
+        s = self._submit(c, self.homework).data
+        self.assertEqual(s['autocheck'], True)
+        sc = s['score']
+        self.assertEqual((sc['total'], sc['answered'], sc['checked'], sc['pending']),
+                         (2, 2, 1, 1))
+        self.assertEqual((sc['earned'], sc['possible'], sc['percent']), (2.0, 2.0, 100.0))
+        # ложного нуля нет: задача без эталона не попала ни в балл, ни в знаменатель
+        a = AssignmentAnswer.objects.get(question=self.no_answer)
+        self.assertIsNone(a.points_earned)
+        self.assertEqual(s['pending'], 1)
+
+    def test_wrong_answer_is_incorrect_without_the_key(self):
+        c = self._auth(self.student)
+        r = self._answer(c, self.homework, self.with_answer, '5 м')
+        self.assertEqual(r.data['verdict'], 'incorrect')
+        self.assertEqual(r.data['feedback']['etalon'], '')
+        self.assertIn('не совпала', r.data['feedback']['note'])
+        mine = c.get(f'/api/my/assignments/{self.lesson.pk}/').data
+        feedback = mine['blocks'][0]['answers'][0]['feedback']
+        self.assertEqual(feedback['etalon'], '')
+        self.assertEqual(feedback['verdict'], 'incorrect')
+
+    def test_in_class_block_saves_the_answer_and_checks_nothing(self):
+        """`in_class` и `advanced` решают вместе на уроке: автопроверки там нет, и
+        ложного `pending_review` на каждую такую задачу очередь не забивается —
+        ответ сохраняется, вердикт по нему ставит человек."""
+        c = self._auth(self.student)
+        r = self._answer(c, self.classwork, self.classwork_task, 'не так')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['verdict'], 'pending_review')
+        self.assertEqual(AssignmentAnswer.objects.get(question=self.classwork_task)
+                         .normalized_answer, '')
+        s = self._submit(c, self.classwork).data
+        self.assertEqual(s['autocheck'], False)
+        self.assertEqual(s['score']['percent'], None)
+        self.assertEqual(s['score']['pending'], 1)
+
+    def test_strict_units_flag_sends_a_bare_number_to_the_teacher(self):
+        with override_settings(OPEN_ANSWER_STRICT_UNITS=True):
+            r = self._answer(self._auth(self.student), self.homework, self.with_answer, '18')
+        self.assertEqual(r.data['verdict'], 'pending_review')
+        self.assertEqual(r.data['judged_by'], '')
+
+    def test_answer_of_a_task_that_is_not_in_the_block_is_refused(self):
+        r = self._answer(self._auth(self.student), self.homework, self.classwork_task, '18 см')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('Этой задачи в блоке нет', str(r.data))
+        self.assertEqual(AssignmentSubmission.objects.count(), 0)
+
+    def test_matrix_shows_rows_per_block_and_pending_review_queue(self):
+        s = self._auth(self.student)
+        self._answer(s, self.homework, self.with_answer, '18 см')
+        self._answer(s, self.homework, self.no_answer, '12 см')
+        self._submit(s, self.homework)
+        r = self._auth(self.teacher).get(f'/api/assignments/{self.lesson.pk}/matrix/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual([b['kind'] for b in r.data['blocks']], ['homework', 'in_class'])
+        self.assertEqual(r.data['blocks'][0]['autocheck'], True)
+        self.assertEqual(len(r.data['rows']), 2)
+        rows = {row['student']: row for row in r.data['rows']}
+        hw, cw = rows[self.student.pk]['blocks']
+        self.assertEqual((hw['state'], hw['checked'], hw['pending'], hw['percent']),
+                         ('submitted', 1, 1, 100.0))
+        self.assertEqual([cell['total'] for cell in rows[self.student.pk]['blocks']], [2, 1])
+        # второй ученик урок не открывал: пустая клетка обязана быть видна, а не 0%
+        self.assertEqual([cell['state'] for cell in rows[self.second.pk]['blocks']], ['', ''])
+        self.assertEqual([cell['answered'] for cell in rows[self.second.pk]['blocks']], [0, 0])
+        self.assertEqual(cw['state'], '')
+        self.assertEqual([a['question'] for a in r.data['pending_review']],
+                         [self.no_answer.pk])
+        self.assertEqual(r.data['pending_review'][0]['block_kind'], 'homework')
+        self.assertIn('в книге ответа нет', str(r.data['pending_review'][0]['verdict_note']))
+
+    def test_human_review_is_the_only_thing_that_closes_a_submission(self):
+        c = self._auth(self.student)
+        self._answer(c, self.homework, self.with_answer, '18 см')
+        self._answer(c, self.homework, self.no_answer, '12 см')
+        self._submit(c, self.homework)
+        pending = AssignmentAnswer.objects.get(question=self.no_answer)
+        t = self._auth(self.teacher)
+        r = t.post(f'/api/assignment-answers/{pending.pk}/review/',
+                   {'verdict': 'partial', 'note': 'верно начало'})
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['submission_state'], 'reviewed')
+        self.assertEqual(r.data['pending_left'], 0)
+        self.assertEqual(r.data['score']['checked'], 2)
+        self.assertEqual(r.data['score']['percent'], 83.3)
+        pending.refresh_from_db()
+        self.assertEqual([pending.verdict, pending.judged_by], ['partial', 'human'])
+        self.assertEqual(pending.reviewed_by_id, self.teacher.pk)
+        self.assertEqual(pending.submission.state, 'reviewed')
+
+    def test_review_needs_a_verdict_a_human_can_give(self):
+        self._answer(self._auth(self.student), self.homework, self.no_answer, '12 см')
+        pending = AssignmentAnswer.objects.get(question=self.no_answer)
+        r = self._auth(self.teacher).post(f'/api/assignment-answers/{pending.pk}/review/',
+                                         {'verdict': 'pending_review'}, format='json')
+        self.assertEqual(r.status_code, 400)
+        pending.refresh_from_db()
+        self.assertEqual(pending.judged_by, '')
+
+    def test_student_edit_resets_a_verdict_a_teacher_already_set(self):
+        """Правка ученика после ручной проверки возвращает задачу в очередь: иначе
+        «partial» висел бы на ответе, которого больше нет."""
+        s = self._auth(self.student)
+        self._answer(s, self.homework, self.no_answer, '12 см')
+        pending = AssignmentAnswer.objects.get(question=self.no_answer)
+        self._auth(self.teacher).post(f'/api/assignment-answers/{pending.pk}/review/',
+                                      {'verdict': 'correct'}, format='json')
+        pending.refresh_from_db()
+        self.assertEqual(pending.judged_by, 'human')
+        r = self._answer(self._auth(self.student), self.homework, self.no_answer, '13 см')
+        self.assertEqual(r.data['verdict'], 'pending_review')
+        self.assertEqual(r.data['judged_by'], '')
+        pending.refresh_from_db()
+        self.assertIsNone(pending.reviewed_by_id)
+
+    def test_submit_regrades_the_last_draft_of_an_answer(self):
+        """Ученик мог сохранить ответ, а перед сдачей переписать его: сверка обязана
+        идти по последней строке, а не по той, что была в момент сохранения."""
+        c = self._auth(self.student)
+        self._answer(c, self.homework, self.with_answer, '5 м')
+        self._answer(c, self.homework, self.with_answer, '18 см')
+        s = self._submit(c, self.homework).data
+        self.assertEqual(s['score']['checked'], 1)
+        self.assertEqual(s['score']['percent'], 100.0)
+        self.assertEqual(AssignmentAnswer.objects.get(question=self.with_answer).verdict,
+                         'correct')
+
+    def test_a_graded_block_cannot_be_reshaped_or_dropped(self):
+        c = self._auth(self.student)
+        self._answer(c, self.homework, self.with_answer, '18 см')
+        t = self._auth(self.teacher)
+        r = t.patch(f'/api/assignment-blocks/{self.homework.pk}/',
+                    {'question_ids': [self.classwork_task.pk]}, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('Блок уже сдавали', str(r.data))
+        r = t.put(f'/api/assignments/{self.lesson.pk}/', {
+            'title': 'Урок 11.2', 'subject': self.math.pk,
+            'blocks': [{'kind': 'in_class', 'question_ids': [self.classwork_task.pk]}],
+        }, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('уже сдавали', str(r.data))
+        self.assertTrue(AssignmentBlock.objects.filter(pk=self.homework.pk).exists())
+        self.homework.refresh_from_db()
+        self.assertEqual(self.homework.question_ids, [self.with_answer.pk, self.no_answer.pk])
+
+    def test_lesson_not_assigned_is_invisible_to_the_student(self):
+        c = self._auth(self.outsider)
+        self.assertEqual(c.get('/api/my/assignments/').data, [])
+        self.assertEqual(c.get(f'/api/my/assignments/{self.lesson.pk}/').status_code, 404)
+        self.assertEqual(self._answer(c, self.homework, self.with_answer, '18 см').status_code,
+                         404)
+
+    def test_draft_lesson_is_not_visible_and_expired_lesson_refuses_answers(self):
+        c = self._auth(self.student)
+        self.lesson.status = 'draft'
+        self.lesson.save(update_fields=['status'])
+        self.assertEqual(c.get('/api/my/assignments/').data, [])
+        self.lesson.status = 'active'
+        self.lesson.due_at = timezone.now() - timedelta(hours=1)
+        self.lesson.save(update_fields=['status', 'due_at'])
+        r = c.get(f'/api/my/assignments/{self.lesson.pk}/')
+        self.assertTrue(r.data['expired'])
+        self.assertTrue(c.get('/api/my/assignments/').data[0]['expired'])
+        r = self._answer(c, self.homework, self.with_answer, '18 см')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('Срок сдачи вышел', str(r.data))
+        self.assertEqual(self._submit(c, self.homework).status_code, 400)
+        self.assertEqual(AssignmentSubmission.objects.count(), 0)
+
+    def test_student_page_carries_the_condition_but_not_the_key(self):
+        """Экран ученика обязан нести условие, но не ответ книги.
+
+        Задачи страницы ученика собирались тем же сериализатором, что и экран банка,
+        и уносили `latex_answer` вместе с условиями: правило «эталон показываем после
+        вердикта человека» обходилось одним открытым DevTools, и ни один вердикт об
+        этом не предупреждал.
+        """
+        c = self._auth(self.student)
+        self._answer(c, self.homework, self.with_answer, '5 м')
+        r = c.get(f'/api/my/assignments/{self.lesson.pk}/')
+        body = json.dumps(r.data, ensure_ascii=False)
+        self.assertNotIn('$18$ см', body)
+        self.assertNotIn('latex_answer', body)
+        self.assertNotIn('provenance', body)
+        self.assertEqual(sorted(r.data['blocks'][0]['questions'][0]),
+                         ['difficulty', 'id', 'image', 'latex', 'points', 'text'])
+        # тренеру ключ банка виден: он его и приёмку ведёт
+        t = json.dumps(self._auth(self.teacher).get(f'/api/assignments/{self.lesson.pk}/').data,
+                       ensure_ascii=False)
+        self.assertIn('$18$ см', t)
+
+    def test_deduplication_one_submission_and_one_answer_per_task(self):
+        c = self._auth(self.student)
+        self._answer(c, self.homework, self.with_answer, '5 м')
+        self._answer(c, self.homework, self.with_answer, '18 см')
+        self._submit(c, self.homework)
+        self.assertEqual(AssignmentSubmission.objects.filter(
+            assignment=self.lesson, student=self.student).count(), 1)
+        self.assertEqual(AssignmentAnswer.objects.count(), 1)
+        self.assertEqual(AssignmentAnswer.objects.get().raw_answer, '18 см')
+        # сдача не превращает сдачу в «проверено»: итог ставит только человек
+        self.assertEqual(AssignmentSubmission.objects.get().state, 'submitted')
 
 
 # === Ответы из другого прогона =============================================

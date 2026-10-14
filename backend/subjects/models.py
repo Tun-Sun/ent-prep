@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
 from django.db.models import Q
+from django.utils import timezone
 import re
 
 FIGURE_LINE = re.compile(r"^!\[[^\]]*\]\(([^)]+)\)\s*$")
@@ -254,16 +255,17 @@ class Answer(models.Model):
 
 
 class Assignment(models.Model):
-    """Домашнее задание, набранное по уровню сложности из банка.
+    """Урок: четыре блока задач, набранных из банка.
 
-    Список задач фиксируется в момент создания (`question_ids`, как у `Duel`):
-    ученик обязан видеть ровно то, что утвердил тренер, а не то, что через
-    неделю покажет тот же фильтр по уровню — банк пополняется и правится.
+    Набор задач фиксируется в момент публикации и живёт в `AssignmentBlock.question_ids`
+    (как у `Duel`): ученик обязан видеть ровно то, что утвердил тренер, а не то, что
+    через неделю покажет тот же фильтр — банк пополняется и правится.
     Проверкой на «балл» это не является, и специально: задачи оцифровки открытые,
     ключа варианта у них нет, поэтому здесь не нужен `answerable()` —
     ученик пишет решение, а не выбирает букву.
     """
     STATUS_CHOICES = [
+        ('draft', 'Черновик'),
         ('active', 'Назначено'),
         ('revoked', 'Отозвано'),
     ]
@@ -273,14 +275,19 @@ class Assignment(models.Model):
                                 related_name='assignments', verbose_name='Учитель')
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE,
                                 related_name='assignments', verbose_name='Предмет')
-    # уровень — тот же вопрос, что и у задачи: один список подписей на банк и на назначение
+    # историческая метка основного набора: экран конструктора её не спрашивает,
+    # ступени теперь разложены по блокам (advanced / simplified)
     difficulty = models.CharField(max_length=10, choices=Question.DIFFICULTY_CHOICES,
-                                  verbose_name='Уровень')
+                                  blank=True, default='', verbose_name='Уровень',
+                                  help_text='Более не задаётся: ступени теперь в блоках')
     students = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True,
                                       related_name='student_assignments', verbose_name='Ученики')
-    question_ids = models.JSONField(default=list, verbose_name='ID задач')
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='active',
+    group = models.ForeignKey('users.StudyGroup', on_delete=models.SET_NULL, null=True, blank=True,
+                              related_name='assignments', verbose_name='Группа')
+    due_at = models.DateTimeField(null=True, blank=True, verbose_name='Срок сдачи')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='draft',
                               verbose_name='Статус')
+    published_at = models.DateTimeField(null=True, blank=True, verbose_name='Опубликовано')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создано')
 
     class Meta:
@@ -289,10 +296,208 @@ class Assignment(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f'{self.title} — {self.get_difficulty_display()} ({len(self.question_ids or [])} задач)'
+        return f'{self.title} — {self.get_status_display()} ({self.questions_count} задач)'
+
+    @property
+    def blocks_ordered(self):
+        return list(self.blocks.order_by('order', 'id'))
 
     @property
     def questions(self):
-        """Задачи в том порядке, в каком их набрал экран, а не в порядке БД."""
+        """Задачи всех блоков: блоки по `order`, внутри блока — по позиции в списке."""
+        out = []
+        for block in self.blocks_ordered:
+            out.extend(block.questions)
+        return out
+
+    @property
+    def questions_count(self):
+        return sum(len(b.question_ids or []) for b in self.blocks.all())
+
+    @property
+    def is_expired(self):
+        return bool(self.due_at and self.due_at < timezone.now())
+
+    def publish(self):
+        """Черновик становится уроком: ученик видит его, состав больше не гадают.
+
+        Пустой урок опубликовать нельзя — иначе ученик получил бы страницу без задач.
+        """
+        if not self.questions_count:
+            return False
+        self.status = 'active'
+        self.published_at = timezone.now()
+        self.save(update_fields=['status', 'published_at'])
+        return True
+
+
+class AssignmentBlock(models.Model):
+    """Один из четырёх блоков урока.
+
+    `kind` + `order` вместо произвольных названий — решение владельца: четыре блока
+    покрывают назначения из реальной практики центра, а свободные блоки заставили бы
+    на каждом уроке заново решать, чем «блок 3» отличается от «домашки».
+    Порядок задач — позиция в `question_ids`, отдельного поля `position` нет: список
+    пишет человек экраном, и порядок в нём — единственный источник истины.
+    """
+    KIND_CHOICES = [
+        ('in_class', 'Классная работа'),
+        ('homework', 'Домашка'),
+        ('advanced', 'Сложные'),
+        ('simplified', 'Упрощённые'),
+    ]
+    # автопроверку ведут только эти два блока; in_class решают вместе, advanced — запас
+    GRADED_KINDS = ('homework', 'simplified')
+
+    assignment = models.ForeignKey(Assignment, on_delete=models.CASCADE, related_name='blocks',
+                                   verbose_name='Урок')
+    kind = models.CharField(max_length=12, choices=KIND_CHOICES, verbose_name='Блок')
+    title = models.CharField(max_length=200, blank=True, default='', verbose_name='Заголовок')
+    order = models.PositiveSmallIntegerField(default=0, verbose_name='Порядок')
+    question_ids = models.JSONField(default=list, verbose_name='ID задач')
+
+    class Meta:
+        verbose_name = 'Блок урока'
+        verbose_name_plural = 'Блоки урока'
+        ordering = ['assignment', 'order', 'id']
+        constraints = [
+            models.UniqueConstraint(fields=['assignment', 'kind'], name='uniq_kind_per_assignment'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_kind_display()} — {self.title or self.assignment_id} ({len(self.question_ids or [])})'
+
+    @property
+    def label(self):
+        return self.title or self.get_kind_display()
+
+    @property
+    def autocheck(self):
+        """Проверяем ли этот блок машиной.
+
+        `in_class` и `advanced` сдавать не обязаны: их решение и так разбирают на уроке,
+        а ложный `pending_review` на каждую такую задачу забил бы очередь ручной
+        проверки материалом, который никто в очередь не просил.
+        """
+        return self.kind in self.GRADED_KINDS
+
+    @property
+    def questions(self):
         found = {q.pk: q for q in Question.objects.filter(pk__in=self.question_ids)}
         return [found[i] for i in (self.question_ids or []) if i in found]
+
+
+class AssignmentSubmission(models.Model):
+    """Сдача одного блока одним учеником. Одна строка на (урок, ученик, блок)."""
+    STATE_CHOICES = [
+        ('in_progress', 'Решает'),
+        ('submitted', 'Сдал'),
+        ('reviewed', 'Проверено'),
+    ]
+
+    assignment = models.ForeignKey(Assignment, on_delete=models.CASCADE, related_name='submissions')
+    block = models.ForeignKey(AssignmentBlock, on_delete=models.CASCADE, null=True, blank=True,
+                              related_name='submissions')
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name='submissions')
+    state = models.CharField(max_length=12, choices=STATE_CHOICES, default='in_progress')
+    started_at = models.DateTimeField(auto_now_add=True, verbose_name='Начал')
+    last_submitted_at = models.DateTimeField(null=True, blank=True, verbose_name='Сдал')
+    reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name='Проверено')
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+                                    null=True, blank=True, related_name='reviewed_submissions',
+                                    verbose_name='Кто проверил')
+
+    class Meta:
+        verbose_name = 'Сдача'
+        verbose_name_plural = 'Сдачи'
+        constraints = [
+            models.UniqueConstraint(fields=['assignment', 'student', 'block'],
+                                    name='uniq_submission_per_block'),
+        ]
+
+    def __str__(self):
+        return f'{self.student} — {self.block} ({self.get_state_display()})'
+
+
+class AssignmentAnswer(models.Model):
+    """Одна задача одной сдачи: что ученик написал и чем это стало после сверки.
+
+    `raw_answer` неизменяем: «ученик так написал» тренер обязан видеть, даже когда
+    сам ставит `partial`. `verdict` — четыре значения, а не булев: `pending_review`
+    — это «ещё не проверено», а не «ноль», и в процент блока такие задачи входят
+    только после ручной проверки.
+    """
+    VERDICT_CHOICES = [
+        ('correct', 'Верно'),
+        ('partial', 'Неполно'),
+        ('incorrect', 'Неверно'),
+        ('pending_review', 'Ждёт проверки'),
+    ]
+    JUDGED_BY_CHOICES = [
+        ('', 'Машина не решила'),
+        ('level1', 'Нормализатор'),
+        ('cas', 'SymPy'),
+        # значение возможно только если модель реально вызывалась и записала
+        # подсказку; сама подсказка живёт в `verdict_note` и итоговый балл не выставляет
+        ('model_suggestion', 'Подсказка модели'),
+        ('human', 'Преподаватель'),
+    ]
+
+    submission = models.ForeignKey(AssignmentSubmission, on_delete=models.CASCADE,
+                                   related_name='answers')
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='assignment_answers')
+    raw_answer = models.TextField(verbose_name='Ответ ученика как есть')
+    normalized_answer = models.TextField(blank=True, default='', verbose_name='Что вычленил нормализатор')
+    verdict = models.CharField(max_length=14, choices=VERDICT_CHOICES, default='pending_review',
+                               verbose_name='Вердикт')
+    judged_by = models.CharField(max_length=18, choices=JUDGED_BY_CHOICES, blank=True, default='',
+                                 verbose_name='Чем решён вердикт')
+    verdict_note = models.TextField(blank=True, default='', verbose_name='Пояснение вердикта')
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+                                    null=True, blank=True, related_name='reviewed_answers',
+                                    verbose_name='Кто проверил')
+    reviewed_at = models.DateTimeField(null=True, blank=True, verbose_name='Проверена')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создано')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='Изменена')
+
+    class Meta:
+        verbose_name = 'Ответ в уроке'
+        verbose_name_plural = 'Ответы в уроке'
+        constraints = [
+            models.UniqueConstraint(fields=['submission', 'question'], name='uniq_answer_per_submission'),
+        ]
+
+    def __str__(self):
+        return f'{self.question_id} — {self.verdict} ({self.judged_by or "не решено"})'
+
+    @property
+    def points_earned(self):
+        """Балл по вердикту. У `pending_review` балла нет — он не начислен и не снят."""
+        if self.verdict == 'correct':
+            return self.question.points
+        if self.verdict == 'partial':
+            return self.question.points / 2
+        if self.verdict == 'incorrect':
+            return 0.0
+        return None
+
+    @property
+    def feedback(self):
+        """Что видит ученик.
+
+        Эталон книги отдаём только после вердикта человека: и в незавершённой сдаче,
+        и в «неверно» от машины ответ задачи был бы виден до того, как ученик
+        успел её разобрать. Машина сообщает вердикт и свою причину, не показывая ключ.
+        """
+        return {
+            'verdict': self.verdict,
+            'verdict_display': self.get_verdict_display(),
+            'judged_by': self.judged_by,
+            'note': self.verdict_note if self.verdict != 'pending_review'
+                    else 'ответ у преподавателя, оценка будет после проверки',
+            'etalon': self.question.latex_answer if self.judged_by == 'human' else '',
+        }
+
+
+
