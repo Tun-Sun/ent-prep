@@ -167,6 +167,11 @@ class Question(models.Model):
         max_length=5, default='ru', verbose_name='Язык',
     )
     year = models.PositiveIntegerField(null=True, blank=True, verbose_name='Год')
+    # Школьный класс, к которому задачу относит тренер (5..11). Поле `year` для этого
+    # не годится: там год ЕНТ или сборника, а не программа класса. Книга остаётся
+    # в provenance.book — класс из неё не выводится, его решает человек.
+    grade = models.PositiveSmallIntegerField(null=True, blank=True, db_index=True,
+                                             verbose_name='Класс')
     # Внешний идентификатор для дедупликации при импорте.
     # Для Google Forms: "<formId>/<itemId>". Пустой для собранных вопросов.
     external_id = models.CharField(

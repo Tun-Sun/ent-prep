@@ -126,6 +126,7 @@ class QuestionViewSet(viewsets.ModelViewSet):
         difficulty = self.request.query_params.get('difficulty')
         source_type = self.request.query_params.get('source_type')
         status = self.request.query_params.get('verification_status')
+        grade = self.request.query_params.get('grade')
         # формат из паспорта прогона: 'задача' / 'тест' — тесты без ключа ответа
         # в общем списке только мешают вычитке, их прячут отдельным фильтром.
         # Параметр не называем `format`: DRF резервирует его под согласование
@@ -142,6 +143,11 @@ class QuestionViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(source_type=source_type)
         if status:
             queryset = queryset.filter(verification_status=status)
+        if grade:
+            # «none» — выбрать строки, которым класс ещё не проставлен: их надо
+            # искать, а не угадывать, сколько осталось разметить. Значение вне 5..11
+            # просто не совпадёт ни с чем, отдельной валидации здесь нет.
+            queryset = queryset.filter(grade=None if grade == 'none' else grade)
         if fmt:
             # Значения через запятую: «и задачи, и теорию» — это не одно значение,
             # а просить «всё, кроме тестов» отдельным параметром значит удвоить фильтр.

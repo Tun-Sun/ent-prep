@@ -11,6 +11,11 @@ const STATUS = [['draft', 'Черновик'], ['verified', 'Проверено'
 const FORMAT = [['', 'Любой формат'], ['задача,теория', 'Задачи и теория — без тестов'],
                 ['задача', 'Только задачи'], ['тест', 'Только тесты с вариантами'],
                 ['теория', 'Только теория']]
+// Класс школьной программы, к которому задачу относит тренер. Книга его не печатает,
+// поэтому «без класса» — отдельный выбор: это не «неизвестный класс 5», это «ещё не решено».
+const GRADE_FILTER = [['', 'Любой класс'], ['none', 'Класс не проставлен'],
+                      ...[5, 6, 7, 8, 9, 10, 11].map(g => [String(g), `${g} класс`])]
+const GRADES = [5, 6, 7, 8, 9, 10, 11]
 
 const chip = (bg, color) => ({
   padding: '2px 8px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: bg, color,
@@ -85,6 +90,7 @@ function EditModal({ q, subjects, onClose, onSaved }) {
   const [latex, setLatex] = useState(q.latex || '')
   const [answer, setAnswer] = useState(q.latex_answer || '')
   const [difficulty, setDifficulty] = useState(q.difficulty || 'medium')
+  const [grade, setGrade] = useState(q.grade ?? '')
   const [status, setStatus] = useState(q.verification_status || 'draft')
   const [subject, setSubject] = useState(q.subject)
   const [topics, setTopics] = useState([])
@@ -132,7 +138,8 @@ function EditModal({ q, subjects, onClose, onSaved }) {
       : Promise.resolve(topic ? Number(topic) : null)
     place
       .then(tid => {
-        const body = { latex, latex_answer: answer, difficulty, verification_status: status }
+        const body = { latex, latex_answer: answer, difficulty, verification_status: status,
+                       grade: grade === '' ? null : Number(grade) }
         if (tid) body.topic = tid
         return questionsAPI.patchBookScan(q.id, body)
       })
@@ -197,6 +204,15 @@ function EditModal({ q, subjects, onClose, onSaved }) {
                 <div style={label}>Сложность</div>
                 <select style={pick} value={difficulty} onChange={e => setDifficulty(e.target.value)}>
                   {DIFFICULTY.map(([v, n]) => <option key={v} value={v}>{n}</option>)}
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={label}>Класс</div>
+                {/* пустая строка — «не решено», а не «снять с 9-го в бездну»: её
+                    сериализатор читает как null, и отметка снимается честно */}
+                <select style={pick} value={grade} onChange={e => setGrade(e.target.value)}>
+                  <option value="">— не задан —</option>
+                  {GRADES.map(g => <option key={g} value={g}>{g} класс</option>)}
                 </select>
               </div>
               <div style={{ flex: 1 }}>
@@ -287,6 +303,8 @@ export default function BookBankPage() {
   const [filterSubject, setFilterSubject] = useState('')
   const [filterTopic, setFilterTopic] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
+  const [filterDifficulty, setFilterDifficulty] = useState('')
+  const [filterGrade, setFilterGrade] = useState('')
   // тесты без ключа ответа в общем списке только мешают вычитке задач —
   // по умолчанию показываем задачи и теорию, тесты под отдельным фильтром
   const [filterFormat, setFilterFormat] = useState('задача,теория')
@@ -337,6 +355,8 @@ export default function BookBankPage() {
     if (filterSubject) params.subject = filterSubject
     if (filterTopic) params.topic = filterTopic
     if (filterStatus) params.verification_status = filterStatus
+    if (filterDifficulty) params.difficulty = filterDifficulty
+    if (filterGrade) params.grade = filterGrade
     if (filterFormat) params.task_format = filterFormat
     if (needle.trim()) params.q = needle.trim()
     return params
@@ -371,7 +391,7 @@ export default function BookBankPage() {
   useEffect(() => {
     const t = setTimeout(() => { setPage(1); load(1); loadPending() }, 350)
     return () => clearTimeout(t)
-  }, [filterSubject, filterTopic, filterStatus, filterFormat, needle])
+  }, [filterSubject, filterTopic, filterStatus, filterDifficulty, filterGrade, filterFormat, needle])
 
   const goPage = (pg) => { setPage(pg); load(pg) }
 
@@ -392,6 +412,8 @@ export default function BookBankPage() {
       filterSubject && (subjects.find(s => s.id === Number(filterSubject)) || {}).name,
       filterTopic && (topics.find(t => t.id === Number(filterTopic)) || {}).name,
       filterStatus && (STATUS.find(([v]) => v === filterStatus) || [, ''])[1],
+      filterDifficulty && (DIFFICULTY.find(([v]) => v === filterDifficulty) || [, ''])[1],
+      filterGrade && (GRADE_FILTER.find(([v]) => v === filterGrade) || [, ''])[1],
       filterFormat && (FORMAT.find(([v]) => v === filterFormat) || [, filterFormat])[1],
       needle.trim() && `поиск «${needle.trim()}»`,
     ].filter(Boolean)
@@ -479,6 +501,13 @@ export default function BookBankPage() {
             <option value="draft">Черновик — никто не проверял</option>
             <option value="verified">Проверено</option>
             <option value="rejected">Отклонено</option>
+          </select>
+          <select value={filterDifficulty} onChange={e => setFilterDifficulty(e.target.value)} style={sel}>
+            <option value="">Любая сложность</option>
+            {DIFFICULTY.map(([v, n]) => <option key={v} value={v}>{n}</option>)}
+          </select>
+          <select value={filterGrade} onChange={e => setFilterGrade(e.target.value)} style={sel}>
+            {GRADE_FILTER.map(([v, n]) => <option key={v} value={v}>{n}</option>)}
           </select>
           <select value={filterFormat} onChange={e => setFilterFormat(e.target.value)} style={sel}>
             {FORMAT.map(([v, n]) => <option key={v} value={v}>{n}</option>)}
@@ -572,6 +601,11 @@ export default function BookBankPage() {
                     № {pr.num}
                     {pr.level ? ` · уровень ${pr.level} → ${(DIFFICULTY.find(([v]) => v === q.difficulty) || [, ''])[1]}` : ''}
                   </span>
+                )}
+                {q.grade && (
+                  // класс решает тренер, книга его не печатает — значит на карточке
+                  // он обязан быть виден, иначе фильтр «Класс» работает вслепую
+                  <span style={chip('rgba(236,72,153,0.1)', '#9D174D')}>класс {q.grade}</span>
                 )}
                 <span style={chip(q.verification_status === 'verified' ? 'rgba(16,185,129,0.12)' : 'rgba(107,114,128,0.12)',
                                   q.verification_status === 'verified' ? '#065F46' : '#374151')}>

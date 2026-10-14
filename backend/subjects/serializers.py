@@ -94,7 +94,7 @@ class QuestionListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Question
         fields = ('id', 'text', 'topic', 'topic_name', 'subject', 'subject_name',
-                  'difficulty', 'source_type', 'verification_status', 'language', 'year', 'image',
+                  'difficulty', 'source_type', 'verification_status', 'language', 'year', 'grade', 'image',
                   # поля оцифровки: без них экран банка задач показал бы вместо формул
                   # обрывки, а без паспорта — не откуда вопрос взялся
                   'latex', 'latex_answer', 'uncertain', 'provenance', 'external_id',
@@ -162,12 +162,22 @@ class BookScanEditSerializer(serializers.ModelSerializer):
     """
     DIFFICULTY_KEYS = {k for k, _ in Question.DIFFICULTY_CHOICES}
     STATUS_KEYS = {k for k, _ in Question.VERIFICATION_CHOICES}
+    # Школьная программа, а не год ЕНТ: класс в сборнике не печатают, его решает
+    # тренер, и записать это решение в поле «год» значило бы соврать.
+    GRADES = set(range(5, 12))
 
     topic = serializers.PrimaryKeyRelatedField(queryset=Topic.objects.all())
 
     class Meta:
         model = Question
-        fields = ('latex', 'latex_answer', 'difficulty', 'verification_status', 'topic')
+        fields = ('latex', 'latex_answer', 'difficulty', 'verification_status', 'topic', 'grade')
+
+    def validate_grade(self, v):
+        # null — «класс не решён», снятие отметки; число вне 5..11 — опечатка, её
+        # не записываем: фильтр по классу обязан доверять тому, что лежит в базе
+        if v is not None and v not in self.GRADES:
+            raise serializers.ValidationError('Такого класса нет: 5…11')
+        return v
 
     def validate_difficulty(self, v):
         if v not in self.DIFFICULTY_KEYS:
