@@ -30,6 +30,7 @@ const studentLinks = [
   { to: '/', label: 'Профиль', icon: 'profile' },
   { to: '/progress', label: 'Прогресс', icon: 'progress' },
   { to: '/subjects', label: 'Предметы', icon: 'subjects' },
+  { to: '/assignments', label: 'Назначения', icon: 'assign' },
   { to: '/duels', label: 'Дуэли', icon: 'duels' },
   { to: '/grant-calc', label: 'Гранты', icon: 'grant-calc' },
   { to: '/history', label: 'История', icon: 'history' },

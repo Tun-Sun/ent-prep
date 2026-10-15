@@ -25,6 +25,7 @@ import GrantCalcPage from './pages/student/GrantCalcPage'
 import LeaderboardPage from './pages/student/LeaderboardPage'
 import SettingsPage from './pages/student/SettingsPage'
 import DuelsPage from './pages/student/DuelsPage'
+import MyAssignmentsPage from './pages/student/MyAssignmentsPage'
 
 // Teacher
 import TeacherDashboardPage from './pages/teacher/DashboardPage'
@@ -70,6 +71,7 @@ export default function App() {
         <Route path="leaderboard" element={<LeaderboardPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="duels" element={<DuelsPage />} />
+        <Route path="assignments" element={<MyAssignmentsPage />} />
         <Route path="test/start/:subjectId" element={<TestPage />} />
         <Route path="test/ent" element={<TestPage />} />
         <Route path="test/rush" element={<TestPage />} />

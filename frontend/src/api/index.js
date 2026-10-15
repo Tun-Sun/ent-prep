@@ -88,14 +88,30 @@ export const questionsAPI = {
   delete: (id) => api.delete(`/questions/${id}/`),
 }
 
-// Назначение по уровню: экран набирает домашнее из банка и раздаёт ученикам
+// Конструктор урока: сборка четырёх блоков, публикация и приёмка результатов
 export const assignmentsAPI = {
   list: (params) => api.get('/assignments/', { params }),
   detail: (id) => api.get(`/assignments/${id}/`),
+  // payload: {title, subject, students, due_at, blocks: [{kind, question_ids}]}
   create: (data) => api.post('/assignments/', data),
-  // предпросмотр набора: сколько задач каждого уровня и сами задачи
+  // предпросмотр набора для одного блока: размеры пула и сами задачи.
+  // `kind` обязателен: у advanced/simplified ступень пулится по смыслу блока
   pick: (params) => api.get('/assignments/pick/', { params }),
+  publish: (id) => api.post(`/assignments/${id}/publish/`),
   revoke: (id) => api.post(`/assignments/${id}/revoke/`),
+  // матрица результатов: строки — ученики, колонки — блоки, плюс очередь pending_review
+  matrix: (id) => api.get(`/assignments/${id}/matrix/`),
+  // быстрый вердикт по строке очереди: {verdict: correct|partial|incorrect, note?}
+  review: (answerId, data) => api.post(`/assignment-answers/${answerId}/review/`, data),
+}
+
+// Ученик: свои уроки, ответ по задаче и сдача блока. Другого пути посмотреть
+// назначенное у него нет — банк задач ему закрыт
+export const myAssignmentsAPI = {
+  list: () => api.get('/my/assignments/'),
+  detail: (id) => api.get(`/my/assignments/${id}/`),
+  answer: (id, data) => api.post(`/my/assignments/${id}/answer/`, data),
+  submit: (id, data) => api.post(`/my/assignments/${id}/submit/`, data),
 }
 
 // Импорт Excel
