@@ -605,13 +605,21 @@ class MyAssignmentViewSet(viewsets.GenericViewSet):
 
 
 class LessonJoinView(APIView):
-    """Вход из урока GetCourse по подписанной ссылке (Шаг 6.1).
+    """Вход из урока GetCourse по подписанной ссылке (Шаг 6.1, режимы A и B).
 
     Ученик не знает пароля платформы и не должен его узнавать: ссылку из урока
     подписывает секрет, который знает только сервер, — его достаточно, чтобы
     опознать человека и посадить его внутрь его же задания.
 
-    Отказ — всегда `403` и ни одной новой строки в базе. Подделанная или просроченная
+    Два режима, потому что у ссылки два разных происхождения:
+    * `sign` + `ts` — подписанный переход на конкретного ученика (серверный
+      вебхук, бот): подпись покрывает все поля, ссылка живёт `GC_SSO_MAX_AGE`.
+    * `lesson_token` — подпись **урока**, она вкладывается в шаблон GetCourse один
+      раз и живёт столько, сколько живёт урок: макросы `{uid}`/`{email}` подставит
+      ГК на показе, а HMAC посчитать не может. Перебор `assignment_id` отсекает
+      сама сверка токена, вход разрешён только роли «ученик».
+
+    Отказ — `403` и ни одной новой строки в базе. Подделанная или просроченная
     ссылка не создаёт аккаунт, не привязывает урок и не выдаёт токен: иначе по ней
     можно было бы засорять базу или, наоборот, узнать, какой почты в платформе нет.
     """
@@ -622,20 +630,32 @@ class LessonJoinView(APIView):
         values = sso.normalize({field: request.query_params.get(field, '')
                                 for field in sso.SIGNED_FIELDS})
         sign = request.query_params.get('sign', '')
+        lesson_token = request.query_params.get('lesson_token', '')
         if not settings.GC_SSO_SECRET:
             return Response({'detail': 'Вход из GetCourse на сервере не настроен'},
                             status=status.HTTP_403_FORBIDDEN)
-        if not sso.sign_is_valid(settings.GC_SSO_SECRET, values, sign):
-            return Response({'detail': 'Подпись ссылки не совпала'},
-                            status=status.HTTP_403_FORBIDDEN)
-        if not sso.ts_is_fresh(values['ts'], max_age=settings.GC_SSO_MAX_AGE):
-            return Response({'detail': 'Ссылка просрочена, попросите новую у преподавателя'},
-                            status=status.HTTP_403_FORBIDDEN)
+        if lesson_token:
+            if not sso.lesson_token_is_valid(settings.GC_SSO_SECRET,
+                                             values['assignment_id'], lesson_token):
+                return Response({'detail': 'Подпись урока не совпала'},
+                                status=status.HTTP_403_FORBIDDEN)
+        else:
+            if not sso.sign_is_valid(settings.GC_SSO_SECRET, values, sign):
+                return Response({'detail': 'Подпись ссылки не совпала'},
+                                status=status.HTTP_403_FORBIDDEN)
+            if not sso.ts_is_fresh(values['ts'], max_age=settings.GC_SSO_MAX_AGE):
+                return Response({'detail': 'Ссылка просрочена, попросите новую у преподавателя'},
+                                status=status.HTTP_403_FORBIDDEN)
         assignment = Assignment.objects.filter(pk=values['assignment_id'] or 0,
                                                 status='active').first()
         if not assignment:
             return Response({'detail': 'Урок не найден или уже отозван'},
                             status=status.HTTP_403_FORBIDDEN)
+        if sso.unfilled_macro(values):
+            # Не 403: подпись тут ни при чём — это урок открыли вне GetCourse.
+            return Response({'detail': 'Откройте ссылку изнутри урока GetCourse: '
+                                        'имя и почту подставляет GetCourse'},
+                            status=status.HTTP_400_BAD_REQUEST)
         student, refusal = self._resolve_student(values['gc_uid'], values['email'],
                                                  values['first_name'], values['last_name'])
         if student is None:
@@ -661,19 +681,21 @@ class LessonJoinView(APIView):
 
         Чужой аккаунт не отдаём никогда: учитель или админ с той же почтой — это
         отказ, а не «ну и войдёт как учитель». Право войти по подписанной ссылке
-        есть только у ученика.
+        есть только у ученика, и под «учеником» понимается роль **и** отсутствие
+        служебных прав: аккаунт с ролью ученика, но `is_staff`, открывает тренерский
+        экран, а вход без пароля такого аккаунта не должен давать.
         """
         User = get_user_model()
         if gc_uid:
             user = User.objects.filter(gc_uid=gc_uid).first()
             if user is not None:
-                if user.role != 'student' or not user.is_active:
+                if user.role != 'student' or user.is_staff or not user.is_active:
                     return None, 'Код GetCourse привязан не к активному ученику'
                 return user, ''
         if email:
             user = User.objects.filter(email__iexact=email).first()
             if user is not None:
-                if user.role != 'student' or not user.is_active:
+                if user.role != 'student' or user.is_staff or not user.is_active:
                     return None, 'Эта почта в платформе принадлежит не активному ученику'
                 if gc_uid and user.gc_uid and user.gc_uid != gc_uid:
                     return None, 'На эту почту уже привязан другой код GetCourse'

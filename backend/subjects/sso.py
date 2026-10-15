@@ -75,3 +75,41 @@ def link_query(secret, base_url, values):
     v = normalize(values)
     v['sign'] = make_sign(secret, v)
     return '%s?%s' % (base_url, urlencode(v))
+
+
+# ── Режим B: подпись урока для шаблона GetCourse ────────────────────────────
+# GetCourse подставляет макросы в URL в момент показа урока, но HMAC посчитать не
+# может, поэтому подпись ученика (`sign`) в шаблон не вложится. Ссылка, которую
+# методист вкладывает один раз, подписывает не переход, а **урок**: перебрать
+# `assignment_id` снаружи это не даёт, а чужой урок такой ссылкой не открыть.
+# Имя ученика при этом подпись не покрывает — право входа ограничено ролью
+# (`_resolve_student` отказывает не-ученикам), и только поэтому.
+
+def lesson_canonical(assignment_id):
+    return 'assignment:%s' % str(assignment_id or '').strip()
+
+
+def make_lesson_token(secret, assignment_id):
+    if not secret:
+        return ''
+    return hmac.new(secret.encode('utf-8'), lesson_canonical(assignment_id).encode('utf-8'),
+                    hashlib.sha256).hexdigest()
+
+
+def lesson_token_is_valid(secret, assignment_id, token):
+    if not secret:
+        return False
+    provided = (token or '').strip().lower()
+    if not provided:
+        return False
+    return hmac.compare_digest(make_lesson_token(secret, assignment_id), provided)
+
+
+def unfilled_macro(values):
+    """Макросы `{uid}`/`{email}` подставит GetCourse; осталась скобка — значит не подставил.
+
+    Пустая подстановка хуже отказа: платформа прочитала бы буквальное `{email}`
+    как письмо и завела бы ученика с ним.
+    """
+    return any('{' in (values.get(field) or '') for field in
+               ('gc_uid', 'email', 'first_name', 'last_name'))

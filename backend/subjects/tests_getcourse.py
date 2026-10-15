@@ -209,6 +209,135 @@ class SsoJoinTest(TestCase):
         self.assertTrue(self._students().filter(gc_uid='48123', username='gc48123').exists())
 
 
+@override_settings(GC_SSO_SECRET=SECRET, GC_SSO_MAX_AGE=300)
+class LessonTokenJoinTest(TestCase):
+    """Режим B: один URL с макросами вкладывается в шаблон урока GetCourse.
+
+    GetCourse подставляет `{uid}`/`{email}` при показе, но HMAC посчитать не может,
+    поэтому подпись относится к уроку, а не к переходу. Проверяем, что это не дыра:
+    чужой урок по той же подписи не открыть, войти может только ученик, а не
+    подставленный макрос не превращается в аккаунт.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.math = Subject.objects.create(name='Математика', slug='math-tok', icon='📐')
+        cls.teacher = User.objects.create_user(username='tok_teacher', password='x',
+                                                role='teacher', email='pro@intellect.kz')
+        cls.lesson = Assignment.objects.create(
+            teacher=cls.teacher, subject=cls.math, title='Урок с lesson_token',
+            status='active', published_at=timezone.now())
+        cls.token = sso.make_lesson_token(SECRET, cls.lesson.pk)
+
+    def _join(self, **overrides):
+        values = {'assignment_id': str(self.lesson.pk), 'lesson_token': self.token,
+                  'gc_uid': '48123', 'email': 'Aidar@Mail.KZ',
+                  'first_name': 'Айдар', 'last_name': 'Сатов'}
+        values.update(overrides)
+        return self.client.get('/api/lesson/join/', values)
+
+    def _students(self):
+        return User.objects.filter(role='student')
+
+    def test_lesson_token_lands_the_student_inside_the_lesson(self):
+        r = self._join()
+        self.assertEqual(r.status_code, 302, r.content)
+        frag = parse_qs(r['Location'].split('#', 1)[1])
+        self.assertEqual(frag['next'], ['/assignments?open=%s' % self.lesson.pk])
+        student = self._students().order_by('-id').first()
+        self.assertEqual(student.gc_uid, '48123')
+        self.assertTrue(self.lesson.students.filter(pk=student.pk).exists())
+
+    def test_lesson_token_needs_no_ts(self):
+        """Ссылка живёт столько, сколько живёт урок: `ts` в шаблоне не бывает живым."""
+        r = self._join(ts='1000000000')
+        self.assertEqual(r.status_code, 302, r.content)
+
+    def test_the_same_token_does_not_open_another_lesson(self):
+        other = Assignment.objects.create(teacher=self.teacher, subject=self.math,
+                                          title='Чужой урок', status='active',
+                                          published_at=timezone.now())
+        before = self._students().count()
+        r = self._join(assignment_id=str(other.pk))
+        self.assertEqual(r.status_code, 403)
+        self.assertIn('Подпись урока', r.data['detail'])
+        self.assertEqual(self._students().count(), before)
+        self.assertEqual(other.students.count(), 0)
+
+    def test_forged_or_empty_lesson_token_is_refused(self):
+        for token in ('', 'deadbeef', sso.make_lesson_token('другой-секрет', self.lesson.pk)):
+            values = {'assignment_id': str(self.lesson.pk), 'gc_uid': '48123',
+                      'lesson_token': token}
+            r = self.client.get('/api/lesson/join/', values)
+            self.assertEqual(r.status_code, 403, token)
+            if token:
+                self.assertIn('Подпись урока', r.data['detail'])
+        self.assertEqual(self._students().count(), 0)
+
+    def test_no_signature_at_all_is_refused(self):
+        """Ни `sign`, ни `lesson_token`: по `assignment_id` снаружи ходить нельзя."""
+        r = self.client.get('/api/lesson/join/', {'assignment_id': str(self.lesson.pk),
+                                                   'email': 'anyone@mail.kz'})
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(self._students().count(), 0)
+
+    def test_unfilled_macros_are_refused_before_any_account(self):
+        """Буквальный `{email}` — это не почта: завод по нему ученика запрещён."""
+        before = self._students().count()
+        r = self._join(gc_uid='{uid}', email='{email}', first_name='{first_name}',
+                       last_name='{last_name}')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('изнутри урока GetCourse', r.data['detail'])
+        self.assertEqual(self._students().count(), before)
+        self.assertEqual(self.lesson.students.count(), 0)
+
+    def test_a_teachers_email_is_refused_in_the_lesson_mode(self):
+        r = self._join(gc_uid='', email='pro@intellect.kz')
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(self.lesson.students.count(), 0)
+
+    def test_a_student_with_staff_rights_is_refused(self):
+        """Роль «ученик» со служебными правами открывает тренерский экран — вход без
+        пароля такого аккаунта отдавать нельзя."""
+        insider = User.objects.create_user(username='insider', password='x',
+                                            role='student', email='insider@mail.kz',
+                                            gc_uid='48123')
+        insider.is_staff = True
+        insider.save(update_fields=['is_staff'])
+        r = self._join()
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(self.lesson.students.count(), 0)
+
+    def test_revoked_lesson_is_refused_even_with_a_valid_token(self):
+        self.lesson.status = 'revoked'
+        self.lesson.save(update_fields=['status'])
+        r = self._join()
+        self.assertEqual(r.status_code, 403)
+        self.assertIn('отозван', r.data['detail'])
+
+    def test_unconfigured_secret_refuses_the_lesson_mode(self):
+        with override_settings(GC_SSO_SECRET=''):
+            r = self._join()
+            self.assertEqual(r.status_code, 403)
+            self.assertIn('не настроен', r.data['detail'])
+
+    def test_the_screen_gets_the_token_from_the_api(self):
+        """Кнопка «Ссылка для GetCourse» копирует готовую ссылку: токен считает сервер."""
+        c = make_client(self.teacher)
+        rows = c.get('/api/assignments/').data
+        row = [a for a in rows if a['id'] == self.lesson.pk][0]
+        self.assertEqual(row['lesson_token'], self.token)
+        detail = c.get('/api/assignments/%s/' % self.lesson.pk).data
+        self.assertEqual(detail['lesson_token'], self.token)
+
+    def test_without_secret_the_screen_gets_no_token(self):
+        with override_settings(GC_SSO_SECRET=''):
+            c = make_client(self.teacher)
+            row = [a for a in c.get('/api/assignments/').data
+                   if a['id'] == self.lesson.pk][0]
+            self.assertEqual(row['lesson_token'], '')
+
+
 @override_settings(GC_FRAME_ANCESTORS=['https://school.getcourse.ru'],
                    GC_FRAME_PATHS=('/sso', '/assignments'))
 class SsoFrameTest(TestCase):

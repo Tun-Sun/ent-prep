@@ -6,6 +6,7 @@ from django.utils import timezone
 from users.models import StudyGroup
 from .models import (Subject, Topic, Question, Answer, Assignment, AssignmentBlock,
                      AssignmentSubmission, AssignmentAnswer, plain_from_latex)
+from . import sso
 
 class AnswerSerializer(serializers.ModelSerializer):
     class Meta:
@@ -272,6 +273,7 @@ class AssignmentListSerializer(serializers.ModelSerializer):
     teacher_name = serializers.CharField(source='teacher.full_name', read_only=True)
     group_name = serializers.SerializerMethodField()
     tasks = serializers.SerializerMethodField()
+    lesson_token = serializers.SerializerMethodField()
     students = AssignmentStudentSerializer(many=True, read_only=True)
     blocks = AssignmentBlockSerializer(many=True, read_only=True)
 
@@ -280,13 +282,22 @@ class AssignmentListSerializer(serializers.ModelSerializer):
         fields = ('id', 'title', 'teacher', 'teacher_name', 'subject', 'subject_name',
                   'difficulty', 'difficulty_display', 'tasks', 'students', 'blocks',
                   'group', 'group_name', 'due_at', 'published_at',
-                  'status', 'status_display', 'created_at')
+                  'status', 'status_display', 'created_at', 'lesson_token')
 
     def get_tasks(self, obj):
         return obj.questions_count
 
     def get_group_name(self, obj):
         return obj.group.name if obj.group_id else ''
+
+    def get_lesson_token(self, obj):
+        """Подпись урока для ссылки, которую методист вкладывает в шаблон GetCourse.
+
+        Пусто без `GC_SSO_SECRET`: тогда ссылку всё равно отклонит эндпоинт, и
+        показывать методисту фиктивный токен смысла нет — экран честно остаётся без
+        рабочей ссылки. Сериализатор только тренерский, ученику токен не уходит.
+        """
+        return sso.make_lesson_token(settings.GC_SSO_SECRET, obj.pk)
 
 
 class AssignmentDetailSerializer(AssignmentListSerializer):

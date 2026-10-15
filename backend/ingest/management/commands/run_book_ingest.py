@@ -28,6 +28,18 @@ def counted_pages(out):
     return len([f for f in d.glob("*.json")]) if d.is_dir() else 0
 
 
+def for_console(text, stream):
+    """Знак, которого нет в кодировке консоли, не должен ронять прогон.
+
+    Консоль Windows в cp1251 не печатает стрелку из отчёта (её приносит строка книги
+    или текст распознавания), и падает именно печать итога — то есть там, где все
+    страницы уже оплачены и записаны. Отчёт в базе остаётся полным; наружу уходит
+    то, что консоль может показать.
+    """
+    enc = getattr(stream, 'encoding', None) or 'utf-8'
+    return text.encode(enc, 'replace').decode(enc, 'replace')
+
+
 def counted_units(out):
     f = Path(out) / "tasks.json"
     if not f.is_file():
@@ -201,7 +213,7 @@ class Command(BaseCommand):
         run.save(update_fields=["report", "status", "step", "finished_at"])
 
     def log(self, run, text):
-        self.stdout.write(text)
+        self.stdout.write(for_console(text, self.stdout))
 
     def fail(self, run, text):
         run.status = STATUS_FAILED
@@ -211,5 +223,5 @@ class Command(BaseCommand):
         run.step = ""
         run.finished_at = timezone.now()
         run.save(update_fields=["status", "error", "step", "finished_at"])
-        self.stderr.write(f"{run.name}: {text}")
+        self.stderr.write(for_console(f"{run.name}: {text}", self.stderr))
         sys.exit(1)

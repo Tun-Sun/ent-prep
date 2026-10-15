@@ -209,25 +209,34 @@ function LessonResults({ assignment }) {
   )
 }
 
-// GetCourse подставляет макросы в URL урока сам, но HMAC-подпись посчитать не может:
-// шаблон уезжает в урок с `{ts}` и `{sign}` заглушками, живые значения выдаёт платформа.
-// Пока `GC_SSO_SECRET` не задан, переход по такой ссылке отклоняется — это не дырка,
-// а ожидание его решения, как считать подпись на каждого ученика.
+// Ссылка вкладывается в шаблон урока GetCourse один раз на всех учеников. Макросы
+// `{uid}`/`{email}` ГК подставит при показе, а HMAC по полям ученика посчитать не
+// может — поэтому подпись относится не к переходу, а к уроку: сервер отдаёт
+// `lesson_token`. Без него ссылка заведомо отклоняется, и кнопка честно говорит об
+// этом, вместо того чтобы копировать нерабочий URL.
 function GcLinkButton({ assignment }) {
   const [copied, setCopied] = useState('')
+  const token = assignment.lesson_token || ''
   const link = `${window.location.origin}/api/lesson/join/` +
-    `?gc_uid={uid}&email={email}&first_name={first_name}&last_name={last_name}` +
-    `&assignment_id=${assignment.id}&ts={ts}&sign={sign}`
-  const note = 'Макросы {uid} и {email} подставит GetCourse. {ts} и {sign} считает ' +
-               'платформа на каждого ученика: без живой подписи вход отклоняется.'
-  // буфер обмена отказывает (http, фокус) — шаблон всё равно показываем, чтобы
-  // методист не остался с пустым кликом
-  const copy = () => navigator.clipboard?.writeText(link).then(() => setCopied('ok'),
-                                                               () => setCopied('manual'))
+    `?assignment_id=${assignment.id}&lesson_token=${token}` +
+    `&gc_uid={uid}&email={email}&first_name={first_name}&last_name={last_name}`
+  const note = token
+    ? 'Макросы в фигурных скобках подставит GetCourse при показе урока. ' +
+      'lesson_token подписывает этот урок: другой урок им не открыть и id перебрать нельзя. ' +
+      'Войти может только ученик — преподавателю или админу платформа откажет.'
+    : 'Сервер не выдал подпись урока: на нём не задан GC_SSO_SECRET. ' +
+      'Без подписи эта ссылка не сработает, копировать её сейчас нечего.'
+  const copy = () => {
+    if (!token) { setCopied('nokey'); return }
+    // буфер обмена отказывает (http, фокус) — ссылку всё равно показываем, чтобы
+    // методист не остался с пустым кликом
+    navigator.clipboard?.writeText(link).then(() => setCopied('ok'), () => setCopied('manual'))
+  }
   return (
     <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
       <button className="btn btn-sm btn-outline" onClick={copy}
-              style={{ borderRadius: 10, padding: '4px 12px' }}>
+              style={{ borderRadius: 10, padding: '4px 12px',
+                       opacity: token ? 1 : 0.55 }}>
         <Link2 size={12} strokeWidth={1.5} style={{ verticalAlign: -1, marginRight: 4 }} />
         {copied === 'ok' ? 'Скопировано' : copied === 'manual' ? 'Скопируй вручную'
                         : 'Ссылка для GetCourse'}
@@ -235,7 +244,8 @@ function GcLinkButton({ assignment }) {
       {copied && (
         <span style={{ fontSize: 11, color: 'var(--text-secondary)', maxWidth: 520,
                        background: 'rgba(99,102,241,0.06)', borderRadius: 8, padding: '6px 8px' }}>
-          <span style={{ fontFamily: 'ui-monospace, monospace', wordBreak: 'break-all' }}>{link}</span>
+          {token && <span style={{ fontFamily: 'ui-monospace, monospace',
+                                   wordBreak: 'break-all' }}>{link}</span>}
           <span style={{ display: 'block', marginTop: 4 }}>{note}</span>
         </span>
       )}

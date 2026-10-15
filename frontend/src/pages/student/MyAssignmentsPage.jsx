@@ -47,6 +47,9 @@ export default function MyAssignmentsPage() {
   const [answers, setAnswers] = useState({})
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(0)
+  // сдача необратима для ученика только ощущением, поэтому подтверждение живёт тут же,
+  // а не в системном окне: нативный `confirm()` и человеку мешает, и автотест вешает
+  const [askBlock, setAskBlock] = useState(0)
   const [notice, setNotice] = useState('')
   const [sent, setSent] = useState('')
   const [params] = useSearchParams()
@@ -54,6 +57,7 @@ export default function MyAssignmentsPage() {
   const open = (id, sentMsg = '') => {
     setLoading(true)
     setNotice('')
+    setAskBlock(0)
     myAssignmentsAPI.detail(id)
       .then(res => {
         setLesson(res.data)
@@ -99,7 +103,6 @@ export default function MyAssignmentsPage() {
   // сдача блока перепроверяет все сохранённые ответы заново, поэтому после неё
   // берём урок целиком, а не чиним локальные статусы
   const submit = (block) => {
-    if (!confirm(`Сдать блок «${block.label}»?`)) return
     setBusy(-1)
     setNotice('')
     myAssignmentsAPI.submit(lesson.id, { block: block.id })
@@ -190,11 +193,26 @@ export default function MyAssignmentsPage() {
                   {p.pending ? ` · на проверке ${p.pending}` : ''}
                 </span>
               )}
-              <button className="btn btn-sm btn-primary" onClick={() => submit(b)}
-                      disabled={lesson.expired || busy === -1}
-                      style={{ marginLeft: 'auto', borderRadius: 10, padding: '4px 12px' }}>
-                {busy === -1 ? 'Сдаю…' : 'Сдать блок'}
-              </button>
+              <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+                <button className="btn btn-sm btn-primary" onClick={() => setAskBlock(b.id)}
+                        disabled={lesson.expired || busy === -1 || askBlock === b.id}
+                        style={{ borderRadius: 10, padding: '4px 12px' }}>
+                  {busy === -1 ? 'Сдаю…' : 'Сдать блок'}
+                </button>
+                {askBlock === b.id && (
+                  <>
+                    <button className="btn btn-sm btn-primary"
+                            onClick={() => { setAskBlock(0); submit(b) }}
+                            style={{ borderRadius: 10, padding: '4px 12px' }}>
+                      Подтвердить сдачу
+                    </button>
+                    <button className="btn btn-sm btn-outline" onClick={() => setAskBlock(0)}
+                            style={{ borderRadius: 10, padding: '4px 12px' }}>
+                      Отмена
+                    </button>
+                  </>
+                )}
+              </span>
             </div>
             {b.questions.map((q, i) => {
               const a = answers[q.id]
