@@ -538,6 +538,34 @@ class MyAssignmentViewSet(viewsets.GenericViewSet):
             'blocks': MyAssignmentBlockSerializer(blocks, many=True, context=context).data,
         })
 
+    @action(detail=False, methods=['post'], url_path='join-preview')
+    def join_preview(self, request):
+        """Ученик уже авторизован в этом браузере: подпись урока привязывает его к уроку.
+
+        Ссылку из шаблона GetCourse часто открывают, уже сидя в системе, — безпарольный
+        переход такому человеку не нужен, ему нужна привязка и адрес карточки. Другой
+        роли здесь не бывает: тренер на этот путь не ходит, он смотрит карточку
+        предпросмотра и входит дежурным учеником.
+        """
+        if request.user.role != 'student' or request.user.is_staff:
+            return Response({'detail': 'Вход в урок по подписи доступен только ученику'},
+                            status=status.HTTP_403_FORBIDDEN)
+        assignment_id = str(request.data.get('assignment_id') or '').strip()
+        token = str(request.data.get('lesson_token') or '').strip()
+        if not assignment_id.isdigit():
+            return Response({'detail': 'Урок в ссылке не опознан'},
+                            status=status.HTTP_403_FORBIDDEN)
+        if not settings.GC_SSO_SECRET or not sso.lesson_token_is_valid(settings.GC_SSO_SECRET,
+                                                                       assignment_id, token):
+            return Response({'detail': 'Подпись урока не совпала'},
+                            status=status.HTTP_403_FORBIDDEN)
+        assignment = Assignment.objects.filter(pk=int(assignment_id), status='active').first()
+        if not assignment:
+            return Response({'detail': 'Урок не найден или уже отозван'},
+                            status=status.HTTP_403_FORBIDDEN)
+        assignment.students.add(request.user)
+        return Response({'next': '/assignments?open=%s' % assignment.pk})
+
     @staticmethod
     def _submission(assignment, student, block):
         sub, _created = AssignmentSubmission.objects.get_or_create(
@@ -622,15 +650,24 @@ class LessonJoinView(APIView):
     Отказ — `403` и ни одной новой строки в базе. Подделанная или просроченная
     ссылка не создаёт аккаунт, не привязывает урок и не выдаёт токен: иначе по ней
     можно было бы засорять базу или, наоборот, узнать, какой почты в платформе нет.
+
+    Режим B с нераскрытыми макросами — не отказ, а предпросмотр (Шаг 6.6): ссылку
+    чаще всего открывают во вкладке, чтобы проверить, и человек видел бы сырую
+    страницу DRF вместо ответа. Если подпись урока верна и урок активен, а `gc_uid`
+    или `email` пришли шаблонными либо пустыми, редиректим на `/sso` с карточкой на
+    русском. `demo=1` рядом с верной подписью урока входит дежурным аккаунтом
+    `GC_DEMO_STUDENT_EMAIL` — так тренер смотрит экран сдачи и матрицу своими глазами.
     """
     permission_classes = [AllowAny]
     authentication_classes = []
 
     def get(self, request):
+        from urllib.parse import urlencode
         values = sso.normalize({field: request.query_params.get(field, '')
                                 for field in sso.SIGNED_FIELDS})
         sign = request.query_params.get('sign', '')
         lesson_token = request.query_params.get('lesson_token', '')
+        demo = request.query_params.get('demo', '').strip().lower() in ('1', 'true', 'yes')
         if not settings.GC_SSO_SECRET:
             return Response({'detail': 'Вход из GetCourse на сервере не настроен'},
                             status=status.HTTP_403_FORBIDDEN)
@@ -646,16 +683,28 @@ class LessonJoinView(APIView):
             if not sso.ts_is_fresh(values['ts'], max_age=settings.GC_SSO_MAX_AGE):
                 return Response({'detail': 'Ссылка просрочена, попросите новую у преподавателя'},
                                 status=status.HTTP_403_FORBIDDEN)
+            # Предпросмотр здесь не нужен: подпись Режима A считает сервер по конкретному
+            # ученику, нераскрытый макрос сюда попасть не мог, а заводить аккаунт с
+            # буквальным `{email}` в почте — это мусор в базе вместо отказа.
+            if sso.unfilled_macro(values):
+                return Response({'detail': 'Откройте ссылку изнутри урока GetCourse: '
+                                           'имя и почту подставляет GetCourse'},
+                                status=status.HTTP_400_BAD_REQUEST)
         assignment = Assignment.objects.filter(pk=values['assignment_id'] or 0,
                                                 status='active').first()
         if not assignment:
             return Response({'detail': 'Урок не найден или уже отозван'},
                             status=status.HTTP_403_FORBIDDEN)
-        if sso.unfilled_macro(values):
-            # Не 403: подпись тут ни при чём — это урок открыли вне GetCourse.
-            return Response({'detail': 'Откройте ссылку изнутри урока GetCourse: '
-                                        'имя и почту подставляет GetCourse'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        if demo:
+            if not lesson_token:
+                return Response({'detail': 'Тестовый вход открыт только по подписи урока'},
+                                status=status.HTTP_403_FORBIDDEN)
+            values = sso.normalize({'assignment_id': values['assignment_id'],
+                                    'email': settings.GC_DEMO_STUDENT_EMAIL,
+                                    'first_name': 'Тестовый', 'last_name': 'ученик'})
+        elif lesson_token and (sso.unfilled_macro(values) or sso.no_identity(values)):
+            return HttpResponseRedirect('/sso?%s' % urlencode(
+                {'preview_assignment': assignment.pk, 'lesson_token': lesson_token}))
         student, refusal = self._resolve_student(values['gc_uid'], values['email'],
                                                  values['first_name'], values['last_name'])
         if student is None:
@@ -664,7 +713,6 @@ class LessonJoinView(APIView):
         student.last_login = timezone.now()
         student.save(update_fields=['last_login'])
         tokens = RefreshToken.for_user(student)
-        from urllib.parse import urlencode
         # `/assignments` — одна страница со списком уроков и внутренней открыткой
         # карточки, поэтому переход из GetCourse приходит параметром, а не маршрутом.
         frag = urlencode({'access': str(tokens.access_token), 'refresh': str(tokens),

@@ -84,6 +84,17 @@ class SsoJoinTest(TestCase):
         self.assertFalse(student.has_usable_password())
         self.assertTrue(self.lesson.students.filter(pk=student.pk).exists())
 
+    def test_unfilled_macro_in_a_signed_link_is_a_refusal_not_a_preview(self):
+        """Предпросмотр — только для ссылки урока. Подпись Режима A считает сервер по
+        конкретному ученику, и буквальное `{email}` не должно становиться аккаунтом."""
+        before = self._students().count()
+        r = self._join(gc_uid='{uid}', email='{email}', first_name='{first_name}',
+                       last_name='{last_name}')
+        self.assertEqual(r.status_code, 400, getattr(r, 'content', None))
+        self.assertIn('изнутри урока GetCourse', r.data['detail'])
+        self.assertEqual(self._students().count(), before)
+        self.assertEqual(self.lesson.students.count(), 0)
+
     def test_the_token_from_the_link_is_a_real_session(self):
         r = self._join()
         access = parse_qs(r['Location'].split('#', 1)[1])['access'][0]
@@ -281,15 +292,80 @@ class LessonTokenJoinTest(TestCase):
         self.assertEqual(r.status_code, 403)
         self.assertEqual(self._students().count(), 0)
 
-    def test_unfilled_macros_are_refused_before_any_account(self):
-        """Буквальный `{email}` — это не почта: завод по нему ученика запрещён."""
+    def test_unfilled_macros_go_to_the_preview_instead_of_a_raw_refusal(self):
+        """Ссылку открывают во вкладке, чтобы проверить: `{email}` не должен показывать
+        сырую страницу DRF и не должен превращаться в аккаунт."""
         before = self._students().count()
         r = self._join(gc_uid='{uid}', email='{email}', first_name='{first_name}',
                        last_name='{last_name}')
-        self.assertEqual(r.status_code, 400, r.content)
-        self.assertIn('изнутри урока GetCourse', r.data['detail'])
+        self.assertEqual(r.status_code, 302, r.content)
+        self.assertTrue(r['Location'].startswith('/sso?'), r['Location'])
+        query = parse_qs(r['Location'].split('?', 1)[1])
+        self.assertEqual(query['preview_assignment'], [str(self.lesson.pk)])
+        self.assertEqual(query['lesson_token'], [self.token])
+        self.assertNotIn('access', r['Location'])
         self.assertEqual(self._students().count(), before)
         self.assertEqual(self.lesson.students.count(), 0)
+
+    def test_an_empty_identity_goes_to_the_preview_too(self):
+        """GetCourse отдаёт и пустое поле (у ученика без почты в профиле): представиться
+        нечем — тот же путь, что и у нераскрытого макроса."""
+        r = self._join(gc_uid='', email='', first_name='', last_name='')
+        self.assertEqual(r.status_code, 302, r.content)
+        self.assertIn('preview_assignment=%s' % self.lesson.pk, r['Location'])
+        self.assertEqual(self._students().count(), 0)
+
+    def test_demo_entry_lands_a_standing_test_student_inside_the_lesson(self):
+        """Дежурный аккаунт: тренер смотрит экран сдачи своими глазами, не трогая
+        настоящих учеников."""
+        r = self._join(demo='1', gc_uid='{uid}', email='{email}')
+        self.assertEqual(r.status_code, 302, r.content)
+        self.assertTrue(r['Location'].startswith('/sso#'), r['Location'])
+        frag = parse_qs(r['Location'].split('#', 1)[1])
+        self.assertEqual(frag['next'], ['/assignments?open=%s' % self.lesson.pk])
+        self.assertTrue(frag.get('access'))
+        student = self._students().order_by('-id').first()
+        self.assertEqual(student.email, 'demo_student@pmci.kz')
+        self.assertEqual(student.role, 'student')
+        self.assertFalse(student.is_staff)
+        self.assertFalse(student.has_usable_password())
+        self.assertTrue(self.lesson.students.filter(pk=student.pk).exists())
+
+    def test_demo_entry_makes_one_account_and_reuses_it(self):
+        for _ in range(2):
+            r = self._join(demo='1')
+            self.assertEqual(r.status_code, 302, r.content)
+        self.assertEqual(self._students().filter(email='demo_student@pmci.kz').count(), 1)
+        self.assertEqual(self.lesson.students.count(), 1)
+
+    def test_demo_entry_is_closed_in_the_signed_mode(self):
+        """Режим A опознаёт ученика по подписи: подменять его дежурным аккаунтом
+        нельзя, иначе `demo=1` превращает чужую ссылку в вход от имени теста."""
+        values = {'gc_uid': '48123', 'email': 'Aidar@Mail.KZ', 'first_name': 'Айдар',
+                  'last_name': 'Сатов', 'assignment_id': str(self.lesson.pk),
+                  'ts': str(int(time.time())), 'demo': '1'}
+        values['sign'] = sso.make_sign(SECRET, values)
+        r = self.client.get('/api/lesson/join/', values)
+        self.assertEqual(r.status_code, 403)
+        self.assertIn('подписи урока', r.data['detail'])
+        self.assertEqual(self._students().count(), 0)
+        self.assertEqual(self.lesson.students.count(), 0)
+
+    def test_demo_entry_without_a_lesson_token_is_refused(self):
+        r = self.client.get('/api/lesson/join/',
+                            {'assignment_id': str(self.lesson.pk), 'demo': '1',
+                             'email': 'anyone@mail.kz'})
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(self._students().count(), 0)
+
+    def test_a_revoked_lesson_never_reaches_the_preview(self):
+        """Отзыв урока закрывает и предпросмотр: подпись остаётся валидной, но урока
+        человеку показать не надо."""
+        self.lesson.status = 'revoked'
+        self.lesson.save(update_fields=['status'])
+        r = self._join(gc_uid='{uid}', email='{email}')
+        self.assertEqual(r.status_code, 403)
+        self.assertIn('отозван', r.data['detail'])
 
     def test_a_teachers_email_is_refused_in_the_lesson_mode(self):
         r = self._join(gc_uid='', email='pro@intellect.kz')
@@ -336,6 +412,88 @@ class LessonTokenJoinTest(TestCase):
             row = [a for a in c.get('/api/assignments/').data
                    if a['id'] == self.lesson.pk][0]
             self.assertEqual(row['lesson_token'], '')
+
+
+@override_settings(GC_SSO_SECRET=SECRET, GC_SSO_MAX_AGE=300)
+class LessonPreviewAttachTest(TestCase):
+    """Экран предпросмотра доводит человека до урока: ученик привязывается по подписи,
+    остальным этот путь закрыт."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.math = Subject.objects.create(name='Математика', slug='math-prev', icon='📐')
+        cls.teacher = User.objects.create_user(username='prev_teacher', password='x',
+                                               role='teacher', email='prev@intellect.kz')
+        cls.lesson = Assignment.objects.create(
+            teacher=cls.teacher, subject=cls.math, title='Урок для предпросмотра',
+            status='active', published_at=timezone.now())
+        cls.token = sso.make_lesson_token(SECRET, cls.lesson.pk)
+
+    def _attach(self, user, **overrides):
+        body = {'assignment_id': str(self.lesson.pk), 'lesson_token': self.token}
+        body.update(overrides)
+        return make_client(user).post('/api/my/assignments/join-preview/', body, format='json')
+
+    def test_a_signed_in_student_is_attached_and_sent_to_the_lesson(self):
+        student = User.objects.create_user(username='prev_student', password='x',
+                                           role='student', email='prev_student@mail.kz')
+        r = self._attach(student)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['next'], '/assignments?open=%s' % self.lesson.pk)
+        self.assertTrue(self.lesson.students.filter(pk=student.pk).exists())
+
+    def test_a_teacher_is_refused(self):
+        """Тренер на этот путь не ходит: он смотрит карточку и входит дежурным
+        учеником, а привязать к уроку себя нельзя."""
+        before = self.lesson.students.count()
+        r = self._attach(self.teacher)
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertIn('только ученику', r.data['detail'])
+        self.assertEqual(self.lesson.students.count(), before)
+
+    def test_a_staff_student_is_refused(self):
+        insider = User.objects.create_user(username='prev_insider', password='x',
+                                           role='student', email='insider2@mail.kz')
+        insider.is_staff = True
+        insider.save(update_fields=['is_staff'])
+        r = self._attach(insider)
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(self.lesson.students.count(), 0)
+
+    def test_a_forged_lesson_token_is_refused(self):
+        student = User.objects.create_user(username='prev_student2', password='x',
+                                           role='student', email='prev2@mail.kz')
+        for token in ('', 'deadbeef', sso.make_lesson_token(SECRET, '999999')):
+            r = self._attach(student, lesson_token=token)
+            self.assertEqual(r.status_code, 403, token)
+            self.assertIn('Подпись урока', r.data['detail'])
+        self.assertEqual(self.lesson.students.count(), 0)
+
+    def test_a_chosen_assignment_id_is_refused(self):
+        """Чужой урок этой подписью не привязать: номер в ссылке сверяется с токеном."""
+        other = Assignment.objects.create(teacher=self.teacher, subject=self.math,
+                                          title='Чужой урок', status='active',
+                                          published_at=timezone.now())
+        student = User.objects.create_user(username='prev_student3', password='x',
+                                           role='student', email='prev3@mail.kz')
+        r = self._attach(student, assignment_id=str(other.pk))
+        self.assertEqual(r.status_code, 403)
+        self.assertEqual(other.students.count(), 0)
+
+    def test_a_revoked_lesson_is_refused(self):
+        student = User.objects.create_user(username='prev_student4', password='x',
+                                           role='student', email='prev4@mail.kz')
+        self.lesson.status = 'revoked'
+        self.lesson.save(update_fields=['status'])
+        r = self._attach(student)
+        self.assertEqual(r.status_code, 403)
+        self.assertIn('отозван', r.data['detail'])
+
+    def test_an_anonymous_visitor_is_refused(self):
+        r = APIClient().post('/api/my/assignments/join-preview/',
+                             {'assignment_id': str(self.lesson.pk),
+                              'lesson_token': self.token}, format='json')
+        self.assertEqual(r.status_code, 401)
 
 
 @override_settings(GC_FRAME_ANCESTORS=['https://school.getcourse.ru'],

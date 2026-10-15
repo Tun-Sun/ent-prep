@@ -112,6 +112,8 @@ export const myAssignmentsAPI = {
   detail: (id) => api.get(`/my/assignments/${id}/`),
   answer: (id, data) => api.post(`/my/assignments/${id}/answer/`, data),
   submit: (id, data) => api.post(`/my/assignments/${id}/submit/`, data),
+  // карточка предпросмотра: ученик уже в браузере, подпись урока его привязывает
+  joinPreview: (data) => api.post('/my/assignments/join-preview/', data),
 }
 
 // Импорт Excel

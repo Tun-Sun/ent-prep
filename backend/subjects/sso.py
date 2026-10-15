@@ -113,3 +113,14 @@ def unfilled_macro(values):
     """
     return any('{' in (values.get(field) or '') for field in
                ('gc_uid', 'email', 'first_name', 'last_name'))
+
+
+def no_identity(values):
+    """Ни кода GetCourse, ни почты: ссылку открыли вне урока, представиться нечем.
+
+    GetCourse умеет отдать и пустое поле (у ученика без почты в профиле), поэтому
+    «пусто» — это тот же случай, что и нераскрытый макрос: показывать человеку
+    сырой отказ нельзя, его надо довести до экрана предпросмотра.
+    """
+    v = normalize(values)
+    return not v['gc_uid'] and not v['email']

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { myAssignmentsAPI } from '../../api'
 import FormattedText from '../../components/FormattedText'
+import { leaveDemoSession, savedReturnSession } from '../auth/lessonPreview'
 import { ClipboardList, ArrowLeft, Inbox } from 'lucide-react'
 
 // Что видит ученик по своей задаче. `pending_review` — это «ещё не проверено», и
@@ -38,6 +39,27 @@ const fmtDate = (v) => (v ? String(v).slice(0, 16).replace('T', ' ') : '')
 function VerdictChip({ verdict }) {
   const [text, bg, color] = VERDICT[verdict] || VERDICT.pending_review
   return <span style={chip(bg, color)}>{text}</span>
+}
+
+// Экран открыт дежурным учеником (предпросмотр урока тренером): своя сессия лежит в
+// `localStorage` под отдельным ключом, и одной кнопкой человек возвращается назад —
+// иначе «посмотреть глазами ученика» означало бы потерять свой вход.
+function DemoBanner() {
+  if (!savedReturnSession()) return null
+  return (
+    <div style={{ marginBottom: 14, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
+                  border: '1px solid rgba(245,158,11,0.35)', background: 'rgba(245,158,11,0.08)',
+                  borderRadius: 10, padding: '8px 12px', fontSize: 12, color: '#92400E' }}>
+      Это тестовый вход: урок открыт дежурным учеником, его ответы попадут в отдельную строку матрицы.
+      <button className="btn btn-sm btn-outline" style={{ borderRadius: 10, padding: '4px 12px' }}
+              onClick={() => {
+                const back = leaveDemoSession()
+                if (back) window.location.replace(back)
+              }}>
+        Выйти из тестового входа
+      </button>
+    </div>
+  )
 }
 
 export default function MyAssignmentsPage() {
@@ -114,6 +136,7 @@ export default function MyAssignmentsPage() {
   if (!lesson) {
     return (
       <div>
+        <DemoBanner />
         <div className="page-header">
           <h1 className="page-title">
             <ClipboardList size={18} strokeWidth={1.5} style={{ verticalAlign: -3, marginRight: 6 }} />
@@ -161,6 +184,7 @@ export default function MyAssignmentsPage() {
 
   return (
     <div>
+      <DemoBanner />
       <div className="page-header">
         <button className="btn btn-sm btn-outline" onClick={() => setLesson(null)}
                 style={{ borderRadius: 10, padding: '4px 12px', marginBottom: 8 }}>

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { assignmentsAPI, subjectsAPI, groupsAPI } from '../../api'
 import FormattedText from '../../components/FormattedText'
+import { enterLessonAsDemoStudent } from '../auth/lessonPreview'
 import { ClipboardList, RefreshCw, AlertTriangle, ChevronDown, ChevronRight, Undo2,
-         Send, Check, X, Link2 } from 'lucide-react'
+         Send, Check, X, Link2, Eye } from 'lucide-react'
 
 // Четыре блока — это схема урока, а не набор подписей на выбор: что сверяет машина,
 // решает бэкенд (`homework`/`simplified`), и экран обязан говорить это прямо,
@@ -232,15 +233,32 @@ function GcLinkButton({ assignment }) {
     // методист не остался с пустым кликом
     navigator.clipboard?.writeText(link).then(() => setCopied('ok'), () => setCopied('manual'))
   }
+  const dim = { borderRadius: 10, padding: '4px 12px' }
   return (
     <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
-      <button className="btn btn-sm btn-outline" onClick={copy}
-              style={{ borderRadius: 10, padding: '4px 12px',
-                       opacity: token ? 1 : 0.55 }}>
-        <Link2 size={12} strokeWidth={1.5} style={{ verticalAlign: -1, marginRight: 4 }} />
-        {copied === 'ok' ? 'Скопировано' : copied === 'manual' ? 'Скопируй вручную'
-                        : 'Ссылка для GetCourse'}
-      </button>
+      <span style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className="btn btn-sm btn-outline" onClick={copy}
+                style={{ ...dim, opacity: token ? 1 : 0.45,
+                         cursor: token ? 'pointer' : 'not-allowed' }}>
+          <Link2 size={12} strokeWidth={1.5} style={{ verticalAlign: -1, marginRight: 4 }} />
+          {copied === 'ok' ? 'Скопировано' : copied === 'manual' ? 'Скопируй вручную'
+                          : 'Ссылка для GetCourse'}
+        </button>
+        {/* Тот же урок глазами ученика: экран сдачи и то, как ответы ложатся в
+            матрицу, тренер видит сам, без просьбы у методиста. Своя сессия при этом
+            сохраняется — на экране урока есть кнопка возврата. */}
+        <button className="btn btn-sm btn-outline"
+                onClick={() => enterLessonAsDemoStudent({ assignmentId: assignment.id, token })}
+                disabled={!token}
+                title={token
+                  ? 'Открыть урок тестовым учеником: твой вход сохранится, назад вернёт кнопка на экране урока'
+                  : 'Нет подписи урока — тестовый вход закрыт'}
+                style={{ ...dim, opacity: token ? 1 : 0.45,
+                         cursor: token ? 'pointer' : 'not-allowed' }}>
+          <Eye size={12} strokeWidth={1.5} style={{ verticalAlign: -1, marginRight: 4 }} />
+          Открыть как ученик
+        </button>
+      </span>
       {copied && (
         <span style={{ fontSize: 11, color: 'var(--text-secondary)', maxWidth: 520,
                        background: 'rgba(99,102,241,0.06)', borderRadius: 8, padding: '6px 8px' }}>
@@ -342,14 +360,36 @@ export default function AssignByLevelPage() {
   const totalChosen = KINDS.reduce((n, [k]) => n + bl[k].checked.length, 0)
   const subjectName = (subjects.find(s => s.id === Number(subject)) || {}).name || ''
 
+  // Подтверждение — инлайн, а не `window.confirm()`: урок открывают во встроенном
+  // окне GetCourse, где системный диалог браузера не показывается, а отказ показать
+  // окно выглядит как «кнопка не работает». На экране ученика этот же приём уже принят.
+  const [ask, setAsk] = useState('')
+  const needYes = (key) => {
+    if (ask === key) return false
+    setAsk(key)
+    return true
+  }
+
+  // Кнопка «Создать урок» была неактивна без единой подписи, и человек не понимал,
+  // чего ему не хватает: причина теперь всегда рядом с кнопкой.
+  const missing = []
+  if (!subject) missing.push('не выбран предмет')
+  if (!totalChosen) missing.push('в блоки не набрано ни одной задачи')
+  if (!(to.length || group)) missing.push('не выбран ни ученик, ни группа')
+  const createBlocked = missing.length > 0
+  // план урока и адресат — те же строки, что человек читает в подтверждении
+  const plan = KINDS.map(([k]) => ({ kind: k, question_ids: bl[k].checked }))
+    .filter(b => b.question_ids.length)
+  const whom = to.length
+    ? `${to.length} уч.`
+    : `группе «${(groups.find(g => g.id === Number(group)) || {}).name}»`
+  const createAsk = `Собрать урок: ${plan.length} блока, ${totalChosen} задач — ${whom}. ` +
+    'Ученики увидят его после публикации.'
+
   const create = () => {
-    const blocks = KINDS.map(([k]) => ({ kind: k, question_ids: bl[k].checked }))
-      .filter(b => b.question_ids.length)
-    if (!blocks.length || !(to.length || group)) return
-    const whom = to.length
-      ? `${to.length} уч.`
-      : `группе «${(groups.find(g => g.id === Number(group)) || {}).name}»`
-    if (!confirm(`Собрать урок: ${blocks.length} блока, ${totalChosen} задач — ${whom}? Ученики увидят его после публикации.`)) return
+    if (!plan.length || !(to.length || group)) return
+    if (needYes('create')) return
+    setAsk('')
     setBusy(true)
     setNotice('')
     assignmentsAPI.create({
@@ -357,24 +397,26 @@ export default function AssignByLevelPage() {
       subject: Number(subject),
       students: to,
       ...(dueAt ? { due_at: dueAt } : {}),
-      blocks,
+      blocks: plan,
     })
       // create отвечает записным сериализатором, в нём нет ни задач, ни названий
       // блоков, поэтому в список берём полный слепок урока
       .then(res => assignmentsAPI.detail(res.data.id))
       .then(res => {
         setMine(ms => [res.data, ...ms])
+        setOpen(o => (o && o.id === res.data.id ? res.data : o))
         setTitle('')
         setDueAt('')
         setBl(blankBlocks())
-        setTick(t => t + 1)
+        setNotice(`Урок «${res.data.title}» собран в статусе черновика: публикуй, когда он готов ученику.`)
       })
       .catch(e => setNotice(errorText(e)))
       .finally(() => setBusy(false))
   }
 
   const publish = (a) => {
-    if (!confirm(`Опубликовать «${a.title}»? ${a.students.length} уч. увидят его сразу.`)) return
+    if (needYes('publish:' + a.id)) return
+    setAsk('')
     setNotice('')
     assignmentsAPI.publish(a.id)
       .then(res => setMine(ms => ms.map(m => (m.id === res.data.id ? res.data : m))))
@@ -382,7 +424,8 @@ export default function AssignByLevelPage() {
   }
 
   const revoke = (a) => {
-    if (!confirm(`Отозвать «${a.title}»? Ученики перестанут его видеть, запись останется.`)) return
+    if (needYes('revoke:' + a.id)) return
+    setAsk('')
     setNotice('')
     assignmentsAPI.revoke(a.id)
       .then(res => setMine(ms => ms.map(m => (m.id === res.data.id ? res.data : m))))
@@ -575,11 +618,30 @@ export default function AssignByLevelPage() {
           <input type="datetime-local" value={dueAt} onChange={e => setDueAt(e.target.value)}
                  style={{ ...sel, cursor: 'text', width: 210 }} />
         </div>
-        <button className="btn btn-primary" onClick={create}
-                disabled={!subject || !totalChosen || !(to.length || group) || busy}
-                style={{ marginLeft: 'auto', borderRadius: 10, padding: '8px 16px' }}>
-          {busy ? 'Собираю…' : `Создать урок${totalChosen ? ` · ${totalChosen} задач` : ''}`}
-        </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {ask === 'create' && !busy && (
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)', maxWidth: 360 }}>{createAsk}</span>
+          )}
+          <button className="btn btn-primary" onClick={create}
+                  disabled={createBlocked || busy}
+                  title={createBlocked ? `Кнопка не активна: ${missing.join(', ')}.` : ''}
+                  style={{ borderRadius: 10, padding: '8px 16px',
+                           opacity: createBlocked || busy ? 0.45 : 1,
+                           cursor: createBlocked ? 'not-allowed' : 'pointer' }}>
+            {busy ? 'Собираю…'
+             : ask === 'create' ? 'Подтвердить сборку'
+             : `Создать урок${totalChosen ? ` · ${totalChosen} задач` : ''}`}
+          </button>
+          {ask === 'create' && !busy && (
+            <button className="btn btn-sm btn-outline" onClick={() => setAsk('')}
+                    style={{ borderRadius: 10, padding: '4px 12px' }}>Отмена</button>
+          )}
+        </div>
+        {createBlocked && (
+          <div style={{ width: '100%', fontSize: 12, color: '#92400E' }}>
+            Кнопка «Создать урок» не активна: {missing.join(', ')}.
+          </div>
+        )}
       </div>
 
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -618,13 +680,23 @@ export default function AssignByLevelPage() {
                 {a.status === 'draft' && <span style={chip('rgba(107,114,128,0.12)', '#374151')}>черновик</span>}
                 {a.status === 'revoked' && <span style={chip('rgba(107,114,128,0.12)', '#374151')}>отозвано</span>}
                 {a.status === 'active' && <span style={chip('rgba(16,185,129,0.12)', '#065F46')}>назначено</span>}
-                <span style={{ marginLeft: 'auto', display: 'flex', gap: 8,
-                               alignItems: 'flex-start' }}>
+                <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap',
+                               justifyContent: 'flex-end', alignItems: 'center' }}>
+                  {ask === 'publish:' + a.id && (
+                    <span style={{ fontSize: 12, color: 'var(--text-secondary)', maxWidth: 320 }}>
+                      {a.students.length} уч. увидят урок сразу.
+                    </span>
+                  )}
                   {a.status === 'draft' && (
                     <button className="btn btn-sm btn-primary" onClick={() => publish(a)}
                             style={{ borderRadius: 10, padding: '4px 12px' }}>
-                      <Send size={12} strokeWidth={1.5} style={{ verticalAlign: -1, marginRight: 4 }} />Опубликовать
+                      <Send size={12} strokeWidth={1.5} style={{ verticalAlign: -1, marginRight: 4 }} />
+                      {ask === 'publish:' + a.id ? 'Подтвердить публикацию' : 'Опубликовать'}
                     </button>
+                  )}
+                  {ask === 'publish:' + a.id && (
+                    <button className="btn btn-sm btn-outline" onClick={() => setAsk('')}
+                            style={{ borderRadius: 10, padding: '4px 12px' }}>Отмена</button>
                   )}
                   {a.status === 'active' && (
                     <button className="btn btn-sm btn-outline"
@@ -633,13 +705,23 @@ export default function AssignByLevelPage() {
                       Результаты
                     </button>
                   )}
-                  {a.status === 'active' && <GcLinkButton assignment={a} />}
+                  {ask === 'revoke:' + a.id && (
+                    <span style={{ fontSize: 12, color: 'var(--text-secondary)', maxWidth: 320 }}>
+                      Ученики перестанут его видеть, запись останется.
+                    </span>
+                  )}
                   {a.status !== 'revoked' && (
                     <button className="btn btn-sm btn-outline" onClick={() => revoke(a)}
                             style={{ borderRadius: 10, padding: '4px 12px', color: '#991B1B' }}>
-                      <Undo2 size={12} strokeWidth={1.5} style={{ verticalAlign: -1, marginRight: 4 }} />Отозвать
+                      <Undo2 size={12} strokeWidth={1.5} style={{ verticalAlign: -1, marginRight: 4 }} />
+                      {ask === 'revoke:' + a.id ? 'Подтвердить отзыв' : 'Отозвать'}
                     </button>
                   )}
+                  {ask === 'revoke:' + a.id && (
+                    <button className="btn btn-sm btn-outline" onClick={() => setAsk('')}
+                            style={{ borderRadius: 10, padding: '4px 12px' }}>Отмена</button>
+                  )}
+                  {a.status === 'active' && <GcLinkButton assignment={a} />}
                 </span>
               </div>
               {detail && (detail.blocks || []).map(b => (

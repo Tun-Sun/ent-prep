@@ -230,6 +230,10 @@ GC_SSO_MAX_AGE = int(os.environ.get('GC_SSO_MAX_AGE', '300'))
 GC_FRAME_ANCESTORS = [o.strip() for o in os.environ.get('GC_FRAME_ANCESTORS', '').split(',') if o.strip()]
 # Пути SPA, для которых снимается X-Frame-Options (см. `core.urls._serve_frontend`).
 GC_FRAME_PATHS = tuple(p.strip() for p in os.environ.get('GC_FRAME_PATHS', '/sso,/assignments').split(',') if p.strip())
+# Дежурный аккаунт, которым тренер и методист смотрят урок глазами ученика (Шаг 6.6).
+# Право войти в него даёт только верная подпись урока, поэтому адрес не секрет; но
+# это отдельный аккаунт-«мандрык», и его ответы видны тренеру в матрице результатов.
+GC_DEMO_STUDENT_EMAIL = os.environ.get('GC_DEMO_STUDENT_EMAIL', 'demo_student@pmci.kz')
 
 # Tech API: пока аккаунта и секретного ключа нет, модуль ничего не отправляет —
 # он пишет строку в журнал и на этом останавливается (никакого падения урока).
