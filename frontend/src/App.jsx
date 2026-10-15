@@ -14,6 +14,7 @@ function TeacherRoute({ children }) {
 // Auth
 import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
+import SsoLandingPage from './pages/auth/SsoLandingPage'
 
 // Student
 import StudentDashboardPage from './pages/student/DashboardPage'
@@ -60,6 +61,8 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      {/* Вход из урока GetCourse: экран без пароля, токен остаётся в браузере ученика */}
+      <Route path="/sso" element={<SsoLandingPage />} />
 
       {/* Все авторизованные маршруты в одном Layout */}
       <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>

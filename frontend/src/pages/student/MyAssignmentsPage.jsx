@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { myAssignmentsAPI } from '../../api'
 import FormattedText from '../../components/FormattedText'
 import { ClipboardList, ArrowLeft, Inbox } from 'lucide-react'
@@ -48,6 +49,7 @@ export default function MyAssignmentsPage() {
   const [busy, setBusy] = useState(0)
   const [notice, setNotice] = useState('')
   const [sent, setSent] = useState('')
+  const [params] = useSearchParams()
 
   const open = (id, sentMsg = '') => {
     setLoading(true)
@@ -74,6 +76,13 @@ export default function MyAssignmentsPage() {
   useEffect(() => {
     myAssignmentsAPI.list().then(res => setItems(res.data)).catch(e => setNotice(errorText(e)))
       .finally(() => setLoading(false))
+  }, [])
+
+  // вход из урока GetCourse приходит как `/assignments?open=<id>`: ученик обязан
+  // попасть сразу в карточку урока, а не остановиться на списке
+  useEffect(() => {
+    const id = Number(params.get('open'))
+    if (id) open(id)
   }, [])
 
   const save = (block, q) => {

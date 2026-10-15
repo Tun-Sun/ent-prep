@@ -12,6 +12,10 @@ class User(AbstractUser):
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='student')
     full_name = models.CharField(max_length=150, blank=True)
     school = models.CharField(max_length=200, blank=True)
+    # Код ученика в GetCourse: по нему вход из урока находит своего человека, не
+    # глядя на письмо (почту в ГК правят чаще, чем теряют аккаунт). Пустое значение
+    # — норма для всех, кто в ГК не учится, поэтому уникальность только для непустых.
+    gc_uid = models.CharField(max_length=64, blank=True, default='', verbose_name='Код ученика в GetCourse')
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True, verbose_name='Аватар')
     dashboard_subjects = models.ManyToManyField('subjects.Subject', blank=True, verbose_name='Предметы на дашборде')
     profile_subjects = models.ManyToManyField('subjects.Subject', blank=True, related_name='students',
@@ -20,6 +24,10 @@ class User(AbstractUser):
     class Meta:
         verbose_name = 'Пользователь'
         verbose_name_plural = 'Пользователи'
+        constraints = [
+            models.UniqueConstraint(fields=['gc_uid'], condition=~models.Q(gc_uid=''),
+                                    name='uniq_gc_uid_when_filled'),
+        ]
 
     def __str__(self):
         return f'{self.username} ({self.get_role_display()})'

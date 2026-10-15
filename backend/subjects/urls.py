@@ -2,7 +2,8 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 from .views import (SubjectViewSet, TopicViewSet, QuestionViewSet, AssignmentViewSet,
-                    AssignmentBlockViewSet, AssignmentAnswerViewSet, MyAssignmentViewSet)
+                    AssignmentBlockViewSet, AssignmentAnswerViewSet, MyAssignmentViewSet,
+                    LessonJoinView)
 from .import_views import (
     ExcelTemplateView,
     ExcelImportView,
@@ -22,6 +23,9 @@ router.register(r'assignment-answers', AssignmentAnswerViewSet, basename='assign
 router.register(r'my/assignments', MyAssignmentViewSet, basename='my-assignment')
 
 urlpatterns = router.urls + [
+    # Вход из урока GetCourse: путь из контракта концепта (`/api/lesson/join`).
+    path('lesson/join', LessonJoinView.as_view(), name='lesson-join'),
+    path('lesson/join/', LessonJoinView.as_view(), name='lesson-join-slash'),
     path('import/template/', ExcelTemplateView.as_view(), name='excel-template'),
     path('import/excel/', ExcelImportView.as_view(), name='excel-import'),
     path('import/google-forms/', GoogleFormsImportView.as_view(), name='google-forms-import'),

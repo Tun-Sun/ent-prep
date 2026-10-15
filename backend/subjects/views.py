@@ -1,13 +1,21 @@
+import re
+import secrets
+
 from rest_framework import viewsets, status, mixins
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from django.db import transaction
+from rest_framework.views import APIView
+from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from django.db.models.functions import Random
+from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import (Subject, Topic, Question, Answer, Assignment, AssignmentBlock,
                      AssignmentSubmission, AssignmentAnswer)
@@ -22,6 +30,8 @@ from .serializers import (
     MyAssignmentListSerializer, MyAssignmentBlockSerializer,
 )
 from .lesson_grading import grade_assignment_answer, score_submission, close_submission
+from .getcourse import report_submission
+from . import sso
 
 
 class SubjectViewSet(viewsets.ModelViewSet):
@@ -481,6 +491,9 @@ class AssignmentAnswerViewSet(mixins.RetrieveModelMixin, viewsets.GenericViewSet
         answer.reviewed_at = timezone.now()
         answer.save()
         left = close_submission(answer.submission, reviewer=request.user)
+        # Последняя ручная проверка может быть тем самым моментом, когда домашка
+        # дозрела: до неё висел `pending_review`, и модуль сам разберётся, пора ли.
+        report_submission(answer.submission)
         return Response({
             'answer': self.get_serializer(answer).data,
             'submission_state': answer.submission.state,
@@ -583,6 +596,124 @@ class MyAssignmentViewSet(viewsets.GenericViewSet):
         sub.state = 'submitted'
         sub.last_submitted_at = timezone.now()
         sub.save(update_fields=['state', 'last_submitted_at'])
+        # Домашка без висячих `pending_review` дозревает до отправки именно здесь;
+        # если очередь не пуста, модуль сам решит, что слать ещё рано.
+        report_submission(sub)
         return Response({'state': sub.state, 'autocheck': block.autocheck,
                          'score': score_submission(sub),
                          'pending': sub.answers.filter(verdict='pending_review').count()})
+
+
+class LessonJoinView(APIView):
+    """Вход из урока GetCourse по подписанной ссылке (Шаг 6.1).
+
+    Ученик не знает пароля платформы и не должен его узнавать: ссылку из урока
+    подписывает секрет, который знает только сервер, — его достаточно, чтобы
+    опознать человека и посадить его внутрь его же задания.
+
+    Отказ — всегда `403` и ни одной новой строки в базе. Подделанная или просроченная
+    ссылка не создаёт аккаунт, не привязывает урок и не выдаёт токен: иначе по ней
+    можно было бы засорять базу или, наоборот, узнать, какой почты в платформе нет.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        values = sso.normalize({field: request.query_params.get(field, '')
+                                for field in sso.SIGNED_FIELDS})
+        sign = request.query_params.get('sign', '')
+        if not settings.GC_SSO_SECRET:
+            return Response({'detail': 'Вход из GetCourse на сервере не настроен'},
+                            status=status.HTTP_403_FORBIDDEN)
+        if not sso.sign_is_valid(settings.GC_SSO_SECRET, values, sign):
+            return Response({'detail': 'Подпись ссылки не совпала'},
+                            status=status.HTTP_403_FORBIDDEN)
+        if not sso.ts_is_fresh(values['ts'], max_age=settings.GC_SSO_MAX_AGE):
+            return Response({'detail': 'Ссылка просрочена, попросите новую у преподавателя'},
+                            status=status.HTTP_403_FORBIDDEN)
+        assignment = Assignment.objects.filter(pk=values['assignment_id'] or 0,
+                                                status='active').first()
+        if not assignment:
+            return Response({'detail': 'Урок не найден или уже отозван'},
+                            status=status.HTTP_403_FORBIDDEN)
+        student, refusal = self._resolve_student(values['gc_uid'], values['email'],
+                                                 values['first_name'], values['last_name'])
+        if student is None:
+            return Response({'detail': refusal}, status=status.HTTP_403_FORBIDDEN)
+        assignment.students.add(student)
+        student.last_login = timezone.now()
+        student.save(update_fields=['last_login'])
+        tokens = RefreshToken.for_user(student)
+        from urllib.parse import urlencode
+        # `/assignments` — одна страница со списком уроков и внутренней открыткой
+        # карточки, поэтому переход из GetCourse приходит параметром, а не маршрутом.
+        frag = urlencode({'access': str(tokens.access_token), 'refresh': str(tokens),
+                          'next': '/assignments?open=%s' % assignment.pk})
+        return HttpResponseRedirect('/sso#%s' % frag)
+
+    @staticmethod
+    def _resolve_student(gc_uid, email, first_name, last_name):
+        """Найти ученика по коду GetCourse, затем по почте, иначе завести нового.
+
+        Порядок не переставить: код ГК — единственный идентификатор, который человек
+        не переписывает. Почва же в GetCourse правится, и по ней ученик уже может
+        быть в платформе под другим кодом.
+
+        Чужой аккаунт не отдаём никогда: учитель или админ с той же почтой — это
+        отказ, а не «ну и войдёт как учитель». Право войти по подписанной ссылке
+        есть только у ученика.
+        """
+        User = get_user_model()
+        if gc_uid:
+            user = User.objects.filter(gc_uid=gc_uid).first()
+            if user is not None:
+                if user.role != 'student' or not user.is_active:
+                    return None, 'Код GetCourse привязан не к активному ученику'
+                return user, ''
+        if email:
+            user = User.objects.filter(email__iexact=email).first()
+            if user is not None:
+                if user.role != 'student' or not user.is_active:
+                    return None, 'Эта почта в платформе принадлежит не активному ученику'
+                if gc_uid and user.gc_uid and user.gc_uid != gc_uid:
+                    return None, 'На эту почту уже привязан другой код GetCourse'
+                if gc_uid and not user.gc_uid:
+                    user.gc_uid = gc_uid
+                    user.save(update_fields=['gc_uid'])
+                return user, ''
+        if not gc_uid and not email:
+            return None, 'В ссылке нет ни кода GetCourse, ни почты'
+        username = LessonJoinView._new_username(User, gc_uid, email)
+        full_name = ' '.join(part for part in (first_name, last_name) if part).strip()[:150]
+        try:
+            with transaction.atomic():
+                user = User.objects.create_user(username=username, email=email or '',
+                                                password=None, role='student',
+                                                gc_uid=gc_uid, full_name=full_name,
+                                                first_name=first_name[:150],
+                                                last_name=last_name[:150])
+        except IntegrityError:
+            # гонка двух ссылок на один код: побеждает тот, кто первый успел записаться
+            user = User.objects.filter(Q(gc_uid=gc_uid) | Q(email__iexact=email)).first() if gc_uid or email else None
+            if user is None or user.role != 'student':
+                return None, 'Ученик с таким кодом уже заводится прямо сейчас'
+        return user, ''
+
+    @staticmethod
+    def _new_username(User, gc_uid, email):
+        """Логин нового ученика: имя почтового ящика, а код ГК — если почты нет.
+
+        Правило символов то же, что требует экран профиля (`[A-Za-z0-9_]`): ученик
+        потом сможет поменять ник сам, и его первый ник обязан пройти ту же проверку.
+        """
+        base = re.sub(r'[^A-Za-z0-9_]', '', (email.split('@')[0] if email else '')).lower()[:24]
+        if not base:
+            base = 'gc' + re.sub(r'[^A-Za-z0-9_]', '', gc_uid)[:20]
+        candidate = base
+        n = 0
+        while User.objects.filter(username=candidate).exists():
+            n += 1
+            candidate = '%s%d' % (base, n)
+            if n > 200:
+                candidate = 'gc%s' % secrets.token_hex(4)
+        return candidate

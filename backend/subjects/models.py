@@ -500,4 +500,52 @@ class AssignmentAnswer(models.Model):
         }
 
 
+class LessonReport(models.Model):
+    """Журнал отправок итога домашнего блока в GetCourse (Шаг 6.2).
+
+    Строка на (урок, ученик, блок): `external_key` уникален, поэтому повторный клик
+    «Сдать блок» не порождает вторую отправку и не заводит дубликат в журнале.
+    Ключи GetCourse могут не быть заданы — тогда строка всё равно появляется со
+    статусом «не отправлено»: урок виден, а что именно платформа собиралась сообщить
+    методисту — читается в журнале, а не додумывается по логам.
+    """
+    STATUS_CHOICES = [
+        ('skipped', 'Не отправлено (ключей GetCourse нет)'),
+        ('sent', 'Отправлено'),
+        ('failed', 'Ошибка отправки'),
+    ]
+
+    external_key = models.CharField(max_length=160, unique=True, verbose_name='Ключ идемпотентности')
+    assignment = models.ForeignKey(Assignment, on_delete=models.CASCADE, related_name='reports',
+                                   verbose_name='Урок')
+    block = models.ForeignKey(AssignmentBlock, on_delete=models.CASCADE, null=True, blank=True,
+                              related_name='reports', verbose_name='Блок')
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                related_name='lesson_reports', verbose_name='Ученик')
+    gc_uid = models.CharField(max_length=64, blank=True, default='', verbose_name='Код ученика в GetCourse')
+    event_type = models.CharField(max_length=48, default='lesson.homework.completed',
+                                  verbose_name='Событие')
+    percent = models.FloatField(null=True, blank=True, verbose_name='Процент по проверенным')
+    total = models.PositiveIntegerField(default=0, verbose_name='Задач в блоке')
+    correct = models.PositiveIntegerField(default=0, verbose_name='Решено верно')
+    pending_review = models.PositiveIntegerField(default=0, verbose_name='Ждут проверки')
+    # наружу идут только числа — ни ответа ученика, ни эталона книги здесь нет
+    payload = models.JSONField(default=dict, verbose_name='Что ушло в GetCourse')
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default='skipped',
+                              verbose_name='Итог отправки')
+    attempts = models.PositiveIntegerField(default=0, verbose_name='Попыток')
+    last_error = models.TextField(blank=True, default='', verbose_name='Последняя ошибка')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Создано')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='Изменено')
+    sent_at = models.DateTimeField(null=True, blank=True, verbose_name='Отправлено')
+
+    class Meta:
+        verbose_name = 'Отправка в GetCourse'
+        verbose_name_plural = 'Отправки в GetCourse'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.external_key} — {self.get_status_display()}'
+
+
 

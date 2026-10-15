@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { assignmentsAPI, subjectsAPI, groupsAPI } from '../../api'
 import FormattedText from '../../components/FormattedText'
 import { ClipboardList, RefreshCw, AlertTriangle, ChevronDown, ChevronRight, Undo2,
-         Send, Check, X } from 'lucide-react'
+         Send, Check, X, Link2 } from 'lucide-react'
 
 // Четыре блока — это схема урока, а не набор подписей на выбор: что сверяет машина,
 // решает бэкенд (`homework`/`simplified`), и экран обязан говорить это прямо,
@@ -206,6 +206,40 @@ function LessonResults({ assignment }) {
         </div>
       ))}
     </div>
+  )
+}
+
+// GetCourse подставляет макросы в URL урока сам, но HMAC-подпись посчитать не может:
+// шаблон уезжает в урок с `{ts}` и `{sign}` заглушками, живые значения выдаёт платформа.
+// Пока `GC_SSO_SECRET` не задан, переход по такой ссылке отклоняется — это не дырка,
+// а ожидание его решения, как считать подпись на каждого ученика.
+function GcLinkButton({ assignment }) {
+  const [copied, setCopied] = useState('')
+  const link = `${window.location.origin}/api/lesson/join/` +
+    `?gc_uid={uid}&email={email}&first_name={first_name}&last_name={last_name}` +
+    `&assignment_id=${assignment.id}&ts={ts}&sign={sign}`
+  const note = 'Макросы {uid} и {email} подставит GetCourse. {ts} и {sign} считает ' +
+               'платформа на каждого ученика: без живой подписи вход отклоняется.'
+  // буфер обмена отказывает (http, фокус) — шаблон всё равно показываем, чтобы
+  // методист не остался с пустым кликом
+  const copy = () => navigator.clipboard?.writeText(link).then(() => setCopied('ok'),
+                                                               () => setCopied('manual'))
+  return (
+    <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
+      <button className="btn btn-sm btn-outline" onClick={copy}
+              style={{ borderRadius: 10, padding: '4px 12px' }}>
+        <Link2 size={12} strokeWidth={1.5} style={{ verticalAlign: -1, marginRight: 4 }} />
+        {copied === 'ok' ? 'Скопировано' : copied === 'manual' ? 'Скопируй вручную'
+                        : 'Ссылка для GetCourse'}
+      </button>
+      {copied && (
+        <span style={{ fontSize: 11, color: 'var(--text-secondary)', maxWidth: 520,
+                       background: 'rgba(99,102,241,0.06)', borderRadius: 8, padding: '6px 8px' }}>
+          <span style={{ fontFamily: 'ui-monospace, monospace', wordBreak: 'break-all' }}>{link}</span>
+          <span style={{ display: 'block', marginTop: 4 }}>{note}</span>
+        </span>
+      )}
+    </span>
   )
 }
 
@@ -574,7 +608,8 @@ export default function AssignByLevelPage() {
                 {a.status === 'draft' && <span style={chip('rgba(107,114,128,0.12)', '#374151')}>черновик</span>}
                 {a.status === 'revoked' && <span style={chip('rgba(107,114,128,0.12)', '#374151')}>отозвано</span>}
                 {a.status === 'active' && <span style={chip('rgba(16,185,129,0.12)', '#065F46')}>назначено</span>}
-                <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                <span style={{ marginLeft: 'auto', display: 'flex', gap: 8,
+                               alignItems: 'flex-start' }}>
                   {a.status === 'draft' && (
                     <button className="btn btn-sm btn-primary" onClick={() => publish(a)}
                             style={{ borderRadius: 10, padding: '4px 12px' }}>
@@ -588,6 +623,7 @@ export default function AssignByLevelPage() {
                       Результаты
                     </button>
                   )}
+                  {a.status === 'active' && <GcLinkButton assignment={a} />}
                   {a.status !== 'revoked' && (
                     <button className="btn btn-sm btn-outline" onClick={() => revoke(a)}
                             style={{ borderRadius: 10, padding: '4px 12px', color: '#991B1B' }}>

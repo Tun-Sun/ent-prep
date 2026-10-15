@@ -36,12 +36,37 @@ _frontend_ready = _index_html.exists()
 
 
 def _serve_frontend(request):
-    if _frontend_ready:
-        return FileResponse(open(_index_html, 'rb'), content_type='text/html')
-    return HttpResponse(
-        'Frontend не собран. Запусти: cd frontend && npm run build',
-        status=503,
-    )
+    if not _frontend_ready:
+        return HttpResponse(
+            'Frontend не собран. Запусти: cd frontend && npm run build',
+            status=503,
+        )
+    response = FileResponse(open(_index_html, 'rb'), content_type='text/html')
+    _allow_getcourse_frame(request, response)
+    return response
+
+
+def _allow_getcourse_frame(request, response):
+    """Разрешить встраивание платформы в урок GetCourse (Шаг 6.1).
+
+    Оболочка урока живёт на домене GetCourse, а страница задания — у нас, поэтому
+    обычный `X-Frame-Options: DENY` оставлял бы ученика в пустом фрейме. Право
+    встроить отдаём списку доменов из `.env` и только этим путям: на остальном
+    фрейме (админка, API) заголовок продолжает стоять как стоял.
+
+    `xframe_options_exempt` — штатный способ сказать промежуточному слою заголовка
+    не ставить; вместо него работает `frame-ancestors`, который современными
+    браузерами читается, а старым просто не понятен (и тогда фрейм молча не
+    откроется, а не откроется у кого попало).
+    """
+    if not settings.GC_FRAME_ANCESTORS:
+        return
+    path = request.path
+    if not any(path == p or path.startswith(p.rstrip('/') + '/') for p in settings.GC_FRAME_PATHS):
+        return
+    response.xframe_options_exempt = True
+    response['Content-Security-Policy'] = 'frame-ancestors \'self\' %s' % ' '.join(
+        settings.GC_FRAME_ANCESTORS)
 
 
 # Медиа-файлы (картинки вопросов) — всегда через Django

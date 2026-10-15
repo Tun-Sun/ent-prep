@@ -216,3 +216,28 @@ INGEST_MAX_PDF_MB = int(os.environ.get('INGEST_MAX_PDF_MB', '60'))
 # Политика округления — относительный допуск 0,5% (внутри `openanswer.compare`):
 # абсолютного порога нет намеренно, он проглатывал атомные ответы вида 1e-10 м.
 OPEN_ANSWER_STRICT_UNITS = os.environ.get('OPEN_ANSWER_STRICT_UNITS', '0') == '1'
+
+# ── GetCourse ⇄ платформа (Шаг 6) ─────────────────────────────────────────
+# Секрет подписи перехода живёт в `.env`, как ключ Gemini: в ссылку он не
+# попадает и с сервера наружу не уходит. Пустой секрет = вход по ссылке закрыт,
+# а не «подпись не проверяется».
+GC_SSO_SECRET = os.environ.get('GC_SSO_SECRET', '')
+# Окно жизни подписанного перехода в секундах: ссылку из урока могут переслать,
+# и оно тем короче, чем меньше времени у чужого человека ей воспользоваться.
+GC_SSO_MAX_AGE = int(os.environ.get('GC_SSO_MAX_AGE', '300'))
+# Домены GetCourse, которым разрешено встроить платформу в iframe. Пусто —
+# значит фростим по-прежнему DENY: право встраивать дают только названному домену.
+GC_FRAME_ANCESTORS = [o.strip() for o in os.environ.get('GC_FRAME_ANCESTORS', '').split(',') if o.strip()]
+# Пути SPA, для которых снимается X-Frame-Options (см. `core.urls._serve_frontend`).
+GC_FRAME_PATHS = tuple(p.strip() for p in os.environ.get('GC_FRAME_PATHS', '/sso,/assignments').split(',') if p.strip())
+
+# Tech API: пока аккаунта и секретного ключа нет, модуль ничего не отправляет —
+# он пишет строку в журнал и на этом останавливается (никакого падения урока).
+GC_ACCOUNT_NAME = os.environ.get('GC_ACCOUNT_NAME', '')
+GC_SECRET_KEY = os.environ.get('GC_SECRET_KEY', '')
+# URL и поле, куда ложится процент. Точное имя поля — его слово (концепт, блок 4:
+# «какой customField принимает процент»), поэтому здесь только настройка.
+GC_TECH_URL = os.environ.get('GC_TECH_URL') or (
+    f'https://{GC_ACCOUNT_NAME}.getcourse.ru/tech-api.php' if GC_ACCOUNT_NAME else '')
+GC_TECH_METHOD = os.environ.get('GC_TECH_METHOD', 'setcourse-user-custom-field')
+GC_CUSTOM_FIELD_ID = os.environ.get('GC_CUSTOM_FIELD_ID', '')
