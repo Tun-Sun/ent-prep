@@ -546,9 +546,13 @@ class SsoSignatureUnitTest(TestCase):
         self.assertTrue(sso.ts_is_fresh(str(int(time.time()))))
 
 
-@override_settings(GC_ACCOUNT_NAME='', GC_SECRET_KEY='', GC_SSO_SECRET=SECRET)
+@override_settings(GETCOURSE_API_TOKEN='', GC_SSO_SECRET=SECRET)
 class HomeworkReportTest(TestCase):
-    """Аутбат в Tech API: триггер, журнал и идемпотентность — без ключей."""
+    """Аутбат в Lesson API: триггер, журнал и идемпотентность — без токена.
+
+    Номер поля здесь задан (он не секрет и живёт в настройке), но `is_configured`
+    требует и токен: без него платформа не имеет права ни на один вызов наружу.
+    """
 
     @classmethod
     def setUpTestData(cls):
@@ -658,7 +662,7 @@ class HomeworkReportTest(TestCase):
         self.assertEqual(LessonReport.objects.get().status, 'skipped')
 
     def test_student_without_gc_uid_is_not_sent_even_with_keys(self):
-        with override_settings(GC_ACCOUNT_NAME='school', GC_SECRET_KEY='sekret'):
+        with override_settings(GETCOURSE_API_TOKEN='sekret', GC_CUSTOM_FIELD_ID='22383558'):
             with mock.patch.object(getcourse, '_post', return_value=(True, '')) as post:
                 sub = AssignmentSubmission.objects.create(
                     assignment=self.lesson, block=self.homework, student=self.stray,
@@ -670,29 +674,28 @@ class HomeworkReportTest(TestCase):
                 self.assertIn('gc_uid', row.last_error)
                 post.assert_not_called()
 
-    def test_with_keys_the_event_carries_only_numbers(self):
-        with override_settings(GC_ACCOUNT_NAME='school', GC_SECRET_KEY='sekret'):
+    def test_with_keys_only_the_rendered_summary_leaves(self):
+        with override_settings(GETCOURSE_API_TOKEN='sekret', GC_CUSTOM_FIELD_ID='22383558'):
             with mock.patch.object(getcourse, '_post', return_value=(True, '')) as post:
                 self._answer(self.homework, self.with_key, '5 м/с')
                 self._answer(self.homework, self.no_key, 'моё решение целиком')
                 self._submit(self.homework)
                 self._close_pending(self.no_key)
-                event = post.call_args[0][0]
-                self.assertEqual(event['type'], 'lesson.homework.completed')
-                self.assertEqual(event['gc_uid'], '9001')
-                self.assertEqual(event['percent'], 100.0)
-                self.assertEqual(event['correct'], 2)
-                body = json.dumps(event, ensure_ascii=False)
+                user_id, value = post.call_args[0]
+                self.assertEqual(user_id, 9001)
+                self.assertEqual(value, f'Процент: 100%, Решено: 2 из 2 (Урок #{self.lesson.pk})')
+                body = json.dumps([user_id, value], ensure_ascii=False)
                 # ответ ученика и эталон книги наружу не уходят никогда
                 self.assertNotIn('моё решение целиком', body)
                 self.assertNotIn('5$ м/с', body)
         row = LessonReport.objects.get()
         self.assertEqual(row.status, 'sent')
         self.assertEqual(row.attempts, 1)
+        self.assertEqual(row.payload['text'], value)
         self.assertIsNotNone(row.sent_at)
 
     def test_second_click_sends_nothing_twice(self):
-        with override_settings(GC_ACCOUNT_NAME='school', GC_SECRET_KEY='sekret'):
+        with override_settings(GETCOURSE_API_TOKEN='sekret', GC_CUSTOM_FIELD_ID='22383558'):
             with mock.patch.object(getcourse, '_post', return_value=(True, '')) as post:
                 self._answer(self.homework, self.with_key, '5 м/с')
                 self._answer(self.homework, self.no_key, 'текст')
@@ -705,7 +708,7 @@ class HomeworkReportTest(TestCase):
                 self.assertEqual(LessonReport.objects.count(), 1)
 
     def test_changed_result_is_sent_again_over_the_same_row(self):
-        with override_settings(GC_ACCOUNT_NAME='school', GC_SECRET_KEY='sekret'):
+        with override_settings(GETCOURSE_API_TOKEN='sekret', GC_CUSTOM_FIELD_ID='22383558'):
             with mock.patch.object(getcourse, '_post', return_value=(True, '')) as post:
                 self._answer(self.homework, self.with_key, '7 м/с')
                 self._answer(self.homework, self.no_key, 'текст')
@@ -722,7 +725,7 @@ class HomeworkReportTest(TestCase):
                 self.assertEqual(row.attempts, 2)
 
     def test_failed_send_is_journalled_and_retried_next_time(self):
-        with override_settings(GC_ACCOUNT_NAME='school', GC_SECRET_KEY='sekret'):
+        with override_settings(GETCOURSE_API_TOKEN='sekret', GC_CUSTOM_FIELD_ID='22383558'):
             with mock.patch.object(getcourse, '_post', return_value=(False, 'HTTP 503')) as post:
                 self._answer(self.homework, self.with_key, '5 м/с')
                 self._answer(self.homework, self.no_key, 'текст')
@@ -738,12 +741,30 @@ class HomeworkReportTest(TestCase):
                 self.assertEqual(row.status, 'sent')
                 self.assertEqual(row.attempts, 2)
 
+    def test_a_non_numeric_gc_uid_never_reaches_the_network(self):
+        """Чужой формат кода — это запись в журнал с внятной причиной, а не попытка
+        постить `userId: "не-код"` и получить отказ на боевом аккаунте."""
+        with override_settings(GETCOURSE_API_TOKEN='sekret', GC_CUSTOM_FIELD_ID='22383558'):
+            odd = User.objects.create_user(username='gc_odd', password='x', role='student',
+                                           gc_uid='не-код')
+            self.lesson.students.set([odd])
+            sub = AssignmentSubmission.objects.create(assignment=self.lesson,
+                                                      block=self.homework, student=odd,
+                                                      state='reviewed')
+            AssignmentAnswer.objects.create(submission=sub, question=self.with_key,
+                                            raw_answer='5', verdict='correct')
+            with mock.patch('requests.post') as post:
+                row = getcourse.report_submission(sub)
+            self.assertEqual(row.status, 'failed')
+            self.assertIn('не содержит цифр', row.last_error)
+            post.assert_not_called()
+
     def test_a_broken_network_never_breaks_the_lesson(self):
         """Сдача и ручная проверка обязаны дойти до конца, даже если GetCourse легл:
         отчёт — побочный эффект урока, а не его условие."""
         self._answer(self.homework, self.with_key, '5 м/с')
         self._answer(self.homework, self.no_key, 'текст')
-        with override_settings(GC_ACCOUNT_NAME='school', GC_SECRET_KEY='sekret'):
+        with override_settings(GETCOURSE_API_TOKEN='sekret', GC_CUSTOM_FIELD_ID='22383558'):
             with mock.patch.object(getcourse, '_post', side_effect=RuntimeError('сеть легла')):
                 self.assertEqual(self._submit(self.homework).status_code, 200)
                 r = self._close_pending(self.no_key)
@@ -752,3 +773,106 @@ class HomeworkReportTest(TestCase):
         row = LessonReport.objects.get()
         self.assertEqual(row.status, 'failed')
         self.assertIn('RuntimeError', row.last_error)
+
+WIRE = override_settings(GETCOURSE_API_TOKEN='sekret-token', GC_CUSTOM_FIELD_ID='22383558',
+                         GETCOURSE_API_URL='https://pmci-test.getcourse.ru/pl/api/v1')
+
+
+def response(status=200, payload=None, text=None):
+    """Подставной ответ движка Lesson API: конверт `{status,message,code,errors}`."""
+    resp = mock.Mock()
+    resp.status_code = status
+    if text is not None:
+        resp.text = text
+        resp.json.side_effect = ValueError('нет JSON')
+    else:
+        resp.text = json.dumps(payload)
+        resp.json.return_value = payload
+    return resp
+
+
+class LessonApiTransportTest(TestCase):
+    """Что именно уезжает на провод: адрес, заголовок, тело и разбор конверта.
+
+    Живых вызовов здесь нет и быть не может: `requests.post` подменён, поэтому тест
+    не имеет права ничего записать в боевой аккаунт GetCourse.
+    """
+
+    @WIRE
+    def test_the_call_is_a_bearer_post_with_the_field_and_the_number(self):
+        with mock.patch('requests.post',
+                        return_value=response(payload={'status': True})) as post:
+            ok, error = getcourse._post(9001, 'Процент: 50%, Решено: 1 из 2 (Урок #7)')
+        self.assertTrue(ok, error)
+        self.assertEqual(post.call_args[0][0],
+                         'https://pmci-test.getcourse.ru/pl/api/v1/user/update-custom-fields')
+        self.assertEqual(post.call_args[1]['json'], {
+            'userId': 9001,
+            'customFields': {'22383558': 'Процент: 50%, Решено: 1 из 2 (Урок #7)'}})
+        self.assertEqual(post.call_args[1]['headers'], {'Authorization': 'Bearer sekret-token'})
+
+    @WIRE
+    def test_refusal_inside_the_envelope_at_http_200_is_not_a_success(self):
+        """Главный обман этого API: `200` и `{"status": false}` — запись не состоялась."""
+        with mock.patch('requests.post', return_value=response(
+                payload={'status': False, 'code': 400, 'errors': ['user not found']})):
+            ok, error = getcourse._post(9001, 'текст')
+        self.assertFalse(ok)
+        self.assertIn('user not found', error)
+
+    @WIRE
+    def test_http_error_is_reported_with_the_body_that_explains_it(self):
+        with mock.patch('requests.post', return_value=response(status=403, text='forbidden')):
+            ok, error = getcourse._post(9001, 'текст')
+        self.assertFalse(ok)
+        self.assertIn('HTTP 403', error)
+
+    @WIRE
+    def test_html_instead_of_json_is_a_failure_not_a_mystery_success(self):
+        """HTML вместо конверта — это не тот домен или не тот ключ; молча считать это
+        отправкой нельзя, иначе журнал врёт о несуществующем итоге урока."""
+        with mock.patch('requests.post',
+                        return_value=response(text='<html>404 Not Found</html>')):
+            ok, error = getcourse._post(9001, 'текст')
+        self.assertFalse(ok)
+        self.assertIn('не-JSON', error)
+
+    def test_an_empty_api_url_is_named_instead_of_a_crash(self):
+        with override_settings(GETCOURSE_API_URL='', GETCOURSE_API_TOKEN='sekret-token',
+                               GC_CUSTOM_FIELD_ID='22383558'):
+            ok, error = getcourse._post(9001, 'текст')
+        self.assertFalse(ok)
+        self.assertIn('GETCOURSE_API_URL', error)
+
+    def test_the_trailing_slash_of_the_base_does_not_double_the_path(self):
+        with override_settings(GETCOURSE_API_URL='https://school.getcourse.ru/pl/api/v1/',
+                               GETCOURSE_API_TOKEN='sekret-token', GC_CUSTOM_FIELD_ID='7'):
+            with mock.patch('requests.post',
+                            return_value=response(payload={'status': True})) as post:
+                getcourse._post(1, 'текст')
+        self.assertEqual(post.call_args[0][0],
+                         'https://school.getcourse.ru/pl/api/v1/user/update-custom-fields')
+
+    def test_stray_quotes_around_the_code_still_give_a_numeric_user_id(self):
+        """GetCourse отдаёт id и числом, и строкой в кавычках ("'48123'")."""
+        self.assertEqual(getcourse.user_id_of("'48123'"), 48123)
+        self.assertEqual(getcourse.user_id_of(48123), 48123)
+        for bad in ('', None, 'не-код'):
+            with self.assertRaises(ValueError):
+                getcourse.user_id_of(bad)
+
+    def test_the_summary_line_is_what_the_methodist_reads_on_the_card(self):
+        self.assertEqual(getcourse.field_value({'percent': 100.0, 'correct': 2, 'total': 2}, 7),
+                         'Процент: 100%, Решено: 2 из 2 (Урок #7)')
+        self.assertEqual(getcourse.field_value({'percent': 66.7, 'correct': 2, 'total': 3}, 7),
+                         'Процент: 66.7%, Решено: 2 из 3 (Урок #7)')
+        self.assertEqual(getcourse.field_value({'percent': None, 'correct': 0, 'total': 2}, 7),
+                         'Процент: —, Решено: 0 из 2 (Урок #7)')
+
+    def test_the_module_is_noop_without_a_token_or_without_a_field(self):
+        with override_settings(GETCOURSE_API_TOKEN='', GC_CUSTOM_FIELD_ID='22383558'):
+            self.assertFalse(getcourse.is_configured())
+        with override_settings(GETCOURSE_API_TOKEN='sekret-token', GC_CUSTOM_FIELD_ID=''):
+            self.assertFalse(getcourse.is_configured())
+        with override_settings(GETCOURSE_API_TOKEN='sekret-token', GC_CUSTOM_FIELD_ID='22383558'):
+            self.assertTrue(getcourse.is_configured())

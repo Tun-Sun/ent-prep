@@ -235,13 +235,13 @@ GC_FRAME_PATHS = tuple(p.strip() for p in os.environ.get('GC_FRAME_PATHS', '/sso
 # это отдельный аккаунт-«мандрык», и его ответы видны тренеру в матрице результатов.
 GC_DEMO_STUDENT_EMAIL = os.environ.get('GC_DEMO_STUDENT_EMAIL', 'demo_student@pmci.kz')
 
-# Tech API: пока аккаунта и секретного ключа нет, модуль ничего не отправляет —
-# он пишет строку в журнал и на этом останавливается (никакого падения урока).
-GC_ACCOUNT_NAME = os.environ.get('GC_ACCOUNT_NAME', '')
-GC_SECRET_KEY = os.environ.get('GC_SECRET_KEY', '')
-# URL и поле, куда ложится процент. Точное имя поля — его слово (концепт, блок 4:
-# «какой customField принимает процент»), поэтому здесь только настройка.
-GC_TECH_URL = os.environ.get('GC_TECH_URL') or (
-    f'https://{GC_ACCOUNT_NAME}.getcourse.ru/tech-api.php' if GC_ACCOUNT_NAME else '')
-GC_TECH_METHOD = os.environ.get('GC_TECH_METHOD', 'setcourse-user-custom-field')
-GC_CUSTOM_FIELD_ID = os.environ.get('GC_CUSTOM_FIELD_ID', '')
+# Lesson API (Tech API v1): пока токена или номера поля нет, модуль ничего не
+# отправляет — он пишет строку в журнал и на этом останавливается (никакого падения
+# урока). Транспорт утверждён владельцем 16.10 вместо `tech-api.php`: итог ложится
+# на карточку ученика по `gc_uid`, поэтому новых макросов в ссылку урока не нужно.
+GETCOURSE_API_URL = os.environ.get('GETCOURSE_API_URL', 'https://pmci-test.getcourse.ru/pl/api/v1')
+GETCOURSE_API_TOKEN = os.environ.get('GETCOURSE_API_TOKEN', '')
+# Доп. поле пользователя «Тренажёр: последний результат» — его числовой id назван
+# владельцем 19.10; для другого аккаунта GetCourse поле имеет свой номер, поэтому
+# он и здесь настройка, а не константа в коде.
+GC_CUSTOM_FIELD_ID = os.environ.get('GC_CUSTOM_FIELD_ID', '22383558')

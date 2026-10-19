@@ -1,4 +1,11 @@
-"""Итог домашнего блока уходит в GetCourse Tech API (Шаг 6.2).
+"""Итог домашнего блока уходит в GetCourse Lesson API (Шаг 6.2, транспорт переключён 19.10).
+
+Контракт — `POST {GETCOURSE_API_URL}/user/update-custom-fields` с
+`Authorization: Bearer {GETCOURSE_API_TOKEN}` и телом
+`{"userId": <gc_uid>, "customFields": {"<GC_CUSTOM_FIELD_ID>": "<строка итога>"}}`:
+процент ложится на карточку ученика, которую методист и так видит. Связка через
+`lessonAnswerId` (статус ответа урока + комментарий) отвергнута владельцем: ученик
+решает в тренажёре и не обязан ради отчётности писать ответ в форму урока.
 
 Три правила, из которых растёт этот файл:
 
@@ -6,8 +13,8 @@
    преподавателя здесь нет и быть не может: в GetCourse живёт методист, а не разбор
    решения. Процент считается тем же `score_submission`, что и матрица тренера, —
    иначе витрина и выгрузка разойдутся на том самом `pending_review`.
-2. **Ключей нет — отправки нет, но журнал есть.** Пока `GC_ACCOUNT_NAME` и
-   `GC_SECRET_KEY` не заданы, строка в `LessonReport` заводится со статусом
+2. **Ключей нет — отправки нет, но журнал есть.** Пока `GETCOURSE_API_TOKEN` или
+   `GC_CUSTOM_FIELD_ID` не заданы, строка в `LessonReport` заводится со статусом
    «не отправлено»: урок сдаётся, методист потом видит, что именно платформа
    собиралась сообщить, а тренер не гадал бы, дошла ли она до выгрузки.
 3. **Одна строка на (урок, ученик, блок).** Повторный клик «Сдать» и повторная
@@ -17,8 +24,8 @@
 Падение сети уроком быть не может: ошибка ловится, считается попытку и ложится в
 `last_error`, а следующий триггер её повторит.
 """
-import json
 import logging
+import re
 
 from django.conf import settings
 from django.utils import timezone
@@ -31,11 +38,15 @@ logger = logging.getLogger(__name__)
 # Событие одно и то же на все отправки: менять строку — значит рассорить уже
 # написанные в GetCourse правила приёма.
 EVENT_TYPE = 'lesson.homework.completed'
+ENDPOINT = 'user/update-custom-fields'
+
+# GetCourse отдаёт id ученика и строкой, и в случайных кавычках ("'48123'").
+_DIGITS = re.compile(r'\d+')
 
 
 def is_configured():
-    """Есть ли чем слать. Нет аккаунта или секретного ключа — модуль no-op."""
-    return bool(settings.GC_ACCOUNT_NAME and settings.GC_SECRET_KEY)
+    """Есть ли чем слать. Нет токена или номера поля — модуль no-op."""
+    return bool(settings.GETCOURSE_API_TOKEN and settings.GC_CUSTOM_FIELD_ID)
 
 
 def external_key(submission):
@@ -57,6 +68,29 @@ def numbers_for(submission):
     }
 
 
+def field_value(numbers, assignment_id):
+    """Строка, которую методист читает в доп. поле карточки ученика.
+
+    `%g` снимает хвост `.0`: процент приходит из `score_submission` округлённый до
+    десятой, а «100.0%» методист прочитал бы как технический артефакт. Если баллов
+    в блоке не было вообще, знака процента после тире быть не должно: «—%» — это не
+    «ноль процентов», а «процента нет».
+    """
+    percent = numbers['percent']
+    shown = '—' if percent is None else '%g%%' % percent
+    return 'Процент: %s, Решено: %s из %s (Урок #%s)' % (
+        shown, numbers['correct'], numbers['total'], assignment_id)
+
+
+def user_id_of(gc_uid):
+    """Числовой id пользователя: `update-custom-fields` принимает только его."""
+    match = _DIGITS.search(str(gc_uid or ''))
+    if not match:
+        raise ValueError('gc_uid %r не содержит цифр: в GetCourse его не на что опознать'
+                         % gc_uid)
+    return int(match.group())
+
+
 def is_ready(submission):
     """Пора ли слать: домашка сдана, и финальный вердикт есть по каждой задаче.
 
@@ -75,41 +109,22 @@ def is_ready(submission):
     return submission.answers.exists()
 
 
-def build_event(submission, numbers):
-    return {
-        'type': EVENT_TYPE,
-        'gc_uid': submission.student.gc_uid,
-        'assignment_id': submission.assignment_id,
-        'block_id': submission.block_id,
-        'external_key': external_key(submission),
-        'percent': numbers['percent'],
-        'total': numbers['total'],
-        'correct': numbers['correct'],
-        'pending_review': numbers['pending_review'],
-        'occurred_at': (submission.last_submitted_at or submission.reviewed_at
-                        or timezone.now()).isoformat(),
-    }
+def _post(user_id, value):
+    """Один вызов к Lesson API. Возвращает (успех, что не так).
 
-
-def _post(event):
-    """Один вызов к Tech API. Возвращает (успех, что не так).
-
-    GetCourse отвечает `200` и на отказ, поэтому код — ещё не вердикт: смотрим
-    `success` в теле, если он там есть.
+    GetCourse отвечает `200` и на отказ, поэтому код — ещё не вердикт: движок Lesson
+    API кладёт отказ в конверт `{"status": false, "errors": [...]}`, и `status:false`
+    при `200` — это невыполненная запись, а не успех.
     """
-    url = settings.GC_TECH_URL
-    if not url:
-        return False, 'GC_TECH_URL не собран'
-    body = {
-        'secret_key': settings.GC_SECRET_KEY,
-        'method': settings.GC_TECH_METHOD,
-        'data': json.dumps(event, ensure_ascii=False),
-    }
-    if settings.GC_CUSTOM_FIELD_ID:
-        body['customFieldId'] = settings.GC_CUSTOM_FIELD_ID
+    base = (settings.GETCOURSE_API_URL or '').strip()
+    if not base:
+        return False, 'GETCOURSE_API_URL пуст: нужен https://<домен-курса>/pl/api/v1'
+    url = base.rstrip('/') + '/' + ENDPOINT
+    body = {'userId': user_id, 'customFields': {settings.GC_CUSTOM_FIELD_ID: value}}
     try:
         import requests
-        resp = requests.post(url, data=body, timeout=15)
+        resp = requests.post(url, json=body, timeout=15, headers={
+            'Authorization': 'Bearer %s' % settings.GETCOURSE_API_TOKEN})
     except Exception as exc:
         return False, '%s: %s' % (type(exc).__name__, exc)
     if not (200 <= resp.status_code < 300):
@@ -117,9 +132,10 @@ def _post(event):
     try:
         answer = resp.json()
     except ValueError:
-        return True, ''
-    if isinstance(answer, dict) and answer.get('success') is False:
-        return False, str(answer.get('errors') or answer)[:500]
+        # HTML вместо JSON — это обычно не тот домен или не тот ключ, а не успех.
+        return False, 'не-JSON ответ при HTTP %s: %s' % (resp.status_code, resp.text[:300])
+    if isinstance(answer, dict) and answer.get('status') is False:
+        return False, str(answer.get('errors') or answer.get('message') or answer)[:500]
     return True, ''
 
 
@@ -133,9 +149,10 @@ def report_submission(submission):
     if not is_ready(submission):
         return None
     numbers = numbers_for(submission)
-    event = build_event(submission, numbers)
+    value = field_value(numbers, submission.assignment_id)
     key = external_key(submission)
-    sent_numbers = {k: event[k] for k in ('percent', 'total', 'correct', 'pending_review')}
+    sent_numbers = {k: numbers[k] for k in ('percent', 'total', 'correct', 'pending_review')}
+    sent_numbers['text'] = value
 
     row, created = LessonReport.objects.get_or_create(
         external_key=key,
@@ -163,11 +180,16 @@ def report_submission(submission):
         return row
 
     try:
-        ok, error = _post(event)
-    except Exception as exc:
-        # сам вызов не обязан быть предсказуемым: падение сети или чужой код не
-        # имеют права отменить ученику сдачу или тренеру его вердикт
-        ok, error = False, '%s: %s' % (type(exc).__name__, exc)
+        user_id = user_id_of(submission.student.gc_uid)
+    except ValueError as exc:
+        ok, error = False, str(exc)
+    else:
+        try:
+            ok, error = _post(user_id, value)
+        except Exception as exc:
+            # сам вызов не обязан быть предсказуемым: падение сети или чужой код не
+            # имеют права отменить ученику сдачу или тренеру его вердикт
+            ok, error = False, '%s: %s' % (type(exc).__name__, exc)
     row.attempts += 1
     row.gc_uid = submission.student.gc_uid
     row.payload = sent_numbers
@@ -181,6 +203,6 @@ def report_submission(submission):
         row.sent_at = timezone.now()
     else:
         row.status = 'failed'
-        logger.warning('GetCourseTech API: %s — %s', key, error)
+        logger.warning('GetCourse Lesson API: %s — %s', key, error)
     row.save()
     return row
