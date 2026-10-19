@@ -41,6 +41,34 @@ function VerdictChip({ verdict }) {
   return <span style={chip(bg, color)}>{text}</span>
 }
 
+// Кнопка сдачи живёт и в шапке блока, и под его последней задачей: после десятой
+// задачи крутить весь экран обратно наверх ученик не обязан.
+function SubmitControls({ big, expired, busy, flushing, asking, onAsk, onCancel, onConfirm }) {
+  const disabled = expired || busy === -1 || flushing
+  return (
+    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+      <button className={big ? 'btn btn-primary' : 'btn btn-sm btn-primary'}
+              onClick={onAsk} disabled={disabled || asking}
+              style={{ borderRadius: 10, padding: big ? '10px 26px' : '4px 12px',
+                       fontSize: big ? 15 : undefined }}>
+        {flushing ? 'Сохраняю ответы…' : busy === -1 ? 'Сдаю…' : 'Сдать блок'}
+      </button>
+      {asking && (
+        <>
+          <button className="btn btn-sm btn-primary" onClick={onConfirm} disabled={disabled}
+                  style={{ borderRadius: 10, padding: '4px 12px' }}>
+            Подтвердить сдачу
+          </button>
+          <button className="btn btn-sm btn-outline" onClick={onCancel}
+                  style={{ borderRadius: 10, padding: '4px 12px' }}>
+            Отмена
+          </button>
+        </>
+      )}
+    </span>
+  )
+}
+
 // Экран открыт дежурным учеником (предпросмотр урока тренером): своя сессия лежит в
 // `localStorage` под отдельным ключом, и одной кнопкой человек возвращается назад —
 // иначе «посмотреть глазами ученика» означало бы потерять свой вход.
@@ -66,9 +94,14 @@ export default function MyAssignmentsPage() {
   const [items, setItems] = useState([])
   const [lesson, setLesson] = useState(null)
   const [drafts, setDrafts] = useState({})
+  // что реально лежит на сервере: по этому свершению поле считается «изменённым»,
+  // поэтому потеря связи с кнопкой «Сохранить ответ» не означает потерю ответа
+  const [baseline, setBaseline] = useState({})
+  const [ticks, setTicks] = useState({})
   const [answers, setAnswers] = useState({})
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(0)
+  const [flushing, setFlushing] = useState(false)
   // сдача необратима для ученика только ощущением, поэтому подтверждение живёт тут же,
   // а не в системном окне: нативный `confirm()` и человеку мешает, и автотест вешает
   const [askBlock, setAskBlock] = useState(0)
@@ -93,6 +126,8 @@ export default function MyAssignmentsPage() {
           byQ[a.question] = a
         }))
         setDrafts(saved)
+        setBaseline(saved)
+        setTicks({})
         setAnswers(byQ)
       })
       .catch(e => setNotice(errorText(e)))
@@ -111,26 +146,51 @@ export default function MyAssignmentsPage() {
     if (id) open(id)
   }, [])
 
-  const save = (block, q) => {
-    const raw = drafts[q.id] || ''
-    if (!raw.trim()) return
-    setBusy(q.id)
-    setNotice('')
-    myAssignmentsAPI.answer(lesson.id, { block: block.id, question: q.id, raw_answer: raw })
-      .then(res => setAnswers(a => ({ ...a, [q.id]: { ...a[q.id], ...res.data, question: q.id } })))
-      .catch(e => setNotice(errorText(e)))
-      .finally(() => setBusy(0))
+  // Черновик считается изменённым, только если он непустой и отличается от того,
+  // что уже легло на сервер: пустое поле сдавать нечем, а неизменённое — не о чем
+  // просить сервер дважды.
+  const dirtyFor = (id) => {
+    const raw = drafts[id] || ''
+    return raw.trim() !== '' && raw !== (baseline[id] || '')
   }
 
-  // сдача блока перепроверяет все сохранённые ответы заново, поэтому после неё
-  // берём урок целиком, а не чиним локальные статусы
-  const submit = (block) => {
-    setBusy(-1)
+  // `silent` — путь onBlur и сдачи: сохранение идёт тихо, без кнопки «Сохраняю…»,
+  // а ученик видит только «Сохранено ✓»
+  const save = (block, q, silent) => {
+    const raw = drafts[q.id] || ''
+    if (raw.trim() === '' || raw === (baseline[q.id] || '')) return Promise.resolve(false)
+    if (!silent) setBusy(q.id)
     setNotice('')
-    myAssignmentsAPI.submit(lesson.id, { block: block.id })
-      .then(() => open(lesson.id, `Блок «${block.label}» сдан.`))
-      .catch(e => setNotice(errorText(e)))
-      .finally(() => setBusy(0))
+    return myAssignmentsAPI.answer(lesson.id, { block: block.id, question: q.id, raw_answer: raw })
+      .then(res => {
+        setAnswers(prev => ({ ...prev, [q.id]: { ...prev[q.id], ...res.data, question: q.id } }))
+        setBaseline(prev => ({ ...prev, [q.id]: raw }))
+        setTicks(prev => ({ ...prev, [q.id]: true }))
+        return true
+      })
+      .catch(e => { setNotice(errorText(e)); return false })
+      .finally(() => { if (!silent) setBusy(0) })
+  }
+
+  // Сдача не имеет права терять введённое: сначала досохраняем каждое поле, которого
+  // сервер ещё не видел, и только на ответ сервера идём в `submit`.
+  const flushAndSubmit = (block) => {
+    setAskBlock(0)
+    setFlushing(true)
+    setNotice('')
+    const pending = block.questions.filter(q => dirtyFor(q.id)).map(q => save(block, q, true))
+    Promise.all(pending)
+      .then(results => {
+        setFlushing(false)
+        if (results.some(ok => ok === false)) return
+        setBusy(-1)
+        // сдача блока перепроверяет все сохранённые ответы заново, поэтому после неё
+        // берём урок целиком, а не чиним локальные статусы
+        return myAssignmentsAPI.submit(lesson.id, { block: block.id })
+          .then(() => open(lesson.id, `Блок «${block.label}» сдан.`))
+          .catch(e => setNotice(errorText(e)))
+      })
+      .finally(() => { setFlushing(false); setBusy(0) })
   }
 
   if (!lesson) {
@@ -218,24 +278,9 @@ export default function MyAssignmentsPage() {
                 </span>
               )}
               <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
-                <button className="btn btn-sm btn-primary" onClick={() => setAskBlock(b.id)}
-                        disabled={lesson.expired || busy === -1 || askBlock === b.id}
-                        style={{ borderRadius: 10, padding: '4px 12px' }}>
-                  {busy === -1 ? 'Сдаю…' : 'Сдать блок'}
-                </button>
-                {askBlock === b.id && (
-                  <>
-                    <button className="btn btn-sm btn-primary"
-                            onClick={() => { setAskBlock(0); submit(b) }}
-                            style={{ borderRadius: 10, padding: '4px 12px' }}>
-                      Подтвердить сдачу
-                    </button>
-                    <button className="btn btn-sm btn-outline" onClick={() => setAskBlock(0)}
-                            style={{ borderRadius: 10, padding: '4px 12px' }}>
-                      Отмена
-                    </button>
-                  </>
-                )}
+                <SubmitControls expired={lesson.expired} busy={busy} flushing={flushing}
+                                asking={askBlock === b.id} onAsk={() => setAskBlock(b.id)}
+                                onCancel={() => setAskBlock(0)} onConfirm={() => flushAndSubmit(b)} />
               </span>
             </div>
             {b.questions.map((q, i) => {
@@ -254,6 +299,7 @@ export default function MyAssignmentsPage() {
                   )}
                   <textarea value={drafts[q.id] || ''} disabled={lesson.expired}
                             onChange={e => setDrafts(d => ({ ...d, [q.id]: e.target.value }))}
+                            onBlur={() => { if (dirtyFor(q.id)) save(b, q, true) }}
                             placeholder="Решение и ответ — как в тетради" rows={3}
                             style={{ width: '100%', marginTop: 10, borderRadius: 10, padding: 10, fontSize: 13,
                                      border: '1px solid var(--border)', fontFamily: 'inherit', resize: 'vertical',
@@ -264,10 +310,11 @@ export default function MyAssignmentsPage() {
                             style={{ borderRadius: 10, padding: '4px 12px' }}>
                       {busy === q.id ? 'Сохраняю…' : 'Сохранить ответ'}
                     </button>
-                    {a && a.id && (
-                      <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                        {(a.feedback || {}).note}
-                      </span>
+                    {ticks[q.id] && !dirtyFor(q.id) && (
+                      <span style={chip('rgba(16,185,129,0.12)', '#065F46')}>Сохранено ✓</span>
+                    )}
+                    {dirtyFor(q.id) && (
+                      <span style={{ fontSize: 12, color: '#92400E' }}>Не сохранено — сохранится само при сдаче</span>
                     )}
                   </div>
                   {a && (a.feedback || {}).etalon && (
@@ -281,6 +328,13 @@ export default function MyAssignmentsPage() {
             })}
             {!b.questions.length && (
               <div style={{ padding: 20, fontSize: 13, color: 'var(--text-secondary)' }}>В блоке нет задач.</div>
+            )}
+            {b.questions.length > 0 && (
+              <div style={{ padding: '18px 20px', textAlign: 'center' }}>
+                <SubmitControls big expired={lesson.expired} busy={busy} flushing={flushing}
+                                asking={askBlock === b.id} onAsk={() => setAskBlock(b.id)}
+                                onCancel={() => setAskBlock(0)} onConfirm={() => flushAndSubmit(b)} />
+              </div>
             )}
           </div>
         )
