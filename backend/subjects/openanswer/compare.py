@@ -94,21 +94,62 @@ def _lhs_conflict(ev, sv):
     return not (a.startswith(b) or b.startswith(a))
 
 
-# Литера варианта. В тесте сверяется буква, а не формула: SymPy тут только портит
-# вердикт. Кириллица принимается как гомоглиф латиницы — ученик печатает с русской
-# раскладкой, глядя на напечатанные в книге латинские `A) … E)`.
+# Литера варианта. В тесте сверяется буква, а не формула: тестовый ответ
+# — это буква, и SymPy тут только портит вердикт. Кириллица принимается как
+# гомоглиф латиницы — ученик печатает с русской раскладкой, глядя на напечатанные
+# в книге латинские `A) … H)`.
 OPTION_LETTERS = {}
-for _opt, _chars in (('A', 'AaАа'), ('B', 'BbВвБб'), ('C', 'CcСс'), ('D', 'Dd'), ('E', 'EeЕе')):
+for _opt, _chars in (('A', 'AaАа'), ('B', 'BbВвБб'), ('C', 'CcСс'), ('D', 'Dd'),
+                     ('E', 'EeЕе'), ('F', 'Ff'), ('G', 'Gg'), ('H', 'HhНн')):
     for _ch in _chars:
         OPTION_LETTERS[_ch] = _opt
 
 OPTION_HEAD = re.compile(r'^\s*[(\[{]?([A-Za-zА-Яа-яЁё])')
 # `вариант C`, `ответ C`, `жауабы C` — литера после служебного слова
 OPTION_PREFIX = re.compile(r'^\s*(?:вариант|ответ|жауап\w*)\b[:.]?\s*', re.I)
+# между литерами одного ответа: `B, G`, `G B`, `B; G)`, `B) G)`
+OPTION_SPACER = re.compile(r'[\s,;./|()]+')
+# литера, оторванная от текста варианта скобкой, точкой или тире: `B) 12·10^16`
+OPTION_IN_TEXT = re.compile(r'(?:(?<=^)|(?<=[^\w]))([A-Za-zА-Яа-яЁё])\s*[.\-—–)\]:]')
+
+
+def _letters_only(s):
+    """`'B, g'` -> {'B','G'}, `'B2'` -> None: строка целиком из литер варианта."""
+    out = set()
+    for chunk in OPTION_SPACER.split(s):
+        if not chunk:
+            continue
+        for ch in chunk:
+            letter = OPTION_LETTERS.get(ch)
+            if letter is None:
+                return None
+            out.add(letter)
+    return out or None
+
+
+def option_letters(raw, allow_text=False):
+    """-> frozenset канонических литер `A`..`H` либо None.
+
+    Одна литера — это множество из одного элемента, поэтому одиночный ответ и
+    блок с несколькими правильными вариантами читаются одним разбором.
+    `allow_text=True` разрешает строку, где к литере приложен сам текст варианта
+    (`B) 12·10^16; G) 2 жыл`): для ответа ученика это норма, для эталона — нет.
+    """
+    s = OPTION_PREFIX.sub('', strip_wrappers(raw or '')).strip()
+    if not s:
+        return None
+    got = _letters_only(s)
+    if got is not None:
+        return frozenset(got)
+    if not allow_text:
+        return None
+    heads = [OPTION_LETTERS[m.group(1)] for m in OPTION_IN_TEXT.finditer(s)
+             if m.group(1) in OPTION_LETTERS]
+    return frozenset(heads) if heads else None
 
 
 def option_letter(raw, strict=False):
-    """-> 'A'..'E' либо None: литера варианта, вычитанная из строки целиком.
+    """-> 'A'..'H' либо None: одна литера варианта, вычитанная из строки целиком.
 
     Строка обязана начинаться с буквы варианта, оторванной от остального текстом или
     пунктуацией: `Сутек` — это слово, а не вариант `C`. `strict=True` требует, чтобы
@@ -131,25 +172,26 @@ def option_letter(raw, strict=False):
     return letter
 
 
-def _compare_option(etalon_letter, student_raw):
-    """Вердикт по литере: совпала — `correct`, другая из A..E — `incorrect`.
+def _compare_option(etalon_letters, student_raw):
+    """Вердикт по набору литер: совпал целиком — `correct`, другой набор — `incorrect`.
 
-    Третьего здесь нарочно нет: `pending_review` на прочитанную литеру означал бы,
-    что учитель сам разбирает строку, в которой буква уже стоит. Не прочитана —
-    вот тогда да, человеку.
+    Третьего здесь нарочно нет: `pending_review` на прочитанные литеры означал бы,
+    что учитель сам разбирает строку, в которой буквы уже стоят. Не прочитана —
+    вот тогда да, человеку. Частичного совпадения тоже нет: в блоке с несколькими
+    верными вариантами лишняя или пропущенная литера — это неверный ответ.
     """
-    got = option_letter(student_raw)
+    got = option_letters(student_raw, allow_text=True)
     if got is None:
         return {'verdict': 'pending_review', 'judged_by': None, 'matched': 0, 'total': 1,
                 'parts': [{'part': 'Вариант', 'status': 'undecided'}],
                 'why': 'литера варианта не прочитана из ответа'}
-    ok = got == etalon_letter
-    # ни своей, ни эталонной литеры в `why` нет: эта строка уходит ученику в `feedback`,
+    ok = got == etalon_letters
+    # ни своих, ни эталонных литер в `why` нет: эта строка уходит ученику в `feedback`,
     # а ключ теста он обязан увидеть только после вердикта человека
     return {'verdict': 'correct' if ok else 'incorrect', 'judged_by': 'level1',
             'matched': 1 if ok else 0, 'total': 1,
             'parts': [{'part': 'Вариант', 'status': 'matched' if ok else 'mismatched'}],
-            'why': 'литера варианта совпала' if ok else 'литера варианта не та'}
+            'why': 'литеры варианта совпали' if ok else 'литеры варианта не те'}
 
 
 def _alt_pair(ev, sv, strict_units=False):
@@ -186,16 +228,17 @@ def compare(etalon_raw, student_raw, strict_units=False, question_type=''):
                 'matched_total': 0, 'total': 0, 'parts': [],
                 'why': 'эталон не разобран'}
 
-    etalon_letter = option_letter(etalon_raw) if len(etalon) == 1 else None
-    if etalon_letter is not None:
-        # Для теста литера — единственный возможный ответ. В открытом ответе литера
-        # эталона сама по себе ничего не гарантирует: сверяем буквой только если эталон
-        # и есть одна буква, а ученик тоже написал букву; иначе остаётся обычная
-        # дорога чисел и формул.
+    etalon_letters = option_letters(etalon_raw, allow_text=True) if len(etalon) == 1 else None
+    if etalon_letters is not None:
+        # Для теста литера (или набор литер) — единственный возможный ответ. В открытом
+        # ответе литера эталона сама по себе ничего не гарантирует: сверяем буквой только
+        # если эталон и есть одна буква, а ученик тоже написал букву; иначе остаётся
+        # обычная дорога чисел и формул.
         if question_type == 'single_choice':
-            return _compare_option(etalon_letter, student_raw)
-        if option_letter(etalon_raw, strict=True) and option_letter(student_raw):
-            return _compare_option(etalon_letter, student_raw)
+            return _compare_option(etalon_letters, student_raw)
+        if len(etalon_letters) == 1 and option_letter(etalon_raw, strict=True) \
+                and option_letter(student_raw):
+            return _compare_option(etalon_letters, student_raw)
 
     text_items = [e for e in etalon if e['kind'] == 'text'] + \
                  [s for s in student if s['kind'] == 'text']

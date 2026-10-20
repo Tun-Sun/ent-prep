@@ -10,16 +10,16 @@
 from django.conf import settings
 from django.utils import timezone
 
-from .openanswer import option_letter, parts_hint, score_open_answer
+from .openanswer import option_letters, parts_hint, score_open_answer
 from .openanswer.normalize import normalize_answer
 
 
 def _normalized_repr(raw, question_type=''):
     """Что нормализатор вычленил из строки ученика — для карточки у тренера."""
     if question_type == 'single_choice':
-        letter = option_letter(raw)
-        if letter:
-            return 'Вариант ' + letter
+        letters = option_letters(raw, allow_text=True)
+        if letters:
+            return 'Вариант ' + ', '.join(sorted(letters))
     out = []
     for part in normalize_answer(raw or ''):
         if part['kind'] == 'number':

@@ -272,6 +272,88 @@ class SingleChoiceLetterTest(SimpleTestCase):
         self.assertEqual(score_open_answer(r'$B = 50$ Тл', r'$B = 50$ Тл')['verdict'], 'correct')
 
 
+class OptionAlphabetUpToHTest(SimpleTestCase):
+    """Блок ЕНТ с восемью вариантами: `F`, `G`, `H` читаются наравне с `A..E`.
+
+    Задачи №16–20 листа «Ядролық физика» напечатаны с вариантами `A..H`, где `H`
+    в скане стоит кириллической `Н`. Без этой литеры ученик физически не мог сдать
+    верный вариант — машина объявляла его ответ нечитаемым.
+    """
+
+    def test_the_last_three_letters_are_read_in_any_layout(self):
+        for etalon, forms in (
+                ('F', ('F', 'f', '(F)', 'F)', 'F) α-бөлшек', 'вариант f')),
+                ('G', ('G', 'g', 'g.', '(G)', 'G) 2 жыл')),
+                ('H', ('H', 'h', 'Н', 'н', 'Н)', '(Н)', 'Н) жалпы массаның 1/8 бөлігі қалады')),
+        ):
+            for student in forms:
+                with self.subTest(etalon=etalon, student=student):
+                    got = score_open_answer(etalon, student, question_type='single_choice')
+                    self.assertEqual(got['verdict'], 'correct', got['why'])
+                    self.assertEqual(got['judged_by'], 'level1')
+
+    def test_a_letter_past_E_is_a_real_zero_when_it_is_the_wrong_one(self):
+        for etalon, student in (('F', 'G'), ('H', 'н, g'), ('G', 'f'), ('H', 'B')):
+            with self.subTest(etalon=etalon, student=student):
+                got = score_open_answer(etalon, student, question_type='single_choice')
+                self.assertEqual(got['verdict'], 'incorrect', got['why'])
+
+
+class MultipleOptionLettersTest(SimpleTestCase):
+    """Многосоставный ключ: засчитывается ровно тот набор литер, что в эталоне.
+
+    В блоке №16–20 правильных ответов от одного до трёх. Порядок, регистр, раскладка
+    и слитный ввод вердикт менять не вправе, а лишняя или пропущенная литера — это
+    неверный ответ, а не «половина»: частичного балла в ЕНТ нет.
+    """
+
+    def test_the_same_set_of_letters_is_read_through_every_spelling(self):
+        for student in ('B, G', 'B,G', 'BG', 'G, B', 'G B', 'в, g', 'G. B.',
+                        'B) 12·10^16; G) 2 жыл', 'B) 12·10^16, G) 2 жыл',
+                        'вариант B, G', '(B) (G)'):
+            with self.subTest(student=student):
+                got = score_open_answer('B, G', student, question_type='single_choice')
+                self.assertEqual(got['verdict'], 'correct', got['why'])
+                self.assertEqual(got['judged_by'], 'level1')
+
+    def test_three_letters_written_solid_equal_three_letters_with_commas(self):
+        for student in ('BDH', 'B, D, H', 'н, b, d', 'H D B', 'B;D;H'):
+            with self.subTest(student=student):
+                self.assertEqual(score_open_answer('B, D, H', student,
+                                                   question_type='single_choice')['verdict'],
+                                 'correct')
+
+    def test_a_partial_or_extra_set_is_a_real_zero(self):
+        for etalon, student in (
+                ('B, G', 'B'), ('B, G', 'G'), ('B, G', 'B, G, H'),
+                ('B, D, H', 'B, D'), ('A, B, C', 'A, B, D'),
+                ('D, F, G', 'D, F, H')):
+            with self.subTest(etalon=etalon, student=student):
+                got = score_open_answer(etalon, student, question_type='single_choice')
+                self.assertEqual(got['verdict'], 'incorrect', got['why'])
+                self.assertEqual(got['judged_by'], 'level1')
+
+    def test_a_multi_letter_key_never_leaks_into_the_students_note(self):
+        got = score_open_answer('B, G', 'B', question_type='single_choice')
+        self.assertNotIn('G', got['why'])
+        self.assertNotIn('B', got['why'])
+
+    def test_an_unreadable_answer_under_a_multi_letter_key_calls_the_human(self):
+        for student in ('ядролық күштер', '12', '12·10^16'):
+            with self.subTest(student=student):
+                got = score_open_answer('B, G', student, question_type='single_choice')
+                self.assertEqual(got['verdict'], 'pending_review', got['why'])
+                self.assertIsNone(got['judged_by'])
+
+    def test_a_multi_letter_key_stays_a_key_and_not_a_formula(self):
+        """`B, G` — две литеры, а не два слагаемых: в CAS эта строка не идёт."""
+        got = score_open_answer('B, G', 'B, G', question_type='single_choice')
+        self.assertEqual(got['judged_by'], 'level1')
+        # набор литер читает только тест: одна верная литера из двух — неверный ответ
+        self.assertEqual(score_open_answer('B, G', 'B', question_type='single_choice')['verdict'],
+                         'incorrect')
+
+
 class BookTypographyStillParsesTest(SimpleTestCase):
     """П.3: три книжные записи, на которых парсер спотыкался сам о себя.
 

@@ -1122,6 +1122,30 @@ class LessonResultsTest(TestCase):
         self.assertEqual(r.data['verdict'], 'pending_review')
         self.assertEqual(r.data['judged_by'], '')
 
+    def test_a_multi_answer_task_is_graded_by_the_whole_set_of_letters(self):
+        """Блок ЕНТ №16–20: восемь вариантов, верных от одного до трёх.
+
+        Ключ — набор литер. Ученик, назвавший половину набора, получает ноль, а не
+        «проверьте глазами»: литера прочитана, спорить машине не о чем.
+        """
+        q = self.task(self.topic, 'Күміс атомының құрамы', answer='D, F, G',
+                      points=1, qtype='single_choice')
+        self.homework.question_ids = list(self.homework.question_ids) + [q.pk]
+        self.homework.save()
+        c = self._auth(self.student)
+
+        for raw in ('D, F, G', 'GDF', 'd f g', 'g, D, f', 'G, D, F',
+                    'D) 47 протон; F) 61 нейтрон; G) 47 электрон'):
+            r = self._answer(c, self.homework, q, raw)
+            self.assertEqual(r.data['verdict'], 'correct', raw)
+        self.assertEqual(AssignmentAnswer.objects.get(question=q).normalized_answer,
+                         'Вариант D, F, G')
+
+        for raw in ('D, F', 'D, F, G, H', 'D'):
+            r = self._answer(c, self.homework, q, raw)
+            self.assertEqual(r.data['verdict'], 'incorrect', raw)
+            self.assertEqual(r.data['judged_by'], 'level1', raw)
+
     def test_in_class_block_saves_the_answer_and_checks_nothing(self):
         """`in_class` и `advanced` решают вместе на уроке: автопроверки там нет, и
         ложного `pending_review` на каждую такую задачу очередь не забивается —
