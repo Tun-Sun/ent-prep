@@ -1087,6 +1087,28 @@ class LessonResultsTest(TestCase):
         # разбор открыт, а ключ книги по-прежнему ждёт вердикта человека
         self.assertEqual(mine['blocks'][0]['answers'][0]['feedback']['etalon'], '')
 
+    def test_the_block_state_tells_the_screen_which_block_is_closed(self):
+        """Экран закрывает сданный блок по состоянию сдачи, а не по догадке.
+
+        `progress` появляется уже после первого сохранённого ответа и «решаю» от
+        «сдал» не отличает: без `state` ребёнок видел бы четыре одинаковые кнопки
+        «Сдать блок», три из которых он уже нажимал.
+        """
+        c = self._auth(self.student)
+        mine = c.get(f'/api/my/assignments/{self.lesson.pk}/').data
+        self.assertEqual({b['kind']: b['state'] for b in mine['blocks']},
+                         {'homework': '', 'in_class': ''})
+
+        self._answer(c, self.homework, self.with_answer, '18 см')
+        mine = c.get(f'/api/my/assignments/{self.lesson.pk}/').data
+        self.assertEqual([b['state'] for b in mine['blocks'] if b['kind'] == 'homework'],
+                         ['in_progress'])
+
+        self._submit(c, self.homework)
+        mine = c.get(f'/api/my/assignments/{self.lesson.pk}/').data
+        self.assertEqual([b['state'] for b in mine['blocks'] if b['kind'] == 'homework'],
+                         ['submitted'])
+
     def test_a_single_choice_task_is_graded_by_the_option_letter(self):
         """Тест: сверяется литера, а не SymPy.
 

@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { myAssignmentsAPI } from '../../api'
 import FormattedText from '../../components/FormattedText'
 import { leaveDemoSession, savedReturnSession } from '../auth/lessonPreview'
-import { ClipboardList, ArrowLeft, Inbox } from 'lucide-react'
+import { ClipboardList, ArrowLeft, Inbox, Check, ChevronLeft, ChevronRight, Lock } from 'lucide-react'
 
 // Что видит ученик по своей задаче. `pending_review` — это «ещё не проверено», и
 // экран обязан называть это словом, а не нулём: ложного нуля ученик не отличит от
@@ -16,11 +16,19 @@ const VERDICT = {
 }
 const LEVELS = { easy: 'лёгкий', medium: 'средний', hard: 'сложный' }
 
+// Сданный блок для ученика закрыт: экран не даёт ни править, ни сдавать его заново.
+const SENT_STATES = ['submitted', 'reviewed']
+const isSent = (b) => SENT_STATES.includes(b.state)
+
 // «3 балла», «21 балл», «12 баллов» — экран ученика читает человек, а не машина
-const points = (n) => {
+const plural = (n, one, few, many) => {
   const t = n % 10, h = n % 100
-  return `${n} ${t === 1 && h !== 11 ? 'балл' : [2, 3, 4].includes(t) && ![12, 13, 14].includes(h) ? 'балла' : 'баллов'}`
+  if (t === 1 && h !== 11) return `${n} ${one}`
+  if ([2, 3, 4].includes(t) && ![12, 13, 14].includes(h)) return `${n} ${few}`
+  return `${n} ${many}`
 }
+const points = (n) => plural(n, 'балл', 'балла', 'баллов')
+const tasks = (n) => plural(n, 'задача', 'задачи', 'задач')
 
 const chip = (bg, color) => ({
   padding: '2px 8px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: bg, color,
@@ -39,34 +47,6 @@ const fmtDate = (v) => (v ? String(v).slice(0, 16).replace('T', ' ') : '')
 function VerdictChip({ verdict }) {
   const [text, bg, color] = VERDICT[verdict] || VERDICT.pending_review
   return <span style={chip(bg, color)}>{text}</span>
-}
-
-// Кнопка сдачи живёт и в шапке блока, и под его последней задачей: после десятой
-// задачи крутить весь экран обратно наверх ученик не обязан.
-function SubmitControls({ big, expired, busy, flushing, asking, onAsk, onCancel, onConfirm }) {
-  const disabled = expired || busy === -1 || flushing
-  return (
-    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-      <button className={big ? 'btn btn-primary' : 'btn btn-sm btn-primary'}
-              onClick={onAsk} disabled={disabled || asking}
-              style={{ borderRadius: 10, padding: big ? '10px 26px' : '4px 12px',
-                       fontSize: big ? 15 : undefined }}>
-        {flushing ? 'Сохраняю ответы…' : busy === -1 ? 'Сдаю…' : 'Сдать блок'}
-      </button>
-      {asking && (
-        <>
-          <button className="btn btn-sm btn-primary" onClick={onConfirm} disabled={disabled}
-                  style={{ borderRadius: 10, padding: '4px 12px' }}>
-            Подтвердить сдачу
-          </button>
-          <button className="btn btn-sm btn-outline" onClick={onCancel}
-                  style={{ borderRadius: 10, padding: '4px 12px' }}>
-            Отмена
-          </button>
-        </>
-      )}
-    </span>
-  )
 }
 
 // Экран открыт дежурным учеником (предпросмотр урока тренером): своя сессия лежит в
@@ -90,9 +70,57 @@ function DemoBanner() {
   )
 }
 
+// Навигация по шагам: ребёнок видит один блок за раз и всегда знает, сколько блоков
+// уже сдано. Сданный блок отмечается зелёной галочкой и остаётся доступным только
+// для чтения — нажимать «Сдать» повторно там уже нечего.
+function BlockTabs({ blocks, activeId, onPick }) {
+  const done = blocks.filter(isSent).length
+  const position = Math.max(1, blocks.findIndex(b => b.id === activeId) + 1)
+  return (
+    <div className="card" style={{ padding: 12, marginBottom: 16 }}>
+      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
+        Шаг {position} из {blocks.length} · сдано {done} из {blocks.length}
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {blocks.map((b, i) => {
+          const sent = isSent(b)
+          const current = b.id === activeId
+          return (
+            <button key={b.id} onClick={() => onPick(b.id)}
+                    style={{
+                      flex: '1 1 170px', display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '10px 12px', borderRadius: 12, fontSize: 14, fontWeight: 600,
+                      cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+                      border: '1px solid ' + (sent ? 'rgba(16,185,129,0.5)'
+                               : current ? 'var(--primary)' : 'var(--border)'),
+                      background: sent ? 'rgba(16,185,129,0.10)'
+                                : current ? 'rgba(99,102,241,0.10)' : '#fff',
+                      color: sent ? '#065F46' : current ? 'var(--primary)' : 'var(--text-secondary)',
+                    }}>
+              {sent
+                ? <Check size={16} strokeWidth={2.5} />
+                : <span style={{
+                    width: 20, height: 20, borderRadius: 20, fontSize: 12, fontWeight: 700,
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    background: current ? 'var(--primary)' : 'rgba(107,114,128,0.12)',
+                    color: current ? '#fff' : 'var(--text-secondary)',
+                  }}>{i + 1}</span>}
+              <span>{b.label}</span>
+              <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 500 }}>
+                {sent ? 'сдано' : tasks(b.tasks)}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export default function MyAssignmentsPage() {
   const [items, setItems] = useState([])
   const [lesson, setLesson] = useState(null)
+  const [activeId, setActiveId] = useState(0)
   const [drafts, setDrafts] = useState({})
   // что реально лежит на сервере: по этому свершению поле считается «изменённым»,
   // поэтому потеря связи с кнопкой «Сохранить ответ» не означает потерю ответа
@@ -109,7 +137,16 @@ export default function MyAssignmentsPage() {
   const [sent, setSent] = useState('')
   const [params] = useSearchParams()
 
-  const open = (id, sentMsg = '') => {
+  // После сдачи ребёнок не обязан сам искать, куда идти дальше: экран сам переходит
+  // к первому несданному блоку, а когда сдано всё — остаётся на месте и смотрит итог.
+  const nextOpen = (blocks, justSent) => {
+    const i = blocks.findIndex(b => b.id === justSent)
+    const ahead = blocks.slice(i + 1).concat(blocks.slice(0, Math.max(i, 0)))
+    const open = ahead.find(b => !isSent(b))
+    return open ? open.id : (blocks[i] || blocks[0] || {}).id || 0
+  }
+
+  const open = (id, sentMsg = '', keepActive = 0) => {
     setLoading(true)
     setNotice('')
     setAskBlock(0)
@@ -117,11 +154,14 @@ export default function MyAssignmentsPage() {
       .then(res => {
         setLesson(res.data)
         setSent(sentMsg)
+        const blocks = res.data.blocks
+        const wanted = keepActive || (blocks.find(b => !isSent(b)) || blocks[0] || {}).id || 0
+        setActiveId(wanted)
         // черновик поля = то, что уже сохранено: правка прежнего ответа не должна
         // выглядеть как пустая строка
         const saved = {}
         const byQ = {}
-        res.data.blocks.forEach(b => b.answers.forEach(a => {
+        blocks.forEach(b => b.answers.forEach(a => {
           saved[a.question] = a.raw_answer
           byQ[a.question] = a
         }))
@@ -187,7 +227,7 @@ export default function MyAssignmentsPage() {
         // сдача блока перепроверяет все сохранённые ответы заново, поэтому после неё
         // берём урок целиком, а не чиним локальные статусы
         return myAssignmentsAPI.submit(lesson.id, { block: block.id })
-          .then(() => open(lesson.id, `Блок «${block.label}» сдан.`))
+          .then(() => open(lesson.id, `Блок «${block.label}» сдан.`, nextOpen(lesson.blocks, block.id)))
           .catch(e => setNotice(errorText(e)))
       })
       .finally(() => { setFlushing(false); setBusy(0) })
@@ -242,6 +282,14 @@ export default function MyAssignmentsPage() {
     )
   }
 
+  const blocks = lesson.blocks
+  const block = blocks.find(b => b.id === activeId) || blocks[0]
+  const index = blocks.findIndex(b => b.id === block.id)
+  const prev = index > 0 ? blocks[index - 1] : null
+  const next = index >= 0 && index < blocks.length - 1 ? blocks[index + 1] : null
+  const locked = lesson.expired || isSent(block)
+  const p = block.progress
+
   return (
     <div>
       <DemoBanner />
@@ -260,30 +308,70 @@ export default function MyAssignmentsPage() {
       {sent && !notice && <div style={{ marginBottom: 14 }}><span style={chip('rgba(16,185,129,0.12)', '#065F46')}>{sent}</span></div>}
       {loading ? (
         <div className="text-center py-4"><div className="spinner"></div></div>
-      ) : lesson.blocks.map(b => {
-        const p = b.progress
-        return (
-          <div key={b.id} className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 20 }}>
+      ) : (
+        <>
+          <BlockTabs blocks={blocks} activeId={block.id} onPick={setActiveId} />
+
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
             <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', display: 'flex',
-                          gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-              <b style={{ fontSize: 14 }}>{b.label}</b>
+                          gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <b style={{ fontSize: 17 }}>{block.label} · {tasks(block.tasks)}</b>
               <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                {b.tasks} задач · {b.autocheck ? 'проверяет машина' : 'зачитывает преподаватель'}
+                {block.autocheck ? 'проверяет машина сразу' : 'зачитывает преподаватель'}
               </span>
-              {p && (
-                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                  · решено {p.checked} из {p.total}
-                  {p.percent !== null ? ` · ${p.percent} %` : ''}
-                  {p.pending ? ` · на проверке ${p.pending}` : ''}
-                </span>
-              )}
-              <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
-                <SubmitControls expired={lesson.expired} busy={busy} flushing={flushing}
-                                asking={askBlock === b.id} onAsk={() => setAskBlock(b.id)}
-                                onCancel={() => setAskBlock(0)} onConfirm={() => flushAndSubmit(b)} />
+              <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center',
+                             flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                {p && p.total ? (
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                    решено {p.checked} из {p.total}
+                    {p.percent !== null ? ` · ${p.percent} %` : ''}
+                    {p.pending ? ` · на проверке ${p.pending}` : ''}
+                  </span>
+                ) : null}
+                {isSent(block) ? (
+                  <span style={{ ...chip('rgba(16,185,129,0.14)', '#065F46'), fontSize: 13,
+                                padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <Check size={15} strokeWidth={2.5} /> Блок сдан
+                  </span>
+                ) : askBlock === block.id ? (
+                  <>
+                    <span style={{ fontSize: 13 }}>Ответы будут отправлены. Сдаём?</span>
+                    <button className="btn btn-primary" onClick={() => flushAndSubmit(block)}
+                            disabled={flushing || busy === -1}
+                            style={{ borderRadius: 10, padding: '10px 20px', fontSize: 15 }}>
+                      {flushing ? 'Сохраняю ответы…' : busy === -1 ? 'Сдаю…' : 'Да, сдать'}
+                    </button>
+                    <button className="btn btn-outline" onClick={() => setAskBlock(0)}
+                            style={{ borderRadius: 10, padding: '10px 18px', fontSize: 15 }}>
+                      Отмена
+                    </button>
+                  </>
+                ) : (
+                  <button className="btn btn-primary" onClick={() => setAskBlock(block.id)}
+                          disabled={lesson.expired || flushing || busy === -1}
+                          style={{ borderRadius: 12, padding: '12px 30px', fontSize: 16 }}>
+                    {flushing ? 'Сохраняю ответы…' : busy === -1 ? 'Сдаю…' : 'Сдать блок'}
+                  </button>
+                )}
               </span>
             </div>
-            {b.questions.map((q, i) => {
+
+            {lesson.expired && !isSent(block) && (
+              <div style={{ padding: '10px 20px', fontSize: 13, color: '#991B1B',
+                            background: 'rgba(239,68,68,0.06)', borderBottom: '1px solid var(--border)' }}>
+                Срок сдачи вышел: блок закрыт, ответы больше не принимаются.
+              </div>
+            )}
+            {isSent(block) && (
+              <div style={{ padding: '10px 20px', fontSize: 13, color: '#065F46',
+                            background: 'rgba(16,185,129,0.07)', borderBottom: '1px solid var(--border)',
+                            display: 'flex', gap: 8, alignItems: 'center' }}>
+                <Lock size={14} strokeWidth={2} /> Блок сдан — он закрыт для правки. Ниже ваши ответы,
+                вердикты{block.autocheck ? ', правильный ответ и разбор' : ' преподавателя'}.
+              </div>
+            )}
+
+            {block.questions.map((q, i) => {
               const a = answers[q.id]
               return (
                 <div key={q.id} style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
@@ -297,26 +385,28 @@ export default function MyAssignmentsPage() {
                   {q.image && (
                     <img src={q.image} alt="" style={{ marginTop: 8, maxWidth: '100%', maxHeight: 260, borderRadius: 8 }} />
                   )}
-                  <textarea value={drafts[q.id] || ''} disabled={lesson.expired}
+                  <textarea value={drafts[q.id] || ''} disabled={locked}
                             onChange={e => setDrafts(d => ({ ...d, [q.id]: e.target.value }))}
-                            onBlur={() => { if (dirtyFor(q.id)) save(b, q, true) }}
+                            onBlur={() => { if (!locked && dirtyFor(q.id)) save(block, q, true) }}
                             placeholder="Решение и ответ — как в тетради" rows={3}
                             style={{ width: '100%', marginTop: 10, borderRadius: 10, padding: 10, fontSize: 13,
                                      border: '1px solid var(--border)', fontFamily: 'inherit', resize: 'vertical',
-                                     background: lesson.expired ? 'rgba(107,114,128,0.06)' : '#fff' }} />
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
-                    <button className="btn btn-sm btn-outline" onClick={() => save(b, q)}
-                            disabled={lesson.expired || !(drafts[q.id] || '').trim() || busy === q.id}
-                            style={{ borderRadius: 10, padding: '4px 12px' }}>
-                      {busy === q.id ? 'Сохраняю…' : 'Сохранить ответ'}
-                    </button>
-                    {ticks[q.id] && !dirtyFor(q.id) && (
-                      <span style={chip('rgba(16,185,129,0.12)', '#065F46')}>Сохранено ✓</span>
-                    )}
-                    {dirtyFor(q.id) && (
-                      <span style={{ fontSize: 12, color: '#92400E' }}>Не сохранено — сохранится само при сдаче</span>
-                    )}
-                  </div>
+                                     background: locked ? 'rgba(107,114,128,0.06)' : '#fff' }} />
+                  {!locked && (
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+                      <button className="btn btn-sm btn-outline" onClick={() => save(block, q)}
+                              disabled={!(drafts[q.id] || '').trim() || busy === q.id}
+                              style={{ borderRadius: 10, padding: '4px 12px' }}>
+                        {busy === q.id ? 'Сохраняю…' : 'Сохранить ответ'}
+                      </button>
+                      {ticks[q.id] && !dirtyFor(q.id) && (
+                        <span style={chip('rgba(16,185,129,0.12)', '#065F46')}>Сохранено ✓</span>
+                      )}
+                      {dirtyFor(q.id) && (
+                        <span style={{ fontSize: 12, color: '#92400E' }}>Не сохранено — сохранится само при сдаче</span>
+                      )}
+                    </div>
+                  )}
                   {a && (a.feedback || {}).etalon && (
                     <div style={{ marginTop: 8, fontSize: 13 }}>
                       <b style={{ fontSize: 11, color: 'var(--text-secondary)' }}>ПРАВИЛЬНЫЙ ОТВЕТ · </b>
@@ -340,19 +430,27 @@ export default function MyAssignmentsPage() {
                 </div>
               )
             })}
-            {!b.questions.length && (
+            {!block.questions.length && (
               <div style={{ padding: 20, fontSize: 13, color: 'var(--text-secondary)' }}>В блоке нет задач.</div>
             )}
-            {b.questions.length > 0 && (
-              <div style={{ padding: '18px 20px', textAlign: 'center' }}>
-                <SubmitControls big expired={lesson.expired} busy={busy} flushing={flushing}
-                                asking={askBlock === b.id} onAsk={() => setAskBlock(b.id)}
-                                onCancel={() => setAskBlock(0)} onConfirm={() => flushAndSubmit(b)} />
-              </div>
-            )}
+
+            <div style={{ padding: '14px 20px', display: 'flex', gap: 10, justifyContent: 'space-between' }}>
+              <button className="btn btn-sm btn-outline" onClick={() => setActiveId(prev.id)} disabled={!prev}
+                      style={{ borderRadius: 10, padding: '8px 14px' }}>
+                <ChevronLeft size={14} strokeWidth={2} style={{ verticalAlign: -2 }} />
+                {prev ? prev.label : ''}
+              </button>
+              {next ? (
+                <button className="btn btn-sm btn-primary" onClick={() => setActiveId(next.id)}
+                        style={{ borderRadius: 10, padding: '8px 14px' }}>
+                  {next.label}
+                  <ChevronRight size={14} strokeWidth={2} style={{ verticalAlign: -2 }} />
+                </button>
+              ) : <span />}
+            </div>
           </div>
-        )
-      })}
+        </>
+      )}
     </div>
   )
 }

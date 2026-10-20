@@ -519,11 +519,23 @@ class StudentQuestionSerializer(serializers.ModelSerializer):
 class MyAssignmentBlockSerializer(AssignmentBlockQuestionsSerializer):
     """Один блок глазами ученика: задачи, его ответы по ним и итог сдачи."""
     expired = serializers.BooleanField(source='assignment.is_expired', read_only=True)
+    state = serializers.SerializerMethodField()
     answers = serializers.SerializerMethodField()
     progress = serializers.SerializerMethodField()
 
     class Meta(AssignmentBlockQuestionsSerializer.Meta):
-        fields = AssignmentBlockQuestionsSerializer.Meta.fields + ('expired', 'answers', 'progress')
+        fields = AssignmentBlockQuestionsSerializer.Meta.fields + ('expired', 'state',
+                                                                   'answers', 'progress')
+
+    def get_state(self, obj):
+        """`in_progress` / `submitted` / `reviewed` или пусто, если сдачи ещё нет.
+
+        Экран ученика обязан различать «решаю» и «сдал»: без этого состояния блок
+        нельзя ни закрыть для правки, ни отметить галочкой, и ребёнок видит четыре
+        одинаковые кнопки «Сдать» там, где три из них уже нажатые.
+        """
+        submission = self.context.get('submissions', {}).get(obj.pk)
+        return submission.state if submission is not None else ''
 
     def get_questions(self, obj):
         submission = self.context.get('submissions', {}).get(obj.pk)
