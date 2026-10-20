@@ -501,10 +501,19 @@ class StudentQuestionSerializer(serializers.ModelSerializer):
     книги: правило «эталон показываем только после вердикта человека» обходилось
     одним открытым DevTools. Внутренности приёмки (`provenance`, `uncertain`,
     `verification_status`) ученику тоже нечего делать в ответе.
+
+    Разбор (`solution_latex`) приезжает отдельно и только после сдачи блока: до
+    `submitted`/`reviewed` поле приходит пустым, чтобы ключ не лежал в JSON, который
+    ученик открывает в DevTools.
     """
+    solution_latex = serializers.SerializerMethodField()
+
     class Meta:
         model = Question
-        fields = ('id', 'text', 'latex', 'image', 'difficulty', 'points')
+        fields = ('id', 'text', 'latex', 'image', 'difficulty', 'points', 'solution_latex')
+
+    def get_solution_latex(self, obj):
+        return obj.solution_latex if self.context.get('solution_open') else ''
 
 
 class MyAssignmentBlockSerializer(AssignmentBlockQuestionsSerializer):
@@ -517,7 +526,12 @@ class MyAssignmentBlockSerializer(AssignmentBlockQuestionsSerializer):
         fields = AssignmentBlockQuestionsSerializer.Meta.fields + ('expired', 'answers', 'progress')
 
     def get_questions(self, obj):
-        return StudentQuestionSerializer(obj.questions, many=True).data
+        submission = self.context.get('submissions', {}).get(obj.pk)
+        return StudentQuestionSerializer(
+            obj.questions, many=True,
+            context={'solution_open': submission is not None
+                     and submission.state in ('submitted', 'reviewed')},
+        ).data
 
     def get_answers(self, obj):
         submission = self.context.get('submissions', {}).get(obj.pk)

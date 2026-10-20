@@ -10,12 +10,16 @@
 from django.conf import settings
 from django.utils import timezone
 
-from .openanswer import parts_hint, score_open_answer
+from .openanswer import option_letter, parts_hint, score_open_answer
 from .openanswer.normalize import normalize_answer
 
 
-def _normalized_repr(raw):
+def _normalized_repr(raw, question_type=''):
     """Что нормализатор вычленил из строки ученика — для карточки у тренера."""
+    if question_type == 'single_choice':
+        letter = option_letter(raw)
+        if letter:
+            return 'Вариант ' + letter
     out = []
     for part in normalize_answer(raw or ''):
         if part['kind'] == 'number':
@@ -32,10 +36,13 @@ def grade_assignment_answer(answer):
 
     Эталон — только `Question.latex_answer` (то, что напечатано и принято приёмкой).
     Задача без напечатанного ответа сверки не имеет: она уходит преподавателю
-    с пустым `judged_by`, и ни одного балла машина ей не начисляет.
+    с пустым `judged_by`, и ни одного балла машина ей не начисляет. Тест
+    (`single_choice`) сверяется по литере варианта и не идёт в SymPy: буква — это
+    Level 1, а формула из букв варианта только породила бы ложный зачёт.
     """
     etalon = (answer.question.latex_answer or '').strip()
-    answer.normalized_answer = _normalized_repr(answer.raw_answer)
+    answer.normalized_answer = _normalized_repr(answer.raw_answer,
+                                                answer.question.question_type)
     if not etalon:
         answer.verdict = 'pending_review'
         answer.judged_by = ''
@@ -44,7 +51,8 @@ def grade_assignment_answer(answer):
                                    'verdict_note', 'updated_at'])
         return answer
     res = score_open_answer(etalon, answer.raw_answer,
-                            strict_units=settings.OPEN_ANSWER_STRICT_UNITS)
+                            strict_units=settings.OPEN_ANSWER_STRICT_UNITS,
+                            question_type=answer.question.question_type)
     answer.verdict = res['verdict']
     answer.judged_by = res['judged_by'] or ''
     answer.verdict_note = res['why']

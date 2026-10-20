@@ -8,6 +8,7 @@
 import re
 
 from . import cas
+from .cas import CYR_VAR
 from .normalize import split_items, strip_wrappers, to_value, tail_after_eq, greek_to_latin
 
 # Политика округления, утверждённая тренером 14.10: 0,5 % от значения.
@@ -65,6 +66,92 @@ def _expr_equal(ev, sv):
     return (False, 'cas') if decided else (None, None)
 
 
+# Имя величины слева от `=`: `v_A = 2` и `v_B = 2` — разные ответы, хотя число справа
+# одно и то же. Берём первое имя: в `s = 2\pi R = 2575 км` всё после `s` — это разбор.
+LHS_NAME = re.compile(r'[A-Za-zа-яё]+(?:[_{]\s*[A-Za-zа-яё0-9]+)?')
+
+
+def _lhs_name(part):
+    lhs = (part.get('lhs') or '').strip()
+    if not lhs:
+        return ''
+    m = LHS_NAME.search(strip_wrappers(lhs))
+    if not m:
+        return ''
+    name = m.group(0).replace('{', '').replace('}', '').lower()
+    return ''.join(CYR_VAR.get(ch, ch) for ch in name)
+
+
+def _lhs_conflict(ev, sv):
+    r"""Ученик назвал другую величину — сверять нечего, и это не «совпало».
+
+    Сокращение прощаем (`F_{н}` против `F`), совпадение с пустым именем ученика
+    тоже: `2575 км` без `s =` остаётся ответом на `s = 2\pi R = 2575 км`.
+    """
+    a, b = _lhs_name(ev), _lhs_name(sv)
+    if not a or not b or a == b:
+        return False
+    return not (a.startswith(b) or b.startswith(a))
+
+
+# Литера варианта. В тесте сверяется буква, а не формула: SymPy тут только портит
+# вердикт. Кириллица принимается как гомоглиф латиницы — ученик печатает с русской
+# раскладкой, глядя на напечатанные в книге латинские `A) … E)`.
+OPTION_LETTERS = {}
+for _opt, _chars in (('A', 'AaАа'), ('B', 'BbВвБб'), ('C', 'CcСс'), ('D', 'Dd'), ('E', 'EeЕе')):
+    for _ch in _chars:
+        OPTION_LETTERS[_ch] = _opt
+
+OPTION_HEAD = re.compile(r'^\s*[(\[{]?([A-Za-zА-Яа-яЁё])')
+# `вариант C`, `ответ C`, `жауабы C` — литера после служебного слова
+OPTION_PREFIX = re.compile(r'^\s*(?:вариант|ответ|жауап\w*)\b[:.]?\s*', re.I)
+
+
+def option_letter(raw, strict=False):
+    """-> 'A'..'E' либо None: литера варианта, вычитанная из строки целиком.
+
+    Строка обязана начинаться с буквы варианта, оторванной от остального текстом или
+    пунктуацией: `Сутек` — это слово, а не вариант `C`. `strict=True` требует, чтобы
+    после литеры не осталось ничего, кроме знаков препинания: эталон открытого ответа
+    `$E \\approx 400$ В` — это формула, и сверять её буквой нельзя.
+    """
+    s = OPTION_PREFIX.sub('', strip_wrappers(raw or ''))
+    m = OPTION_HEAD.match(s)
+    if not m:
+        return None
+    letter = OPTION_LETTERS.get(m.group(1))
+    if letter is None:
+        return None
+    rest = s[m.end():]
+    if strict:
+        return None if rest.strip(' \t.,:;)(][—–-') else letter
+    rest = rest.lstrip(' \t')
+    if rest and rest[0].isalpha():
+        return None
+    return letter
+
+
+def _compare_option(etalon_letter, student_raw):
+    """Вердикт по литере: совпала — `correct`, другая из A..E — `incorrect`.
+
+    Третьего здесь нарочно нет: `pending_review` на прочитанную литеру означал бы,
+    что учитель сам разбирает строку, в которой буква уже стоит. Не прочитана —
+    вот тогда да, человеку.
+    """
+    got = option_letter(student_raw)
+    if got is None:
+        return {'verdict': 'pending_review', 'judged_by': None, 'matched': 0, 'total': 1,
+                'parts': [{'part': 'Вариант', 'status': 'undecided'}],
+                'why': 'литера варианта не прочитана из ответа'}
+    ok = got == etalon_letter
+    # ни своей, ни эталонной литеры в `why` нет: эта строка уходит ученику в `feedback`,
+    # а ключ теста он обязан увидеть только после вердикта человека
+    return {'verdict': 'correct' if ok else 'incorrect', 'judged_by': 'level1',
+            'matched': 1 if ok else 0, 'total': 1,
+            'parts': [{'part': 'Вариант', 'status': 'matched' if ok else 'mismatched'}],
+            'why': 'литера варианта совпала' if ok else 'литера варианта не та'}
+
+
 def _alt_pair(ev, sv, strict_units=False):
     """Запасной путь для `формула ~ число`: сверяем то, что под `~`, если сама формула не решилась."""
     a, b = ev.get('alt'), sv.get('alt')
@@ -79,8 +166,12 @@ def _alt_pair(ev, sv, strict_units=False):
     return eq
 
 
-def compare(etalon_raw, student_raw, strict_units=False):
-    """-> {'verdict', 'judged_by', 'matched', 'total', 'parts', 'why'}."""
+def compare(etalon_raw, student_raw, strict_units=False, question_type=''):
+    """-> {'verdict', 'judged_by', 'matched', 'total', 'parts', 'why'}.
+
+    `question_type='single_choice'` ведёт проверку по литере варианта: тестовый ответ
+    — это буква, и числа из вариантов в формулу превращать нельзя.
+    """
     student = [to_value(it['text']) for it in split_items(student_raw or '')]
     etalon_items = split_items(etalon_raw or '')
     # часть держит и метку из ответа (`а)`, `1)`), и свой номер: подсказка тренеру
@@ -94,6 +185,17 @@ def compare(etalon_raw, student_raw, strict_units=False):
         return {'verdict': 'pending_review', 'judged_by': None, 'matched': 0,
                 'matched_total': 0, 'total': 0, 'parts': [],
                 'why': 'эталон не разобран'}
+
+    etalon_letter = option_letter(etalon_raw) if len(etalon) == 1 else None
+    if etalon_letter is not None:
+        # Для теста литера — единственный возможный ответ. В открытом ответе литера
+        # эталона сама по себе ничего не гарантирует: сверяем буквой только если эталон
+        # и есть одна буква, а ученик тоже написал букву; иначе остаётся обычная
+        # дорога чисел и формул.
+        if question_type == 'single_choice':
+            return _compare_option(etalon_letter, student_raw)
+        if option_letter(etalon_raw, strict=True) and option_letter(student_raw):
+            return _compare_option(etalon_letter, student_raw)
 
     text_items = [e for e in etalon if e['kind'] == 'text'] + \
                  [s for s in student if s['kind'] == 'text']
@@ -113,6 +215,11 @@ def compare(etalon_raw, student_raw, strict_units=False):
         examined = False
         for i, sv in enumerate(student):
             if used[i] or sv['kind'] == 'text':
+                continue
+            if _lhs_conflict(ev, sv):
+                # ученик ответил про другую величину — эта пара не сверяется,
+                # но и «проверьте глазами» она быть не может: имена прочитаны
+                examined = True
                 continue
             if ev['kind'] == 'number' and sv['kind'] == 'number':
                 r = _values_comparable(ev, sv, strict_units)
@@ -193,7 +300,7 @@ def parts_hint(parts):
                      for p in parts)
 
 
-def score_open_answer(etalon_raw, student_raw, strict_units=False):
+def score_open_answer(etalon_raw, student_raw, strict_units=False, question_type=''):
     """Единственная точка входа автопроверки для бэкенда.
 
     `verdict=None` означает «не проверено машиной» — строка уходит преподавателю, и
@@ -201,7 +308,8 @@ def score_open_answer(etalon_raw, student_raw, strict_units=False):
     здесь гасится: он помечает, что подсказку стоило бы спросить, но сама модель
     этому уроку не вызывалась, и писать в базу её имя было бы ложью.
     """
-    res = compare(etalon_raw, student_raw, strict_units=strict_units)
+    res = compare(etalon_raw, student_raw, strict_units=strict_units,
+                  question_type=question_type)
     if res['judged_by'] not in DECIDED:
         res['judged_by'] = None
     return res

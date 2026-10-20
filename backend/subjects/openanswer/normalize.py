@@ -28,6 +28,9 @@ def strip_wrappers(s):
     s = re.sub(r'\\[,;! ]|\\quad|\\qquad|\\thinspace|\\displaystyle', ' ', s)
     s = re.sub(r'\\operatorname\{([^{}]*)\}', r'\1', s)
     s = re.sub(r'\\mathrm\{([^{}]*)\}', r'\1', s)
+    # единица, набранная дробью (`\frac{\text{Н}}{\text{Кл}}`), — это отношение единиц:
+    # как формула она в CAS не читается, а как `Н/Кл` сверяется на Level 1
+    s = re.sub(r'\\frac\s*\{\\text\{([^{}]*)\}\}\s*\{\\text\{([^{}]*)\}\}', r'\1/\2', s)
     s = re.sub(r'\\text\{([^{}]*)\}', r' \1 ', s)
     s = re.sub(r'\\mbox\{([^{}]*)\}', r' \1 ', s)
     s = s.replace('$', ' ').replace('\\\\', ' ')
@@ -41,7 +44,9 @@ def strip_wrappers(s):
     s = s.replace(B + 'degree', '°')
     s = re.sub(r'\^\{([^{}]+)\}', r'^\1', s)
     s = re.sub(r'_\{([^{}]+)\}', r'_\1', s)
-    s = re.sub(r'\{(\w)\}', r'\1', s)
+    # Скобки при команде съедаются вместе с ней: `\frac{q}{\pi\sigma}` без них
+    # превращается в `\fracq{...}`, а `\sqrt{N}` — в `\sqrtN`, и CAS уже не читает.
+    s = re.sub(r'(?<![A-Za-z])\{(\w)\}', r'\1', s)
     s = s.replace('^°', '°')
     s = re.sub(r'\s+', ' ', s).strip()
     return s
@@ -203,6 +208,14 @@ def _mathy_leftover(unit_raw, prose):
 # Неизвестная «единица» из одних латинских букв (`a^3`, `k`, `dp`) — это переменная, а не размерность.
 ALGEBRA_TOKEN = re.compile(r'^[A-Za-z][A-Za-z_0-9]*$')
 
+# Подстрочная метка — половина имени переменной (`T_сут`, `F_сопр`), а не рассказ про задачу.
+SUBSCRIPT_LABEL = re.compile(r'_\s*\{?\s*[A-Za-zА-Яа-яЁё\d]+')
+
+
+def is_prose(s):
+    """Кириллица вне подстрочных меток — значит строка объясняет, а не формулу задаёт."""
+    return bool(re.search(r'[а-яё]{3,}', SUBSCRIPT_LABEL.sub('_', s.replace('pi', ''))))
+
 
 def to_value(item_text):
     """Часть ответа -> {'kind', 'num', 'unit', 'si', 'approx', 'prose', 'expr_src'}.
@@ -241,8 +254,7 @@ def _value_from(tail, lhs):
             return {'kind': 'number', 'num': val, 'unit_raw': unit_raw, 'unit_kind': kind,
                     'dim': dim, 'si': si, 'approx': approx or a2, 'prose': prose,
                     'src': tail_src, 'lhs': lhs}
-    if (parsed or re.search(r'[a-zA-Zа-яёА-ЯЁ]', tail)) and \
-            not re.search(r'[а-яё]{3,}', tail.replace('pi', '')):
+    if (parsed or re.search(r'[a-zA-Zа-яёА-ЯЁ]', tail)) and not is_prose(tail):
         unit_raw, dim, unit_kind = '', '', 'none'
         m_unit = re.search(r'\s+([a-zа-яёА-ЯЁ°]+\s*\^?[-−–]?[\d²³]?'
                            r'(?:/[a-zа-яёА-ЯЁ°]+\s*\^?[-−–]?[\d²³]?)?)\s*$', tail)

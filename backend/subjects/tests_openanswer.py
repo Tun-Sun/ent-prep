@@ -11,6 +11,7 @@ from __future__ import annotations
 from django.test import SimpleTestCase
 
 from subjects.openanswer import compare, parts_hint, score_open_answer
+from subjects.openanswer.normalize import split_items, to_value
 
 # эталон (как в банке), ответ ученика, ожидаемый вердикт, строгость по единицам
 CASES = [
@@ -160,3 +161,153 @@ class ApprovedScoringRulesTest(SimpleTestCase):
         got = compare(r'$\frac{a^3}{6}$', 'шесть делить на куб')
         self.assertEqual(len(got['parts']), 1)
         self.assertEqual(got['verdict'], 'pending_review')
+
+
+class DifferentSymbolsAreDifferentAnswersTest(SimpleTestCase):
+    """Подстановка всем символам одного и того же числа равняла `A` и `B`.
+
+    До правки `expressions_equal` проверяла структуру одним и тем же `7/10` для
+    каждого имени: `2a == 2b`, `x^2 == y^2`, `a/b == b/a` — и машина ставила
+    `correct` ответу, в котором ученик перепутал величину. Это ложные зачёты по
+    всему банку формульных эталонов, поэтому случай заперт здесь, а не только в
+    лаборатории: пара разных имён обязана оставаться `incorrect`.
+    """
+
+    def test_a_pair_of_different_names_never_matches(self):
+        for etalon, student in (
+                ('a', 'b'),
+                ('2a', '2b'),
+                (r'$x^2$', 'y^2'),
+                (r'$\frac{a}{b}$', r'$\frac{b}{a}$'),
+                (r'$v_A = 2$', r'$v_B = 2$'),
+        ):
+            with self.subTest(etalon=etalon, student=student):
+                got = compare(etalon, student)
+                self.assertEqual(got['verdict'], 'incorrect', got['why'])
+                self.assertIn(got['judged_by'], ('level1', 'cas'))
+
+    def test_the_same_answer_written_another_way_still_matches(self):
+        """Обратная сторона: фикс не должен превратить честное равенство в ноль."""
+        for etalon, student in (
+                ('a', 'a'),
+                ('2a', '2*a'),
+                (r'$\frac{a^3}{6}$', 'a^3/6'),
+                (r'$v_A = 2$', r'$v_A = 2$'),
+                # индекс — часть имени: `v_A` против `v` сокращением не считается,
+                # но и ученик обязан назвать ту же величину
+                (r'$F_{\text{н}} = 5$', 'F = 5'),
+                (r'$s = 2\pi\Delta R = 2575\text{ км}$', 's = 2575 км'),
+        ):
+            with self.subTest(etalon=etalon, student=student):
+                got = compare(etalon, student)
+                self.assertEqual(got['verdict'], 'correct', got['why'])
+
+    def test_a_dropped_symbol_is_not_an_equivalence(self):
+        """`2d^3√2` против `2√2`: буквы разные, и число из-за этого тоже."""
+        self.assertEqual(compare(r'$2d^3\sqrt2$', r'$2\sqrt2$')['verdict'], 'incorrect')
+        self.assertEqual(compare(r'$2d^3\sqrt2$', r'$2d^3\sqrt{2}$')['verdict'], 'correct')
+
+
+class SingleChoiceLetterTest(SimpleTestCase):
+    """Тест сверяется по литере варианта, а не через SymPy.
+
+    Пока ключа в базе не было, эти строки шли к человеку; с ключом-буквой прежняя
+    дорога попадала в CAS, где баг с подстановкой зачитывал любую букву любой.
+    Литера — это Level 1: буква прочитана или нет, третьего исхода у теста нет.
+    """
+
+    def test_a_letter_option_is_read_through_every_way_the_keyboard_types_it(self):
+        for etalon, forms in (
+                ('A', ('A', 'a', 'А', 'а', '(A)', 'A)', 'а.', 'вариант A',
+                       'А) ядролық күштер', 'А — ядролық күштер')),
+                ('B', ('B', 'b', 'В', 'в', 'Б', 'б', '(в)', 'b.')),
+                ('C', ('C', 'c', 'С', 'с', 'с.', 'вариант C')),
+                ('D', ('D', 'd', '(d)', 'd.')),
+                ('E', ('E', 'e', 'Е', 'е', 'E) 8,3 · 10^-26 кг')),
+        ):
+            for student in forms:
+                with self.subTest(etalon=etalon, student=student):
+                    got = score_open_answer(etalon, student, question_type='single_choice')
+                    self.assertEqual(got['verdict'], 'correct', got['why'])
+                    self.assertEqual(got['judged_by'], 'level1')
+
+    def test_a_different_letter_is_a_real_zero_not_a_pending(self):
+        for etalon, student in (('A', 'B'), ('A', 'б'), ('C', 'A'), ('E', 'в'),
+                                ('B', 'D) 5 м/с')):
+            with self.subTest(etalon=etalon, student=student):
+                got = score_open_answer(etalon, student, question_type='single_choice')
+                self.assertEqual(got['verdict'], 'incorrect', got['why'])
+                self.assertEqual(got['judged_by'], 'level1')
+
+    def test_an_answer_without_a_letter_still_goes_to_the_human(self):
+        """Ученик переписал текст варианта без буквы — машина его не читает и ноль не ставит."""
+        got = score_open_answer('A', 'ядролық күштер', question_type='single_choice')
+        self.assertEqual(got['verdict'], 'pending_review')
+        self.assertIsNone(got['judged_by'])
+        self.assertEqual(got['parts'][0]['status'], 'undecided')
+        # пустой ответ остаётся пустым ответом: литера тут ни при чём
+        self.assertEqual(score_open_answer('A', '', question_type='single_choice')['verdict'],
+                         'incorrect')
+
+    def test_a_word_starting_with_a_option_letter_is_not_that_letter(self):
+        """`Сутек` — это не вариант `C`, иначе первое слово ответа решало бы вердикт."""
+        self.assertIsNone(score_open_answer('C', 'Сутек', question_type='single_choice')
+                          ['judged_by'])
+        self.assertEqual(score_open_answer('C', 'Сутек', question_type='single_choice')
+                         ['verdict'], 'pending_review')
+
+    def test_open_answer_rows_keep_their_number_pipeline(self):
+        """Автодетект по букве не перетягивает на себя формульные и числовые ответы."""
+        self.assertEqual(score_open_answer(r'$a \approx 4,5$ м/с²', r'$a \approx 4,5$ м/с²')
+                         ['verdict'], 'correct')
+        self.assertEqual(score_open_answer(r'$E = 400$ В', r'$E_k = 200$ В')['verdict'],
+                         'incorrect')
+        self.assertEqual(score_open_answer(r'$2$ м', '2 м')['verdict'], 'correct')
+
+    def test_a_lone_letter_etalon_is_read_as_an_option_even_without_the_flag(self):
+        """Ключ напечатан одной буквой, а тип задачи в банке ещё может быть открытым."""
+        self.assertEqual(score_open_answer('B', 'б')['verdict'], 'correct')
+        self.assertEqual(score_open_answer('B', 'с')['verdict'], 'incorrect')
+        # но `$B = 50$ Тл` — формула, и буква из её начала ничего не решает
+        self.assertEqual(score_open_answer(r'$B = 50$ Тл', r'$B = 50$ Тл')['verdict'], 'correct')
+
+
+class BookTypographyStillParsesTest(SimpleTestCase):
+    """П.3: три книжные записи, на которых парсер спотыкался сам о себя.
+
+    Скобки при команде, единица, набранная дробью, и подпись в подстрочном индексе —
+    всё это набор книги, а не ошибка ученика. Ни один из случаев не должен давать
+    ложного вердикта: где машина не уверена, она зовёт человека.
+    """
+
+    def test_braces_after_a_command_are_not_stripped_off_the_command(self):
+        """`\\sqrt{N}` без скобок превращался в `\\sqrtN` и переставал читаться."""
+        self.assertEqual(score_open_answer(r'$\sqrt{N}$', r'$\sqrt{N}$')['verdict'], 'correct')
+        self.assertEqual(score_open_answer(r'$\sqrt{N}$', 'sqrt(N)')['verdict'], 'correct')
+        self.assertEqual(score_open_answer(r'$\sqrt{N}$', r'$\sqrt{2N}$')['verdict'], 'incorrect')
+        self.assertEqual(score_open_answer(r'$\frac{q}{\pi\sigma}$', r'$\frac{q}{2\pi\sigma}$')
+                         ['verdict'], 'incorrect')
+        # дробь без скобок (`\frac16`) книга печатает и так — читается с обеих сторон
+        self.assertEqual(score_open_answer(r'$\frac16$', r'$\frac16$')['verdict'], 'correct')
+        self.assertEqual(score_open_answer(r'$\frac16$', r'$\frac18$')['verdict'], 'incorrect')
+
+    def test_a_unit_written_as_a_fraction_is_a_unit_not_a_formula(self):
+        """`\frac{Н}{Кл}` — это `Н/Кл`; как формула она в CAS не читается."""
+        etalon = r'$E = 1{,}6\cdot 10^{4}\ \frac{\text{Н}}{\text{Кл}}$'
+        self.assertEqual(to_value(split_items(etalon)[0]['text'])['kind'], 'number')
+        self.assertEqual(score_open_answer(etalon, etalon)['verdict'], 'correct')
+        self.assertEqual(score_open_answer(etalon, r'$1{,}6\cdot 10^{4}$ Н/Кл')['verdict'],
+                         'correct')
+        self.assertEqual(score_open_answer(etalon, '16000 Н/Кл')['verdict'], 'correct')
+        self.assertEqual(score_open_answer(etalon, r'$1{,}6\cdot 10^{4}$ В')['verdict'],
+                         'incorrect')
+
+    def test_a_subscript_label_is_part_of_the_name_not_running_text(self):
+        """`T_{\text{сут}}` — это имя величины; строка из-за неё не считается рассказом."""
+        etalon = r'$v = \frac{2\pi(R_{\text{з}} + h)}{T_{\text{сут}}}$'
+        self.assertEqual(to_value(split_items(etalon)[0]['text'])['kind'], 'expr')
+        # но прочитать кириллицу в индексе CAS не может, поэтому ложного вердикта нет
+        self.assertEqual(score_open_answer(etalon, etalon)['verdict'], 'pending_review')
+        # а число с подписанной величиной остаётся числом: метку машины не ищет
+        self.assertEqual(score_open_answer(r'$F = 5$ Н', r'$F_{\text{н}} = 5$ Н')['verdict'],
+                         'correct')

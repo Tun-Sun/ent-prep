@@ -982,6 +982,7 @@ class LessonResultsTest(TestCase):
         from users.models import User
         cls.math = Subject.objects.create(name='Математика', slug='math-lesson', icon='📐')
         topic = Topic.objects.create(subject=cls.math, name='Сканави · Глава 11')
+        cls.topic = topic
         cls.teacher = User.objects.create_user(username='tl', password='x', role='teacher')
         cls.student = User.objects.create_user(username='sl', password='x', role='student')
         cls.second = User.objects.create_user(username='sl2', password='x', role='student')
@@ -1001,10 +1002,10 @@ class LessonResultsTest(TestCase):
         cls.lesson.students.set([cls.student, cls.second])
 
     @staticmethod
-    def task(topic, text, answer='', points=1):
+    def task(topic, text, answer='', points=1, qtype='open_answer'):
         return Question.objects.create(
             topic=topic, text=text, latex=text, latex_answer=answer, difficulty='easy',
-            source_type='book_scan', question_type='open_answer',
+            source_type='book_scan', question_type=qtype,
             verification_status='verified', points=points,
         )
 
@@ -1060,6 +1061,66 @@ class LessonResultsTest(TestCase):
         feedback = mine['blocks'][0]['answers'][0]['feedback']
         self.assertEqual(feedback['etalon'], '')
         self.assertEqual(feedback['verdict'], 'incorrect')
+
+    def test_the_solution_reaches_the_student_only_after_the_block_is_submitted(self):
+        """П.4: разбор — после сдачи блока, и до сдачи его нет даже в JSON.
+
+        Проверка не в том, что кнопка скрыта на экране, а в том, чего сервер не
+        отдаёт: ученик, открывший DevTools на несданном блоке, не должен найти там
+        ни разбора, ни напечатанного ключа книги.
+        """
+        self.with_answer.solution_latex = r'Решение: $V = 18$ см³'
+        self.with_answer.save()
+        c = self._auth(self.student)
+
+        mine = c.get(f'/api/my/assignments/{self.lesson.pk}/').data
+        self.assertEqual(mine['blocks'][0]['questions'][0]['solution_latex'], '')
+
+        self._answer(c, self.homework, self.with_answer, '18 см')
+        mine = c.get(f'/api/my/assignments/{self.lesson.pk}/').data
+        self.assertEqual(mine['blocks'][0]['questions'][0]['solution_latex'], '')
+
+        self._submit(c, self.homework)
+        mine = c.get(f'/api/my/assignments/{self.lesson.pk}/').data
+        self.assertEqual(mine['blocks'][0]['questions'][0]['solution_latex'],
+                         r'Решение: $V = 18$ см³')
+        # разбор открыт, а ключ книги по-прежнему ждёт вердикта человека
+        self.assertEqual(mine['blocks'][0]['answers'][0]['feedback']['etalon'], '')
+
+    def test_a_single_choice_task_is_graded_by_the_option_letter(self):
+        """Тест: сверяется литера, а не SymPy.
+
+        Ключ теста — одна буква. По старой дороге она попадала в CAS, где любая
+        буква равнялась любой, поэтому для `single_choice` проверка идёт отдельным
+        путём: литера прочитана — вердикт, не прочитана — человеку.
+        """
+        q = self.task(self.topic, 'Протондар мен нейтрондар күші', answer='B',
+                      points=1, qtype='single_choice')
+        self.homework.question_ids = list(self.homework.question_ids) + [q.pk]
+        self.homework.save()
+        c = self._auth(self.student)
+
+        r = self._answer(c, self.homework, q, 'б')
+        self.assertEqual(r.data['verdict'], 'correct')
+        self.assertEqual(r.data['judged_by'], 'level1')
+        self.assertEqual(AssignmentAnswer.objects.get(question=q).normalized_answer,
+                         'Вариант B')
+
+        # та же литера, набранная латиницей и скопированная вместе с текстом варианта
+        for raw in ('B', '(в)', 'B) электрлік күштер', 'вариант b'):
+            r = self._answer(c, self.homework, q, raw)
+            self.assertEqual(r.data['verdict'], 'correct', raw)
+
+        r = self._answer(c, self.homework, q, 'D')
+        self.assertEqual(r.data['verdict'], 'incorrect')
+        # ключ не показывается ученику вместе с причиной неверного ответа
+        self.assertEqual(r.data['feedback']['etalon'], '')
+        self.assertNotIn('B', r.data['feedback']['note'])
+
+        # текст варианта без буквы — машина его не читает и ложный ноль не ставит
+        r = self._answer(c, self.homework, q, 'ядролық күштер')
+        self.assertEqual(r.data['verdict'], 'pending_review')
+        self.assertEqual(r.data['judged_by'], '')
 
     def test_in_class_block_saves_the_answer_and_checks_nothing(self):
         """`in_class` и `advanced` решают вместе на уроке: автопроверки там нет, и
@@ -1251,7 +1312,8 @@ class LessonResultsTest(TestCase):
         self.assertNotIn('latex_answer', body)
         self.assertNotIn('provenance', body)
         self.assertEqual(sorted(r.data['blocks'][0]['questions'][0]),
-                         ['difficulty', 'id', 'image', 'latex', 'points', 'text'])
+                         ['difficulty', 'id', 'image', 'latex', 'points', 'solution_latex',
+                          'text'])
         # тренеру ключ банка виден: он его и приёмку ведёт
         t = json.dumps(self._auth(self.teacher).get(f'/api/assignments/{self.lesson.pk}/').data,
                        ensure_ascii=False)

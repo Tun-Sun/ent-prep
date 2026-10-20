@@ -7,7 +7,7 @@
 import re
 
 from sympy import (N, Rational, Symbol, acos, acot, asin, atan, cos, cot, exp, log, pi,
-                   simplify, sin, sinh, sqrt, sympify, tan, tanh, cosh)
+                   prime, simplify, sin, sinh, sqrt, sympify, tan, tanh, cosh)
 from sympy.parsing.latex import parse_latex
 
 from .normalize import GREEK
@@ -195,6 +195,22 @@ def as_number(e):
         return None
 
 
+def symbol_names(e):
+    """Имена свободных символов по порядку: сравнение наборов — это про них."""
+    return sorted(str(s) for s in e.free_symbols)
+
+
+def substitution_values(names):
+    """Каждому имени — своя дробь из пары соседних простых.
+
+    Один и тот же `7/10` всем символам делал равными `A` и `B`, `a/b` и `b/a`:
+    подстановка проверяет структуру, а для этого разные имена должны получать
+    разные числа.
+    """
+    return {name: Rational(prime(2 * i + 1), prime(2 * i + 2))
+            for i, name in enumerate(names)}
+
+
 def expressions_equal(a, b, rel=0.005, abs_tol=0.0):
     """True / False / None (None — SymPy не решил, идём к человеку).
 
@@ -217,7 +233,14 @@ def expressions_equal(a, b, rel=0.005, abs_tol=0.0):
             return abs(float(N(d, 12))) <= abs_tol
     except Exception:
         pass
-    subs = {s: Rational(7, 10) for s in (a.free_symbols | b.free_symbols)}
+    names_a, names_b = symbol_names(a), symbol_names(b)
+    if names_a != names_b:
+        # Разные наборы имён — это разные ответы: `2a` против `2b` не сверяется
+        # подстановкой, чем бы ни закончился `simplify` выше.
+        return False
+    both = a.free_symbols | b.free_symbols
+    values = substitution_values(names_a)
+    subs = {s: values[str(s)] for s in both}
     if not subs:
         return None
     try:

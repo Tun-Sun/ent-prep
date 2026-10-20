@@ -323,6 +323,20 @@ export default function MyAssignmentsPage() {
                       <FormattedText text={(a.feedback || {}).etalon} markdown />
                     </div>
                   )}
+                  {/* Разбор страницы сервер не отдаёт, пока блок не сдан, поэтому здесь
+                      он появляется сам и свёрнутым: ученик решает смотреть или нет. */}
+                  {q.solution_latex && (
+                    <details style={{ marginTop: 10, border: '1px solid var(--border)',
+                                      borderRadius: 10, padding: '6px 10px' }}>
+                      <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                                        color: 'var(--primary)', userSelect: 'none' }}>
+                        Показать разбор
+                      </summary>
+                      <div style={{ marginTop: 8, fontSize: 13 }}>
+                        <FormattedText text={q.solution_latex} markdown />
+                      </div>
+                    </details>
+                  )}
                 </div>
               )
             })}
