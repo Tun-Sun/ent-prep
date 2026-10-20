@@ -366,8 +366,8 @@ export default function MyAssignmentsPage() {
               <div style={{ padding: '10px 20px', fontSize: 13, color: '#065F46',
                             background: 'rgba(16,185,129,0.07)', borderBottom: '1px solid var(--border)',
                             display: 'flex', gap: 8, alignItems: 'center' }}>
-                <Lock size={14} strokeWidth={2} /> Блок сдан — он закрыт для правки. Ниже ваши ответы,
-                вердикты{block.autocheck ? ', правильный ответ и разбор' : ' преподавателя'}.
+                <Lock size={14} strokeWidth={2} /> Блок сдан — он закрыт для правки. Ниже ваши ответы
+                и вердикты{block.autocheck ? ', а у решённых задач — разбор.' : '.'}
               </div>
             )}
 
