@@ -135,6 +135,9 @@ def to_python_src(s):
     s = re.sub(r'\^\\(\w+)', r'**(\1)', s)
     s = re.sub(r'\^\(([^()]*)\)', r'**(\1)', s)
     s = re.sub(r'\^(\w)', r'**\1', s)
+    # Две команды слитно (`\pi\sqrt{3}`) после подстановки имён склеиваются в `pisqrt`,
+    # и ни `pi`, ни `sqrt` парсер уже не узнаёт: между ними нужен разделитель.
+    s = re.sub(r'(\\[A-Za-z]+)(?=\\)', r'\1 ', s)
     s = re.sub(r'\\([A-Za-z]+)', lambda m: GREEK.get(m.group(1), m.group(1)), s)
     s = s.replace(B, '')
     s, tokens = _mask_funcs(s)
@@ -143,12 +146,32 @@ def to_python_src(s):
     s = re.sub(r'\)([A-Za-zа-яё\(0-9])', r')*\1', s)
     s = re.sub(r'(?<=[A-Za-zа-яё\)\]0-9])(?=\x01)', '*', s)
     s = re.sub(r'(?<=\x02)(?=[A-Za-zа-яё0-9])', '*', s)
+    # два имени функций подряд (`\pi\sqrt{3}` -> два токена) — тоже произведение
+    s = re.sub(r'(?<=\x02)(?=\x01)', '*', s)
     s = re.sub(r'(?<=\d)(?=[A-Za-zа-яё])', '*', s)
     s = re.sub(r'(?<=[A-Za-zа-яё\)\]])(?=[A-Za-zа-яё])', '*', s)
     s = s.replace('{', '(').replace('}', ')')
     s = re.sub(r'([A-Za-zа-яё])_\(([^()]*)\)', r'\1_\2', s)
     s = _unmask_funcs(s, tokens)
     return ''.join(CYR_VAR.get(ch, ch) for ch in s)
+
+
+def _top_level_comma(s):
+    """Есть ли запятая вне фигурных и круглых скобок.
+
+    `parse_latex('B, G')` не падает на хвосте: он молча возвращает левый токен `B`.
+    Значит строка со списком через запятую не имеет права уходить в этот парсер —
+    сравнение `B` с `B` дало бы ложное `correct` для ответов `B, G` и `B, G, H`.
+    """
+    depth = 0
+    for ch in s:
+        if ch in '{([':
+            depth += 1
+        elif ch in ')}]':
+            depth = max(0, depth - 1)
+        elif ch == ',' and depth == 0:
+            return True
+    return False
 
 
 def parse_by_latex_engine(raw):
@@ -162,7 +185,7 @@ def parse_by_latex_engine(raw):
     s = s.replace(B + '!', '').replace(B + ' ', '')
     s = re.sub(r'[а-яёА-ЯЁ]{2,}', '', s)
     s = s.replace(B + 'circ', '').strip(' .,;')
-    if not s:
+    if not s or _top_level_comma(s):
         return None
     try:
         return parse_latex(s)

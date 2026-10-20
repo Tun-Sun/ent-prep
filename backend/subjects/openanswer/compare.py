@@ -9,7 +9,8 @@ import re
 
 from . import cas
 from .cas import CYR_VAR
-from .normalize import split_items, strip_wrappers, to_value, tail_after_eq, greek_to_latin
+from .normalize import (ratio_members, split_items, strip_wrappers, to_value,
+                        tail_after_eq, greek_to_latin)
 
 # Политика округления, утверждённая тренером 14.10: 0,5 % от значения.
 # Абсолютный пол отсутствует нарочно — иначе он проглотил бы атомные ответы
@@ -64,6 +65,46 @@ def _expr_equal(ev, sv):
         if r is False:
             decided = True
     return (False, 'cas') if decided else (None, None)
+
+
+def _ratio_src(part):
+    return part.get('expr') or greek_to_latin(tail_after_eq(strip_wrappers(part['src']))[0])
+
+
+def _ratio_equal(ev, sv):
+    """Сверка цепочки отношений попарными частными: `6 : 4 : 2` — это `3 : 2 : 1`.
+
+    Отношение — не выражение, и SymPy его не решает, поэтому цепочку разбираем на
+    члены и сравниваем соседние частные. Цепочки разной длины не совпадают по
+    определению: `3 : 2` против `3 : 2 : 1` — неполный ответ. Если хоть один член
+    не читается CAS, вердикта нет — строка уходит человеку.
+
+    -> True / False / None (None — ни одной цепочки в паре нет)
+    """
+    a, b = ratio_members(_ratio_src(ev)), ratio_members(_ratio_src(sv))
+    if not a or not b:
+        return None
+    if len(a) != len(b):
+        return False
+    pairs = [None] * (len(a) - 1)
+    for road in (cas.parse_by_src, cas.parse_by_latex_engine):
+        ea, eb = [road(m) for m in a], [road(m) for m in b]
+        if any(x is None for x in ea + eb):
+            continue
+        for i in range(len(ea) - 1):
+            if pairs[i] is True:
+                continue
+            try:
+                r = cas.expressions_equal(ea[i] / ea[i + 1], eb[i] / eb[i + 1])
+            except TypeError:
+                continue
+            if r is True:
+                pairs[i] = True
+            elif r is False and pairs[i] is None:
+                pairs[i] = False
+    if False in pairs:
+        return False
+    return True if all(p is True for p in pairs) else None
 
 
 # Имя величины слева от `=`: `v_A = 2` и `v_B = 2` — разные ответы, хотя число справа
@@ -275,6 +316,15 @@ def compare(etalon_raw, student_raw, strict_units=False, question_type=''):
                     unresolved = True
             elif ev['kind'] == 'expr' or sv['kind'] == 'expr':
                 examined = True
+                ratio = _ratio_equal(ev, sv)
+                if ratio is True:
+                    hit = i
+                    cas_used = True
+                    break
+                if ratio is not None:
+                    # обе стороны прочитаны как цепочки отношений и не сошлись —
+                    # это честный ноль, а не «пусть посмотрит человек»
+                    continue
                 eq, how = _expr_equal(ev, sv)
                 if eq is not True:
                     alt = _alt_pair(ev, sv, strict_units)

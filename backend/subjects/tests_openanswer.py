@@ -11,6 +11,8 @@ from __future__ import annotations
 from django.test import SimpleTestCase
 
 from subjects.openanswer import compare, parts_hint, score_open_answer
+from subjects.openanswer.cas import (_top_level_comma, decimal_comma_to_point,
+                                     parse_by_latex_engine)
 from subjects.openanswer.normalize import split_items, to_value
 
 # эталон (как в банке), ответ ученика, ожидаемый вердикт, строгость по единицам
@@ -352,6 +354,86 @@ class MultipleOptionLettersTest(SimpleTestCase):
         # набор литер читает только тест: одна верная литера из двух — неверный ответ
         self.assertEqual(score_open_answer('B, G', 'B', question_type='single_choice')['verdict'],
                          'incorrect')
+
+
+class CommaStopsTheLatexRoadTest(SimpleTestCase):
+    """П.2: `parse_latex('B, G')` молча режет хвост и возвращает `B`.
+
+    Из-за этого в открытом ответе пара `B, G` против `B, G, H` давала ложное
+    `correct`: сверялись левые токены. Дорога LaTeX теперь такие строки не берёт
+    вовсе, и вердикт остаётся человеку.
+    """
+
+    def test_a_top_level_comma_refuses_the_latex_road(self):
+        self.assertIsNone(parse_by_latex_engine('B, G'))
+        self.assertIsNone(parse_by_latex_engine(r'2\pi R, 4\pi R'))
+
+    def test_a_decimal_comma_is_not_mistaken_for_a_list(self):
+        """Страж смотрит на строку после перевода запятой в точку: `1,5` — это число."""
+        self.assertFalse(_top_level_comma(decimal_comma_to_point('1,5')))
+        self.assertFalse(_top_level_comma(r'f\left(x, 1\right)'))
+        self.assertTrue(_top_level_comma(decimal_comma_to_point('B, G')))
+        self.assertTrue(parse_by_latex_engine('B, G') is None)
+
+    def test_a_longer_list_is_not_credited_by_the_left_token(self):
+        for etalon, student in (('B, G', 'B, G, H'), ('a, b', 'a, b, c'), ('B, G', 'B, G')):
+            got = score_open_answer(etalon, student)
+            self.assertNotEqual(got['verdict'], 'correct', '%s || %s' % (etalon, student))
+            self.assertIsNone(got['judged_by'], 'вердикт не машины')
+
+
+class RatioChainTest(SimpleTestCase):
+    """П.3: цепочка отношений — то, что SymPy не решает, а в банке встречается.
+
+    Три боевые строки (`34812`, `34817`, `34888`) сверяются попарными частными:
+    пропорциональный ряд — тот же ответ, оборванный или неверный — не зачитывается.
+    """
+
+    def test_three_rows_of_the_book_match_themselves(self):
+        for raw in (r'$3 : 2 : 1$.',
+                    r'$S_{1} : S_{2} = \pi : 2;\quad V_{1} : V_{2} = \pi\sqrt{3} : 2$.',
+                    r'$\frac{1}{a} : \frac{1}{b} : \frac{1}{c}$.'):
+            got = score_open_answer(raw, raw)
+            self.assertEqual(got['verdict'], 'correct', raw)
+            self.assertEqual(got['judged_by'], 'cas', raw)
+
+    def test_a_proportional_row_is_the_same_answer(self):
+        self.assertEqual(score_open_answer(r'$3 : 2 : 1$.', '6 : 4 : 2')['verdict'], 'correct')
+        self.assertEqual(score_open_answer(r'$3 : 2 : 1$.', '3:2:1')['verdict'], 'correct')
+        self.assertEqual(score_open_answer(r'$3 : 2 : 1$.', '1,5 : 1 : 0,5')['verdict'], 'correct')
+
+    def test_a_row_of_another_length_is_a_real_zero(self):
+        for answer in ('3 : 2', '3 : 2 : 5', '2 : 4 : 8'):
+            got = score_open_answer(r'$3 : 2 : 1$.', answer)
+            self.assertEqual(got['verdict'], 'incorrect', answer)
+            self.assertEqual(got['judged_by'], 'level1', answer)
+
+    def test_inverse_reciprocals_are_the_same_chain(self):
+        """`1/a : 1/b : 1/c` умножен на `abc` — это `bc : ac : ab`, тот же ответ."""
+        etalon = r'$\frac{1}{a} : \frac{1}{b} : \frac{1}{c}$.'
+        self.assertEqual(score_open_answer(etalon, 'bc : ac : ab')['verdict'], 'correct')
+        self.assertEqual(score_open_answer(etalon, '1/a : 1/b : 1/c')['verdict'], 'correct')
+        self.assertEqual(score_open_answer(etalon, 'a : b : c')['verdict'], 'incorrect')
+
+    def test_two_named_parts_are_graded_one_by_one(self):
+        etalon = r'$S_{1} : S_{2} = \pi : 2;\quad V_{1} : V_{2} = \pi\sqrt{3} : 2$.'
+        self.assertEqual(score_open_answer(etalon, r'$S_{1} : S_{2} = 2\pi : 4; V_{1} : V_{2} = 2\pi\sqrt{3} : 4$.')
+                         ['verdict'], 'correct')
+        # ученик мог не переписывать имена величин — пустое имя слева не конфликт
+        self.assertEqual(score_open_answer(etalon, r'\pi : 2; \pi\sqrt{3} : 2')['verdict'],
+                         'correct')
+        half = score_open_answer(etalon, r'$S_{1} : S_{2} = \pi : 3; V_{1} : V_{2} = \pi\sqrt{3} : 2$.')
+        self.assertEqual(half['verdict'], 'partial')
+        self.assertEqual([p['status'] for p in half['parts']], ['mismatched', 'matched'])
+        # переставленные местами части — это ответ про другие величины
+        self.assertEqual(score_open_answer(
+            etalon, r'$V_{1} : V_{2} = \pi : 2; S_{1} : S_{2} = \pi\sqrt{3} : 2$.')['verdict'],
+            'incorrect')
+
+    def test_a_chain_against_prose_stays_with_the_teacher(self):
+        got = score_open_answer(r'$3 : 2 : 1$.', 'в три раза больше')
+        self.assertEqual(got['verdict'], 'pending_review')
+        self.assertIsNone(got['judged_by'])
 
 
 class BookTypographyStillParsesTest(SimpleTestCase):

@@ -105,6 +105,33 @@ def tail_after_eq(text):
     return segs[-1], '='.join(segs[:-1])
 
 
+def ratio_members(text):
+    """`A : B : C` -> ['A', 'B', 'C'] либо None: цепочка отношений, а не выражение.
+
+    SymPy отношение не решает, а ученик вправе написать пропорциональный ряд:
+    `6 : 4 : 2` — тот же ответ, что `3 : 2 : 1`. Двоеточие внутри скобок член не
+    разделяет (`\\frac{1}{a} : \\frac{1}{b}` — два члена), один член цепочкой не
+    считается: обычное выражение остаётся обычной дорогой.
+    """
+    parts, cur, depth = [], [], 0
+    for ch in text:
+        if ch in '{[(':
+            depth += 1
+        elif ch in ')}]':
+            depth -= 1
+            if depth < 0:
+                return None
+        if ch == ':' and depth == 0:
+            parts.append(''.join(cur).strip())
+            cur = []
+        else:
+            cur.append(ch)
+    parts.append(''.join(cur).strip())
+    if len(parts) < 2 or any(not p or '=' in p for p in parts):
+        return None
+    return parts
+
+
 # Тысячи через запятую признаём только при двух группах по три цифры: `1,234,567`.
 # Одиночная `1,234` в этом корпусе — десятичная запятая, а не тысячи.
 _NUM = r'([-−–]?\s*(?:\d{1,3}(?:,\d{3}){2,}(?:\.\d+)?|\d+\.\d+|\d+,\d+|\d+))'
