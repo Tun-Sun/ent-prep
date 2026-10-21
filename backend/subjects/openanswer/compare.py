@@ -146,6 +146,9 @@ for _opt, _chars in (('A', 'AaАа'), ('B', 'BbВвБб'), ('C', 'CcСс'), ('D'
         OPTION_LETTERS[_ch] = _opt
 
 OPTION_HEAD = re.compile(r'^\s*[(\[{]?([A-Za-zА-Яа-яЁё])')
+# Литера, напечатанная в начале строки варианта: `A) 30 сағат`, `B. 15`, `(C) 7`.
+# Только начало строки: буква внутри предложения (`С. Петров`) вариантом не считается.
+OPTION_LABEL = re.compile(r'(?:^|\n)[ \t]*[([]?([A-Za-zА-Яа-яЁё])[ \t]*[).\]:]')
 # `вариант C`, `ответ C`, `жауабы C` — литера после служебного слова
 OPTION_PREFIX = re.compile(r'^\s*(?:вариант|ответ|жауап\w*)\b[:.]?\s*', re.I)
 # между литерами одного ответа: `B, G`, `G B`, `B; G)`, `B) G)`
@@ -187,6 +190,31 @@ def option_letters(raw, allow_text=False):
     heads = [OPTION_LETTERS[m.group(1)] for m in OPTION_IN_TEXT.finditer(s)
              if m.group(1) in OPTION_LETTERS]
     return frozenset(heads) if heads else None
+
+
+def option_labels(text):
+    """-> ['A', 'B', ...]: литеры вариантов, напечатанные в условии списками.
+
+    Нужен экрану ученика: с телефона буква варианта — это нажатие пальцем, а не
+    поиск `A` в клавиатуре. Ряд берётся только непрерывный от `A`, потому что тесты
+    печатают ровно так (`A..E`, `A..H`). Дырка в ряду или отсутствие `A` означают,
+    что найденные буквы — не список вариантов, и чипов не будет: экран не имеет
+    права предлагать выбирать то, чего в задаче нет.
+    """
+    found = []
+    for match in OPTION_LABEL.finditer(text or ''):
+        letter = OPTION_LETTERS.get(match.group(1))
+        if letter and letter not in found:
+            found.append(letter)
+    run = []
+    for letter in found:
+        if letter != chr(ord('A') + len(run)):
+            # дырка в ряду: одна литера съедена сканом или это вовсе не список.
+            # Половину чипов показать — значит намекнуть ученику, что вариантов меньше,
+            # чем напечатано в задаче.
+            return []
+        run.append(letter)
+    return run if len(run) >= 2 else []
 
 
 def option_letter(raw, strict=False):

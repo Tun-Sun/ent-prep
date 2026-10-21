@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { myAssignmentsAPI } from '../../api'
 import FormattedText from '../../components/FormattedText'
@@ -73,48 +73,76 @@ function DemoBanner() {
 // Навигация по шагам: ребёнок видит один блок за раз и всегда знает, сколько блоков
 // уже сдано. Сданный блок отмечается зелёной галочкой и остаётся доступным только
 // для чтения — нажимать «Сдать» повторно там уже нечего.
+//
+// Кружочки с цифрами отсюда убраны намеренно: на телефоне `1 2 3 4` вкладок стояли
+// прямо над `1 лёгкий`, `2 лёгкий` из нумерации задач, и ребёнок не находил, где
+// начинается список. Теперь вкладки — сетка на контрастной подложке, а цифра живёт
+// только у задач.
+const LONG_DEFAULT = { in_class: 'Классная работа' }
+
+// Типовое имя блока на узком экране переносилось на две строки и ломало сетку 2×2.
+// Название, заданное тренером, экран не сокращает: оно его, а не машинное.
+const tabName = (b) => (LONG_DEFAULT[b.kind] && b.label === LONG_DEFAULT[b.kind])
+  ? 'Классная'
+  : b.label
+
 function BlockTabs({ blocks, activeId, onPick }) {
   const done = blocks.filter(isSent).length
-  const position = Math.max(1, blocks.findIndex(b => b.id === activeId) + 1)
   return (
     <div className="card" style={{ padding: 12, marginBottom: 16 }}>
       <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
-        Шаг {position} из {blocks.length} · сдано {done} из {blocks.length}
+        сдано {done} из {blocks.length}
       </div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {blocks.map((b, i) => {
-          const sent = isSent(b)
-          const current = b.id === activeId
-          return (
-            <button key={b.id} onClick={() => onPick(b.id)}
-                    style={{
-                      flex: '1 1 170px', display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '10px 12px', borderRadius: 12, fontSize: 14, fontWeight: 600,
-                      cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
-                      border: '1px solid ' + (sent ? 'rgba(16,185,129,0.5)'
-                               : current ? 'var(--primary)' : 'var(--border)'),
-                      background: sent ? 'rgba(16,185,129,0.10)'
-                                : current ? 'rgba(99,102,241,0.10)' : '#fff',
-                      color: sent ? '#065F46' : current ? 'var(--primary)' : 'var(--text-secondary)',
-                    }}>
-              {sent
-                ? <Check size={16} strokeWidth={2.5} />
-                : <span style={{
-                    width: 20, height: 20, borderRadius: 20, fontSize: 12, fontWeight: 700,
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    background: current ? 'var(--primary)' : 'rgba(107,114,128,0.12)',
-                    color: current ? '#fff' : 'var(--text-secondary)',
-                  }}>{i + 1}</span>}
-              <span>{b.label}</span>
-              <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 500 }}>
-                {sent ? 'сдано' : tasks(b.tasks)}
-              </span>
-            </button>
-          )
-        })}
+      <div className="block-tabs-shell">
+        <div className="block-tabs">
+          {blocks.map(b => {
+            const sent = isSent(b)
+            const current = b.id === activeId
+            const cls = 'block-tab' + (current ? ' is-active' : '') + (sent ? ' is-sent' : '')
+            return (
+              <button key={b.id} className={cls} onClick={() => onPick(b.id)}
+                      aria-current={current ? 'page' : undefined}>
+                <span className="block-tab-name">{tabName(b)}</span>
+                <span className="block-tab-badge">
+                  {sent ? <><Check size={11} strokeWidth={2.5} /> Сдано</> : tasks(b.tasks)}
+                </span>
+              </button>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
+}
+
+// Литеры, которые движок уже видит в строке: `B, G`, `BG` и `b g` для него один
+// ответ, поэтому подсветка чипов обязана считать так же, а не по запятым.
+const lettersIn = (raw) => String(raw || '').toUpperCase().match(/[A-H]/g) || []
+
+// Чем кнопка вставляет, тем и сверяет автопроверка: `√(3)` движок читает как текст и
+// отдаёт pending_review, а `sqrt(3)` — решает; литеру `π` в ответе он теряет, `pi` —
+// нет. Поэтому на кнопке остаётся тот знак, который ребёнок узнаёт, а в поле
+// приезжает тот, который понимает движок.
+const SYMBOLS = [
+  { label: '/', insert: '/' },
+  { label: '^', insert: '^' },
+  { label: '·10^-', insert: '·10^-' },
+  { label: '√', insert: 'sqrt()', caret: -1 },
+  { label: 'π', insert: 'pi' },
+  { label: ':', insert: ':' },
+  { label: ';', insert: ';' },
+  { label: '=', insert: '=' },
+  { label: '−', insert: '−' },
+]
+
+// Прежнее «Решение и ответ — как в тетради» стояло над всеми полями и сбивало: в
+// автопроверяемом блоке ребёнок переписывал с телефона весь ход решения, которое
+// машина сверять не умеет, а ждёт она одну строку ответа.
+const placeholderFor = (block, q) => {
+  if (q.options && q.options.length) return 'Нажми букву варианта — или впиши её'
+  return block.autocheck
+    ? 'Введите только ответ (например: 6 или 3/4 или 4,9*10^-18)'
+    : 'Краткий ответ или итог решения'
 }
 
 export default function MyAssignmentsPage() {
@@ -136,6 +164,11 @@ export default function MyAssignmentsPage() {
   const [notice, setNotice] = useState('')
   const [sent, setSent] = useState('')
   const [params] = useSearchParams()
+  // самое свежее, что ребёнок набрал или нажал, — синхронно, до перерисовки: по нему
+  // чипы и панель символов понимают, что отправлять, и что досохранить, пока сервер
+  // ещё отвечает на предыдущее нажатие
+  const draftRef = useRef({})
+  const areaRef = useRef({})
 
   // После сдачи ребёнок не обязан сам искать, куда идти дальше: экран сам переходит
   // к первому несданному блоку, а когда сдано всё — остаётся на месте и смотрит итог.
@@ -166,6 +199,10 @@ export default function MyAssignmentsPage() {
           byQ[a.question] = a
         }))
         setDrafts(saved)
+        // ref — отдельный объект: `setDraft` дописывает его на месте, и если бы он
+        // делил ссылку с `baseline`, тап по варианту сам себе «сохранял» ответ
+        // ещё до запроса на сервер
+        draftRef.current = { ...saved }
         setBaseline(saved)
         setTicks({})
         setAnswers(byQ)
@@ -194,11 +231,16 @@ export default function MyAssignmentsPage() {
     return raw.trim() !== '' && raw !== (baseline[id] || '')
   }
 
-  // `silent` — путь onBlur и сдачи: сохранение идёт тихо, без кнопки «Сохраняю…»,
-  // а ученик видит только «Сохранено ✓»
-  const save = (block, q, silent) => {
-    const raw = drafts[q.id] || ''
-    if (raw.trim() === '' || raw === (baseline[q.id] || '')) return Promise.resolve(false)
+  // `silent` — путь onBlur, чипа и сдачи: сохранение идёт тихо, без кнопки «Сохраняю…»,
+  // а ученик видит только «Сохранено ✓». `rawArg` приходит от тапа по варианту: поле
+  // обновлено только что, и ждать перерисовки, чтобы прочитать его, нельзя.
+  const save = (block, q, silent, rawArg) => {
+    const raw = rawArg === undefined ? (drafts[q.id] || '') : rawArg
+    // `rawArg === ''` — ответ сняли чипом: его обязан отпустить и сервер, иначе
+    // прежние буквы дожили бы до перезагрузки экрана. Клавиатурную правку «в никуда»
+    // сохранять нечем.
+    if (raw === (baseline[q.id] || '')) return Promise.resolve(false)
+    if (raw.trim() === '' && rawArg !== '') return Promise.resolve(false)
     if (!silent) setBusy(q.id)
     setNotice('')
     return myAssignmentsAPI.answer(lesson.id, { block: block.id, question: q.id, raw_answer: raw })
@@ -206,10 +248,45 @@ export default function MyAssignmentsPage() {
         setAnswers(prev => ({ ...prev, [q.id]: { ...prev[q.id], ...res.data, question: q.id } }))
         setBaseline(prev => ({ ...prev, [q.id]: raw }))
         setTicks(prev => ({ ...prev, [q.id]: true }))
+        // ребёнок успел нажать ещё раз, пока сервер отвечал на предыдущее: иначе
+        // на экране останется одно, а на сервере — другое
+        const latest = draftRef.current[q.id] || ''
+        if (latest !== raw) return save(block, q, true, latest)
         return true
       })
       .catch(e => { setNotice(errorText(e)); return false })
       .finally(() => { if (!silent) setBusy(0) })
+  }
+
+  // Черновик пишется в ref синхронно: по нему чипы решают, что отправлять, в тот же
+  // миг, когда React ещё рисует прошлое состояние.
+  const setDraft = (qid, value) => {
+    draftRef.current[qid] = value
+    setDrafts(d => ({ ...d, [qid]: value }))
+  }
+
+  // Тап по букве варианта — это ответ: движок сверяет тест набором литер, поэтому
+  // `B` и `B, G` здесь две разные команды, а не дописывание текста.
+  const pickLetter = (block, q, letter) => {
+    const picked = new Set(lettersIn(draftRef.current[q.id] || ''))
+    if (picked.has(letter)) picked.delete(letter)
+    else picked.add(letter)
+    const raw = Array.from(picked).sort().join(', ')
+    setDraft(q.id, raw)
+    save(block, q, true, raw)
+  }
+
+  // Знак вставляется в позицию курсора, а не в конец: ребёнок правит `4,9·10^-18`
+  // посередине, и кнопка не имеет права переписывать ему ответ.
+  const insertSymbol = (qid, snippet, caretShift) => {
+    const area = areaRef.current[qid]
+    const raw = draftRef.current[qid] || ''
+    const from = area ? area.selectionStart : raw.length
+    const to = area ? area.selectionEnd : raw.length
+    setDraft(qid, raw.slice(0, from) + snippet + raw.slice(to))
+    const caret = from + snippet.length + (caretShift || 0)
+    // после смены controlled-значения карета уезжает в конец — возвращаем её на место
+    if (area) requestAnimationFrame(() => { area.focus(); area.setSelectionRange(caret, caret) })
   }
 
   // Сдача не имеет права терять введённое: сначала досохраняем каждое поле, которого
@@ -385,13 +462,40 @@ export default function MyAssignmentsPage() {
                   {q.image && (
                     <img src={q.image} alt="" style={{ marginTop: 8, maxWidth: '100%', maxHeight: 260, borderRadius: 8 }} />
                   )}
-                  <textarea value={drafts[q.id] || ''} disabled={locked}
-                            onChange={e => setDrafts(d => ({ ...d, [q.id]: e.target.value }))}
+                  {!!(q.options && q.options.length) && (
+                    <div className="option-chips">
+                      {q.options.map(letter => (
+                        <button key={letter} type="button" disabled={locked}
+                                className={'option-chip' +
+                                  (lettersIn(drafts[q.id]).includes(letter) ? ' is-on' : '')}
+                                onMouseDown={e => e.preventDefault()}
+                                onClick={() => pickLetter(block, q, letter)}>
+                          {letter}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <textarea ref={el => { areaRef.current[q.id] = el }}
+                            value={drafts[q.id] || ''} disabled={locked}
+                            onChange={e => setDraft(q.id, e.target.value)}
                             onBlur={() => { if (!locked && dirtyFor(q.id)) save(block, q, true) }}
-                            placeholder="Решение и ответ — как в тетради" rows={3}
+                            placeholder={placeholderFor(block, q)} rows={block.autocheck ? 2 : 3}
                             style={{ width: '100%', marginTop: 10, borderRadius: 10, padding: 10, fontSize: 13,
                                      border: '1px solid var(--border)', fontFamily: 'inherit', resize: 'vertical',
                                      background: locked ? 'rgba(107,114,128,0.06)' : '#fff' }} />
+                  {/* Панель символов нужна только там, где ответ печатают: тестовые
+                      буквы ребёнок уже нажал, а поле под ними только для своих знаков. */}
+                  {!locked && !(q.options && q.options.length) && (
+                    <div className="symbol-bar">
+                      {SYMBOLS.map(s => (
+                        <button key={s.label} type="button" className="symbol-btn"
+                                onMouseDown={e => e.preventDefault()}
+                                onClick={() => insertSymbol(q.id, s.insert, s.caret)}>
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {!locked && (
                     <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
                       <button className="btn btn-sm btn-outline" onClick={() => save(block, q)}

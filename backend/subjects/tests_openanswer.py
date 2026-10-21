@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from django.test import SimpleTestCase
 
-from subjects.openanswer import compare, parts_hint, score_open_answer
+from subjects.openanswer import compare, option_labels, parts_hint, score_open_answer
 from subjects.openanswer.cas import (_top_level_comma, decimal_comma_to_point,
                                      parse_by_latex_engine)
 from subjects.openanswer.normalize import split_items, to_value
@@ -475,3 +475,39 @@ class BookTypographyStillParsesTest(SimpleTestCase):
         # а число с подписанной величиной остаётся числом: метку машины не ищет
         self.assertEqual(score_open_answer(r'$F = 5$ Н', r'$F_{\text{н}} = 5$ Н')['verdict'],
                          'correct')
+
+
+class OptionLabelsTest(SimpleTestCase):
+    """Литеры вариантов, напечатанные в условии: экран по ним рисует кнопки ответа.
+
+    Ребёнок решает тест с телефона, и буква варианта там — нажатие, а не печать.
+    Кнопки обязаны повторять напечатанный список: лишняя литера была бы предложением
+    выбрать то, чего в задаче нет.
+    """
+
+    def test_the_printed_run_of_five(self):
+        text = ('Массасы белгілі, қалайы атомының массасы\n'
+                'A) $8{,}3 \\cdot 10^{-26}$ кг\nB) $19{,}92$ кг\nC) $1{,}162$ кг\n'
+                'D) $3{,}32$ кг\nE) $1{,}38$ кг')
+        self.assertEqual(option_labels(text), list('ABCDE'))
+
+    def test_a_cyrillic_homoglyph_is_the_same_letter(self):
+        """`Е) 60 минут` в скане книги — это вариант E, ряд от этого не рвётся."""
+        text = 'Период\nA) 30 сағат\nB) 15 сағат\nC) 30 минут\nD) 30 минут\nЕ) 60 минут'
+        self.assertEqual(option_labels(text), list('ABCDE'))
+
+    def test_the_long_book_run_reaches_H(self):
+        text = '\n'.join('%s) вариант' % ch for ch in 'ABCDEFGH')
+        self.assertEqual(option_labels(text), list('ABCDEFGH'))
+
+    def test_a_list_without_A_is_not_a_list_of_options(self):
+        """`С. Петров` в начале строки — не вариант: чипов не будет, ученик печатает сам."""
+        self.assertEqual(option_labels('С. Петров берді\nB) 2\nC) 3'), [])
+
+    def test_a_hole_in_the_printed_run_is_no_buttons_at_all(self):
+        """`A) B) D)` — ряд с дыркой: список прочитан нецело, чипов не будет вовсе."""
+        self.assertEqual(option_labels('A) 1\nB) 2\nD) 4'), [])
+
+    def test_a_single_letter_is_not_a_list(self):
+        self.assertEqual(option_labels('A) единственный абзац'), [])
+        self.assertEqual(option_labels('Задача без вариантов'), [])

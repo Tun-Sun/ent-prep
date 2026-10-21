@@ -8,6 +8,8 @@
 части совпали автоматически (`parts_hint`). Цифры покрытия после этих правок
 обязаны быть пересняты фикстурным прогоном в лаборатории.
 """
-from .compare import compare, option_letter, option_letters, parts_hint, score_open_answer
+from .compare import (compare, option_letter, option_labels, option_letters,
+                      parts_hint, score_open_answer)
 
-__all__ = ['compare', 'option_letter', 'option_letters', 'parts_hint', 'score_open_answer']
+__all__ = ['compare', 'option_letter', 'option_labels', 'option_letters', 'parts_hint',
+           'score_open_answer']

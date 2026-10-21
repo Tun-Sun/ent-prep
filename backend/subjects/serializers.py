@@ -5,8 +5,9 @@ from django.db import transaction
 from django.utils import timezone
 from users.models import StudyGroup
 from .models import (Subject, Topic, Question, Answer, Assignment, AssignmentBlock,
-                     AssignmentSubmission, AssignmentAnswer, plain_from_latex)
+                     AssignmentSubmission, AssignmentAnswer, CHOICE_TYPES, plain_from_latex)
 from . import sso
+from .openanswer import option_labels
 
 class AnswerSerializer(serializers.ModelSerializer):
     class Meta:
@@ -505,15 +506,27 @@ class StudentQuestionSerializer(serializers.ModelSerializer):
     Разбор (`solution_latex`) приезжает отдельно и только после сдачи блока: до
     `submitted`/`reviewed` поле приходит пустым, чтобы ключ не лежал в JSON, который
     ученик открывает в DevTools.
+
+    `options` — литеры вариантов, напечатанные в условии (`['A'..'E']` или `['A'..'H']`).
+    Экрану ученика они нужны, чтобы тест решался нажатием пальца: с клавиатуры телефона
+    печатать букву варианта дольше и она чаще съедает вердикт. Ключа здесь нет: `options`
+    пересказывает то, что и так напечатано в условии.
     """
     solution_latex = serializers.SerializerMethodField()
+    options = serializers.SerializerMethodField()
 
     class Meta:
         model = Question
-        fields = ('id', 'text', 'latex', 'image', 'difficulty', 'points', 'solution_latex')
+        fields = ('id', 'text', 'latex', 'image', 'difficulty', 'points', 'question_type',
+                  'solution_latex', 'options')
 
     def get_solution_latex(self, obj):
         return obj.solution_latex if self.context.get('solution_open') else ''
+
+    def get_options(self, obj):
+        if obj.question_type not in CHOICE_TYPES:
+            return []
+        return option_labels(obj.latex or obj.text)
 
 
 class MyAssignmentBlockSerializer(AssignmentBlockQuestionsSerializer):

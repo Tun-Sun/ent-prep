@@ -1392,12 +1392,38 @@ class LessonResultsTest(TestCase):
         self.assertNotIn('latex_answer', body)
         self.assertNotIn('provenance', body)
         self.assertEqual(sorted(r.data['blocks'][0]['questions'][0]),
-                         ['difficulty', 'id', 'image', 'latex', 'points', 'solution_latex',
-                          'text'])
+                         ['difficulty', 'id', 'image', 'latex', 'options', 'points',
+                          'question_type', 'solution_latex', 'text'])
         # тренеру ключ банка виден: он его и приёмку ведёт
         t = json.dumps(self._auth(self.teacher).get(f'/api/assignments/{self.lesson.pk}/').data,
                        ensure_ascii=False)
         self.assertIn('$18$ см', t)
+
+    def test_student_page_lists_the_printed_option_letters(self):
+        """Чипы теста экран рисует по напечатанному списку, а не по догадке.
+
+        Ребёнок отвечает с телефона, и буква варианта там — нажатие пальцем, а не
+        печать. Но `options` обязан пересказывать ровно то, что ученик видит в условии:
+        рваный ряд (нет `A`) или буквы вне списка вариантов дали бы чипы, которых в
+        задаче нет, и выбор по ним стоил бы вердикта.
+        """
+        test = self.task(self.topic,
+                         'Массасы\nA) $8{,}3 \\cdot 10^{-26}$\nB) $19{,}92$\nC) $1{,}162$\n'
+                         'D) $3{,}32$\nЕ) $1{,}38$', answer='B', qtype='single_choice')
+        broken = self.task(self.topic, 'С. Петров берді\nB) 2\nC) 3', answer='B',
+                           qtype='single_choice')
+        self.homework.question_ids = [test.pk, broken.pk, self.with_answer.pk]
+        self.homework.save()
+        c = self._auth(self.student)
+        rows = {q['id']: q for q in
+                c.get(f'/api/my/assignments/{self.lesson.pk}/').data['blocks'][0]['questions']}
+        self.assertEqual(rows[test.pk]['question_type'], 'single_choice')
+        # `Е)` в скане книги — кириллическая гомоглифа латинской `E`, ряд от этого не рвётся
+        self.assertEqual(rows[test.pk]['options'], ['A', 'B', 'C', 'D', 'E'])
+        self.assertEqual(rows[broken.pk]['options'], [])
+        self.assertEqual(rows[self.with_answer.pk]['options'], [])
+        body = json.dumps(rows[test.pk], ensure_ascii=False)
+        self.assertNotIn('$18$ см', body)
 
     def test_deduplication_one_submission_and_one_answer_per_task(self):
         c = self._auth(self.student)
