@@ -90,6 +90,18 @@ function TaskRow({ q, picked, onToggle, showAnswer }) {
   )
 }
 
+// Сколько блоков ученик уже сдал. `reviewed` тоже «сдано»: свою часть он закрыл,
+// а вердикт тренера сверху меняет только цвет процента в клетке, не этот счётчик.
+function ProgressBadge({ p }) {
+  if (!p || !p.total) return <span style={chip('rgba(107,114,128,0.1)', 'var(--text-secondary)')}>блоков нет</span>
+  const done = p.submitted === p.total
+  const bg = done ? 'rgba(16,185,129,0.12)' : 'rgba(99,102,241,0.08)'
+  const color = done ? '#065F46' : 'var(--primary)'
+  return <span style={chip(bg, color)} title={done ? 'Все блоки сданы' : `Осталось сдать: ${p.total - p.submitted}`}>
+    Сдано: {p.submitted}/{p.total}
+  </span>
+}
+
 // Матрица результатов одного урока: строки — ученики, колонки — блоки, и под ней
 // очередь `pending_review` с быстрым вердиктом. Эталон книги показан только здесь:
 // ни на один экран ученика он не уходит.
@@ -134,7 +146,10 @@ function LessonResults({ assignment }) {
         <tbody>
           {mx.rows.map(row => (
             <tr key={row.student} style={{ borderTop: '1px solid var(--border)' }}>
-              <td style={{ padding: '6px 8px', fontWeight: 600 }}>{row.name}</td>
+              <td style={{ padding: '6px 8px', fontWeight: 600 }}>
+                {row.name}{' '}
+                <ProgressBadge p={row.blocks_progress} />
+              </td>
               {row.blocks.map(cell => (
                 <td key={cell.block} style={{ padding: '6px 8px' }}>
                   {!cell.state && <span style={{ color: 'var(--text-secondary)' }}>— не сдавал</span>}

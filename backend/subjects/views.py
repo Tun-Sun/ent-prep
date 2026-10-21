@@ -402,6 +402,12 @@ class AssignmentViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
                                  'possible': None, 'percent': None}),
                 })
             rows.append({'student': student.pk, 'name': student.full_name or student.username,
+                         # «сдано» — и `submitted`, и `reviewed`: ученик свою часть закрыл
+                         # в обоих случаях, `reviewed` добавляет к этому только вердикт тренера
+                         'blocks_progress': {
+                             'submitted': sum(1 for c in cells
+                                              if c['state'] in ('submitted', 'reviewed')),
+                             'total': len(blocks)},
                          'blocks': cells})
         pending = (AssignmentAnswer.objects.filter(submission__assignment=assignment,
                                                    verdict='pending_review')

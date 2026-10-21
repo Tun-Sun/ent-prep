@@ -1244,6 +1244,40 @@ class LessonResultsTest(TestCase):
         self.assertEqual(r.data['pending_review'][0]['block_kind'], 'homework')
         self.assertIn('в книге ответа нет', str(r.data['pending_review'][0]['verdict_note']))
 
+    def test_matrix_row_counts_which_blocks_the_student_handed_in(self):
+        """«Сдано 2 из 4» в матрице: итог по блокам считает бэкенд, а не тренер глазами.
+
+        Опасность одна: `reviewed` — это тоже сданный блок. Если считать только
+        `submitted`, прогресс ученика уменьшился бы ровно в тот момент, когда тренер
+        поставил ему вердикт, и экран показал бы потерянную сдачу.
+        """
+        s, t = self._auth(self.student), self._auth(self.teacher)
+
+        def progress(user):
+            rows = t.get(f'/api/assignments/{self.lesson.pk}/matrix/').data['rows']
+            return {r['student']: r['blocks_progress'] for r in rows}[user.pk]
+
+        self.assertEqual(progress(self.student), {'submitted': 0, 'total': 2})
+        self._answer(s, self.homework, self.with_answer, '18 см')
+        self._answer(s, self.homework, self.no_answer, '12 см')
+        # `in_progress` сдачей не считается: ответ на сервере есть, блока ученик не сдал
+        self.assertEqual(progress(self.student)['submitted'], 0)
+        self._submit(s, self.homework)
+        self.assertEqual(progress(self.student), {'submitted': 1, 'total': 2})
+        self._answer(s, self.classwork, self.classwork_task, '5 м')
+        self._submit(s, self.classwork)
+        self.assertEqual(progress(self.student), {'submitted': 2, 'total': 2})
+        pending = AssignmentAnswer.objects.get(submission__block=self.homework,
+                                               question=self.no_answer)
+        t.post(f'/api/assignment-answers/{pending.pk}/review/', {'verdict': 'correct'},
+               format='json')
+        self.assertEqual(AssignmentSubmission.objects.get(block=self.homework,
+                                                          student=self.student).state,
+                         'reviewed')
+        self.assertEqual(progress(self.student), {'submitted': 2, 'total': 2})
+        # второй ученик урок не открывал: у него тоже обязан быть полный нулевой прогресс
+        self.assertEqual(progress(self.second), {'submitted': 0, 'total': 2})
+
     def test_human_review_is_the_only_thing_that_closes_a_submission(self):
         c = self._auth(self.student)
         self._answer(c, self.homework, self.with_answer, '18 см')
