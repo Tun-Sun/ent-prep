@@ -143,6 +143,13 @@ class QuestionViewSet(viewsets.ModelViewSet):
         source_type = self.request.query_params.get('source_type')
         status = self.request.query_params.get('verification_status')
         grade = self.request.query_params.get('grade')
+        # Язык строки банка: перевод — отдельная строка, а не правка русской, поэтому
+        # без этого фильтра казахские условия утонули бы в русском списке, и «сколько
+        # переводов в банке» пришлось бы считать руками.
+        language = self.request.query_params.get('language')
+        # «только переводы»: о переводе говорит паспорт строки, а не флаг в колонке —
+        # отдельного поля под конвейер перевода мы не заводили
+        translated = self.request.query_params.get('translated')
         # формат из паспорта прогона: 'задача' / 'тест' — тесты без ключа ответа
         # в общем списке только мешают вычитке, их прячут отдельным фильтром.
         # Параметр не называем `format`: DRF резервирует его под согласование
@@ -164,6 +171,10 @@ class QuestionViewSet(viewsets.ModelViewSet):
             # искать, а не угадывать, сколько осталось разметить. Значение вне 5..11
             # просто не совпадёт ни с чем, отдельной валидации здесь нет.
             queryset = queryset.filter(grade=None if grade == 'none' else grade)
+        if language:
+            queryset = queryset.filter(language=language)
+        if translated:
+            queryset = queryset.filter(provenance__translated_src_pk__isnull=False)
         if fmt:
             # Значения через запятую: «и задачи, и теорию» — это не одно значение,
             # а просить «всё, кроме тестов» отдельным параметром значит удвоить фильтр.
@@ -179,6 +190,25 @@ class QuestionViewSet(viewsets.ModelViewSet):
                 Q(text__icontains=needle) | Q(latex__icontains=needle)
                 | Q(latex_answer__icontains=needle) | Q(external_id__icontains=needle))
         return queryset
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        rows = response.data.get('results') or []
+        pks = [r['id'] for r in rows]
+        # Оригинал не знает, что его перевели, — это знает только копия. Метку «↔ #ID»
+        # на русской карточке иначе можно увидеть лишь тогда, когда перевод случайно
+        # попал на ту же страницу выдачи. Одной доп. выборкой на страницу добираем
+        # копии, указывающие на видимые строки; переводов два (ошибка конвейера) —
+        # показываем самый новый.
+        copy_of_src = {}
+        if pks:
+            for src_pk, copy_pk in Question.objects.filter(
+                    provenance__translated_src_pk__in=pks).order_by('pk').values_list(
+                    'provenance__translated_src_pk', 'pk'):
+                copy_of_src[src_pk] = copy_pk
+        for r in rows:
+            r['translation_id'] = copy_of_src.get(r['id'])
+        return response
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()

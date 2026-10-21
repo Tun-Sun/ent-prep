@@ -653,6 +653,89 @@ class BankEndpointPermissionTest(TestCase):
         self.assertEqual(r.data['count'], 1)
 
 
+class BankLanguageFilterTest(TestCase):
+    """Фильтры «Язык» и «только переводы»: перевод — отдельная строка банка.
+
+    Казахское условие не правит русскую строку, оно лежит копией с паспортом
+    `translated_src_pk`. Экран обязан уметь выбрать и оригиналы, и переводы, а
+    пакетная приёмка под этим фильтром — взять ровно переводы, а не весь банк.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.math = Subject.objects.create(name='Математика', slug='math-ru', icon='🧮')
+        cls.topic = Topic.objects.create(subject=cls.math, name='Система уравнений')
+        from users.models import User
+        cls.teacher = User.objects.create_user(username='tl', password='x', role='teacher')
+
+    def book(self, ext, language, verification_status, src=None):
+        prov = {'run': 'система_уравнений_тест', 'format': 'задача'}
+        if src is not None:
+            prov['translated_src_pk'] = src.pk
+            prov['translation_batch_id'] = 'batch-1'
+        return Question.objects.create(
+            topic=self.topic, text=f'задача {ext}', latex='$x = 1$', latex_answer='$1$',
+            source_type='book_scan', verification_status=verification_status,
+            language=language, external_id=ext, provenance=prov)
+
+    def setUp(self):
+        self.ru1 = self.book('11.001', 'ru', 'verified')
+        self.ru2 = self.book('11.002', 'ru', 'draft')
+        self.kk1 = self.book('11.001:kk', 'kk', 'draft', src=self.ru1)
+        self.kk2 = self.book('11.002:kk', 'kk', 'verified', src=self.ru2)
+
+    def api(self):
+        from rest_framework.test import APIClient
+        c = APIClient()
+        c.force_authenticate(user=self.teacher)
+        return c
+
+    def ids(self, **params):
+        r = self.api().get('/api/questions/', {'source_type': 'book_scan', **params})
+        self.assertEqual(r.status_code, 200)
+        return sorted(x['id'] for x in r.data['results'])
+
+    def test_language_filter_picks_one_language(self):
+        self.assertEqual(self.ids(language='kk'), [self.kk1.pk, self.kk2.pk])
+        self.assertEqual(self.ids(language='ru'), [self.ru1.pk, self.ru2.pk])
+
+    def test_translated_filter_picks_rows_with_a_source(self):
+        # фильтр по паспорту, а не по языку: строка могла быть переведена и на русский
+        self.assertEqual(self.ids(translated='1'), [self.kk1.pk, self.kk2.pk])
+
+    def test_translation_queue_is_draft_translations_only(self):
+        self.assertEqual(self.ids(translated='1', verification_status='draft'), [self.kk1.pk])
+
+    def test_original_row_names_its_translation(self):
+        """Оригинал не знает, что его перевели, — это должен досчитать список.
+
+        Иначе метка «↔ #ID» на русской карточке появится только если перевод
+        случайно попал на ту же страницу выдачи.
+        """
+        rows = {x['id']: x for x in self.api().get(
+            '/api/questions/', {'source_type': 'book_scan'}).data['results']}
+        self.assertEqual(rows[self.ru1.pk]['translation_id'], self.kk1.pk)
+        self.assertEqual(rows[self.ru2.pk]['translation_id'], self.kk2.pk)
+        # у перевода своего перевода нет
+        self.assertIsNone(rows[self.kk2.pk]['translation_id'])
+
+    def test_serializer_carries_language_and_source(self):
+        row = [x for x in self.api().get('/api/questions/', {'source_type': 'book_scan'}
+                                         ).data['results'] if x['id'] == self.kk1.pk][0]
+        self.assertEqual(row['language'], 'kk')
+        self.assertEqual(row['provenance']['translated_src_pk'], self.ru1.pk)
+
+    def test_bulk_verify_under_the_translation_filter_touches_only_translations(self):
+        r = self.api().post('/api/questions/bulk-verify/'
+                            '?source_type=book_scan&translated=1&verification_status=draft',
+                            {'all_matching': True}, format='json')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()['changed'], 1)
+        self.assertEqual(Question.objects.get(pk=self.kk1.pk).verification_status, 'verified')
+        # русский черновик под тем же банком, но без перевода, принят не был
+        self.assertEqual(Question.objects.get(pk=self.ru2.pk).verification_status, 'draft')
+
+
 class AutoacceptBookDraftsTest(TestCase):
     """Приёмка автоматом: статус тот же, но метка говорит, что человека не было.
 

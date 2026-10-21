@@ -16,6 +16,9 @@ const FORMAT = [['', 'Любой формат'], ['задача,теория', '
 const GRADE_FILTER = [['', 'Любой класс'], ['none', 'Класс не проставлен'],
                       ...[5, 6, 7, 8, 9, 10, 11].map(g => [String(g), `${g} класс`])]
 const GRADES = [5, 6, 7, 8, 9, 10, 11]
+// Язык строки. Перевод — это отдельная строка банка, а не правка русской, поэтому
+// «показать казахские условия» должен уметь и экран, и фильтр под пакетную приёмку.
+const LANGUAGE = [['', 'Любой язык'], ['ru', 'Русский (ru)'], ['kk', 'Қазақша (kk)']]
 
 const chip = (bg, color) => ({
   padding: '2px 8px', borderRadius: 100, fontSize: 11, fontWeight: 600, background: bg, color,
@@ -305,6 +308,10 @@ export default function BookBankPage() {
   const [filterStatus, setFilterStatus] = useState('')
   const [filterDifficulty, setFilterDifficulty] = useState('')
   const [filterGrade, setFilterGrade] = useState('')
+  const [filterLanguage, setFilterLanguage] = useState('')
+  // чип «Переводы на проверке»: строки, у которых в паспорте есть исходник. Включая
+  // его, переводим и статус на черновик — очередь смотрит только не принятые переводы
+  const [filterTranslated, setFilterTranslated] = useState(false)
   // тесты без ключа ответа в общем списке только мешают вычитке задач —
   // по умолчанию показываем задачи и теорию, тесты под отдельным фильтром
   const [filterFormat, setFilterFormat] = useState('задача,теория')
@@ -327,6 +334,9 @@ export default function BookBankPage() {
   // Сколько строк под текущим фильтром ещё не принято. Без этого числа кнопка
   // «принять все» показывает всю выдачу и висит нетронутой после приёма всего.
   const [pending, setPending] = useState(null)
+  // Очередь переводов считается по всему банку, а не по фильтру: человеку нужно
+  // знать, сколько казахских строк вообще ждут глаза, а не сколько на этой странице.
+  const [transQueue, setTransQueue] = useState(null)
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   const loadProgress = () => {
@@ -336,7 +346,7 @@ export default function BookBankPage() {
       .catch(() => setProgress(null))
   }
 
-  useEffect(() => { loadProgress(); loadPending() }, [])
+  useEffect(() => { loadProgress(); loadPending(); loadTransQueue() }, [])
 
   useEffect(() => {
     subjectsAPI.list().then(res => setSubjects(res.data))
@@ -357,6 +367,8 @@ export default function BookBankPage() {
     if (filterStatus) params.verification_status = filterStatus
     if (filterDifficulty) params.difficulty = filterDifficulty
     if (filterGrade) params.grade = filterGrade
+    if (filterLanguage) params.language = filterLanguage
+    if (filterTranslated) params.translated = '1'
     if (filterFormat) params.task_format = filterFormat
     if (needle.trim()) params.q = needle.trim()
     return params
@@ -368,6 +380,13 @@ export default function BookBankPage() {
     questionsAPI.list({ ...queryParams(), verification_status: 'draft', page_size: 1 })
       .then(res => setPending(res.data.count))
       .catch(() => setPending(null))
+  }
+
+  const loadTransQueue = () => {
+    questionsAPI.list({ source_type: 'book_scan', translated: '1',
+                        verification_status: 'draft', page_size: 1 })
+      .then(res => setTransQueue(res.data.count))
+      .catch(() => setTransQueue(null))
   }
 
   const load = (pg = 1) => {
@@ -391,9 +410,20 @@ export default function BookBankPage() {
   useEffect(() => {
     const t = setTimeout(() => { setPage(1); load(1); loadPending() }, 350)
     return () => clearTimeout(t)
-  }, [filterSubject, filterTopic, filterStatus, filterDifficulty, filterGrade, filterFormat, needle])
+  }, [filterSubject, filterTopic, filterStatus, filterDifficulty, filterGrade,
+      filterLanguage, filterTranslated, filterFormat, needle])
 
   const goPage = (pg) => { setPage(pg); load(pg) }
+
+  // Очередь смотрит НЕ принятые переводы, поэтому чип ставит и статус: иначе под
+  // надписью «на проверке» показали бы строки, которые уже приняли. Когда черновых
+  // переводов нет, кнопка гаснет, но остаётся видимой — по ней видно, что очередь пуста,
+  // а не что фильтра нет; все казахские строки смотрятся селектором «Язык».
+  const toggleTranslated = () => {
+    if (filterTranslated) { setFilterTranslated(false); return }
+    setFilterTranslated(true)
+    setFilterStatus('draft')
+  }
 
   const remove = (q) => {
     const pr = q.provenance || {}
@@ -401,7 +431,11 @@ export default function BookBankPage() {
     if (!confirm(`Удалить ${what} из банка? Вернуть можно только повторным импортом прогона.`)) return
     setNotice('')
     questionsAPI.delete(q.id)
-      .then(() => { setRows(rs => rs.filter(r => r.id !== q.id)); setTotal(t => t - 1) })
+      .then(() => {
+        setRows(rs => rs.filter(r => r.id !== q.id)); setTotal(t => t - 1)
+        // удалённый перевод больше не в очереди — число на чипе обязано сдвинуться
+        loadTransQueue()
+      })
       .catch(e => setNotice(errorText(e)))
   }
 
@@ -414,6 +448,8 @@ export default function BookBankPage() {
       filterStatus && (STATUS.find(([v]) => v === filterStatus) || [, ''])[1],
       filterDifficulty && (DIFFICULTY.find(([v]) => v === filterDifficulty) || [, ''])[1],
       filterGrade && (GRADE_FILTER.find(([v]) => v === filterGrade) || [, ''])[1],
+      filterLanguage && (LANGUAGE.find(([v]) => v === filterLanguage) || [, ''])[1],
+      filterTranslated && 'только переводы',
       filterFormat && (FORMAT.find(([v]) => v === filterFormat) || [, filterFormat])[1],
       needle.trim() && `поиск «${needle.trim()}»`,
     ].filter(Boolean)
@@ -441,6 +477,7 @@ export default function BookBankPage() {
         load(page)
         loadProgress()
         loadPending()
+        loadTransQueue()
         // после load(): он снимает старые сообщения, и написанный до него ответ
         // стирался бы, не дойдя до глаз
         setDone(res.data.changed
@@ -458,6 +495,7 @@ export default function BookBankPage() {
     setEditing(e => (e && e.id === data.id ? data : e))
     loadProgress()
     loadPending()
+    loadTransQueue()
   }
 
   const sel = {
@@ -475,6 +513,21 @@ export default function BookBankPage() {
     if (!byTopic.has(k)) byTopic.set(k, [])
     byTopic.get(k).push(q)
   })
+
+  // Перевод знает оригинал по паспорту, оригинал — нет: бэкенд дописывает к строке
+  // `translation_id`, иначе метка на русской карточке зависела бы от того, попал ли
+  // её перевод в эту же страницу выдачи.
+  // «↔ #34960» ведёт к паре: номер перевода = номер оригинала с хвостом «:kk», поэтому
+  // поиска по оригинальному номеру хватает на обе строки. Фильтры языка, статуса и
+  // «только переводы» разрезали бы пару, поэтому на переходе они снимаются.
+  const showPair = (q) => {
+    const base = String(q.external_id || '').replace(/:kk$/, '')
+    if (!base) { setNotice('У этой строки нет печатного номера — перейти к паре нельзя'); return }
+    setFilterLanguage('')
+    setFilterStatus('')
+    setFilterTranslated(false)
+    setNeedle(base)
+  }
 
   return (
     <div>
@@ -509,6 +562,17 @@ export default function BookBankPage() {
           <select value={filterGrade} onChange={e => setFilterGrade(e.target.value)} style={sel}>
             {GRADE_FILTER.map(([v, n]) => <option key={v} value={v}>{n}</option>)}
           </select>
+          <select value={filterLanguage} onChange={e => setFilterLanguage(e.target.value)} style={sel}>
+            {LANGUAGE.map(([v, n]) => <option key={v} value={v}>{v ? `Язык: ${n}` : n}</option>)}
+          </select>
+          <button className="btn btn-sm" onClick={toggleTranslated}
+                  disabled={!transQueue && !filterTranslated}
+                  title="Строки, у которых в паспорте есть исходник: их перевёл конвейер, глаз человека над ними ещё не был"
+                  style={{ ...sel, border: filterTranslated ? '2px solid var(--primary)' : '1px solid var(--border)',
+                           color: filterTranslated ? 'var(--primary)' : 'var(--text-secondary)',
+                           background: filterTranslated ? 'rgba(99,102,241,0.08)' : '#fff' }}>
+            Переводы на проверке{transQueue === null ? '…' : ` (${transQueue})`}
+          </button>
           <select value={filterFormat} onChange={e => setFilterFormat(e.target.value)} style={sel}>
             {FORMAT.map(([v, n]) => <option key={v} value={v}>{n}</option>)}
           </select>
@@ -585,6 +649,23 @@ export default function BookBankPage() {
                        onChange={e => setPicked(rs => e.target.checked ? [...rs, q.id] : rs.filter(i => i !== q.id))}
                        style={{ width: 16, height: 16, accentColor: 'var(--primary)', cursor: 'pointer', marginRight: 2 }} />
                 <span style={chip('rgba(99,102,241,0.08)', 'var(--primary)')}>{q.subject_name}</span>
+                {/* язык строки: перевод — отдельная строка банка, и без бейджа
+                    казахское условие выглядело бы правкой русского на том же месте */}
+                <span style={chip(q.language === 'kk' ? 'rgba(13,148,136,0.12)' : 'rgba(107,114,128,0.12)',
+                                  q.language === 'kk' ? '#0F766E' : '#374151')}
+                      title={q.language === 'kk' ? 'қазақша' : 'русский'}>
+                  {(q.language || 'ru').toUpperCase()}
+                </span>
+                {(pr.translated_src_pk || q.translation_id) && (
+                  <button className="btn btn-sm" onClick={() => showPair(q)}
+                          title={pr.translated_src_pk
+                            ? `Это перевод строки #${pr.translated_src_pk}`
+                            : `Эту строку перевели: #${q.translation_id}`}
+                          style={{ ...chip('rgba(99,102,241,0.08)', 'var(--primary)'),
+                                   border: 'none', cursor: 'pointer' }}>
+                    ↔ #{pr.translated_src_pk || q.translation_id}
+                  </button>
+                )}
                 <span style={chip('rgba(16,185,129,0.08)', '#065F46')}>{q.topic_name}</span>
                 <span style={chip('rgba(245,158,11,0.1)', '#92400E')}>
                   {/* у теста границей парсер считал слово «задача» — в чипе оно было бы ложью */}
