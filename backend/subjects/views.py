@@ -546,16 +546,18 @@ class MyAssignmentViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=['post'], url_path='join-preview')
     def join_preview(self, request):
-        """Ученик уже авторизован в этом браузере: подпись урока привязывает его к уроку.
+        """Карточка предпросмотра доводит человека до его же урока, а не на главную.
 
-        Ссылку из шаблона GetCourse часто открывают, уже сидя в системе, — безпарольный
-        переход такому человеку не нужен, ему нужна привязка и адрес карточки. Другой
-        роли здесь не бывает: тренер на этот путь не ходит, он смотрит карточку
-        предпросмотра и входит дежурным учеником.
+        Ссылку из шаблона GetCourse часто открывают, уже сидя в системе, —
+        безпарольный переход такому человеку не нужен, ему нужна привязка и адрес
+        карточки. Две роли и два адреса (Шаг 6.6, 21-й деплой):
+        * ученик привязывается к уроку и уходит сдавать;
+        * тренер-владелец урока ни к кому не привязывается — он открывается в
+          собственном конструкторе, где он его и собирал.
+
+        Чужой тренер здесь отказывается: `lesson_token` подписан под урок, а не под
+        человека, и без проверки владельца одна подпись открывала бы чужой урок.
         """
-        if request.user.role != 'student' or request.user.is_staff:
-            return Response({'detail': 'Вход в урок по подписи доступен только ученику'},
-                            status=status.HTTP_403_FORBIDDEN)
         assignment_id = str(request.data.get('assignment_id') or '').strip()
         token = str(request.data.get('lesson_token') or '').strip()
         if not assignment_id.isdigit():
@@ -569,8 +571,13 @@ class MyAssignmentViewSet(viewsets.GenericViewSet):
         if not assignment:
             return Response({'detail': 'Урок не найден или уже отозван'},
                             status=status.HTTP_403_FORBIDDEN)
-        assignment.students.add(request.user)
-        return Response({'next': '/assignments?open=%s' % assignment.pk})
+        if request.user.role == 'student' and not request.user.is_staff:
+            assignment.students.add(request.user)
+            return Response({'next': '/assignments?open=%s' % assignment.pk})
+        if request.user.role == 'teacher' and assignment.teacher_id == request.user.pk:
+            return Response({'next': '/teacher/assign?open=%s' % assignment.pk})
+        return Response({'detail': 'Вход по подписи урока открыт ученику и тренеру-владельцу'},
+                        status=status.HTTP_403_FORBIDDEN)
 
     @staticmethod
     def _submission(assignment, student, block):

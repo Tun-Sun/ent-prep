@@ -48,16 +48,33 @@ export default function SsoLandingPage() {
     window.location.replace(next)
   }, [])
 
+  // Довести человека из карточки до его же урока: ученик привязывается по подписи и
+  // уходит сдавать, тренер-владелец открывается в конструкторе. Адрес отдаёт сервер —
+  // экран сам не решает, кому куда идти.
+  const ownLesson = () =>
+    myAssignmentsAPI.joinPreview(preview.assignmentId, preview.token).then(res => res.data.next)
+
   // Ученик уже сидит в этом браузере: представляться не надо, подпись урока его
   // привязывает — и он внутри карточки.
   useEffect(() => {
     if (!preview || loading || attached.current) return
     if (!user || user.role !== 'student') return
     attached.current = true
-    myAssignmentsAPI.joinPreview(preview)
-      .then(res => window.location.replace(res.data.next))
+    ownLesson().then(next => window.location.replace(next))
       .catch(() => setNotice('Урок не открылся: подпись не подошла или урок уже отозван.'))
   }, [preview, loading, user])
+
+  // «Остаться в своём аккаунте» — не ссылка на главную: там этого урока в списке нет,
+  // и человек решал, что ссылка не работает. Отказ (урок не его) ведёт в свой же
+  // список уроков, где он и так сидит.
+  const stay = () => {
+    ownLesson().then(next => window.location.replace(next))
+      .catch(() => window.location.replace(user.role === 'student' ? '/assignments' : '/teacher/assign'))
+  }
+
+  // Куда возвращает «Выйти из тестового входа»: обратно на тот экран, с которого
+  // человек зашёл в урок, а не на чужой конструктор.
+  const back = !user ? '/login' : (user.role === 'student' ? '/assignments' : '/teacher/assign')
 
   if (preview) {
     if (loading) {
@@ -87,13 +104,11 @@ export default function SsoLandingPage() {
           <div className="mt-4" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button className="btn btn-primary" style={{ borderRadius: 10 }}
                     onClick={() => enterLessonAsDemoStudent({
-                      assignmentId: preview.assignmentId, token: preview.token,
-                      back: user ? '/teacher/assign' : '/login' })}>
+                      assignmentId: preview.assignmentId, token: preview.token, back })}>
               Войти в урок как тестовый ученик
             </button>
             {user && (
-              <button className="btn btn-outline" style={{ borderRadius: 10 }}
-                      onClick={() => window.location.replace('/')}>
+              <button className="btn btn-outline" style={{ borderRadius: 10 }} onClick={stay}>
                 Остаться в своём аккаунте
               </button>
             )}

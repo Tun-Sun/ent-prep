@@ -417,7 +417,7 @@ class LessonTokenJoinTest(TestCase):
 @override_settings(GC_SSO_SECRET=SECRET, GC_SSO_MAX_AGE=300)
 class LessonPreviewAttachTest(TestCase):
     """Экран предпросмотра доводит человека до урока: ученик привязывается по подписи,
-    остальным этот путь закрыт."""
+    тренер-владелец уходит в свой конструктор, чужой урок не открывается никому."""
 
     @classmethod
     def setUpTestData(cls):
@@ -442,14 +442,31 @@ class LessonPreviewAttachTest(TestCase):
         self.assertEqual(r.data['next'], '/assignments?open=%s' % self.lesson.pk)
         self.assertTrue(self.lesson.students.filter(pk=student.pk).exists())
 
-    def test_a_teacher_is_refused(self):
-        """Тренер на этот путь не ходит: он смотрит карточку и входит дежурным
-        учеником, а привязать к уроку себя нельзя."""
-        before = self.lesson.students.count()
+    def test_the_owner_teacher_is_sent_to_his_constructor(self):
+        """«Остаться в своём аккаунте» не выбрасывает тренера на пустую главную:
+        свой урок он открывает там, где его собирал, и никуда не привязывается."""
         r = self._attach(self.teacher)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['next'], '/teacher/assign?open=%s' % self.lesson.pk)
+        self.assertEqual(self.lesson.students.count(), 0)
+
+    def test_another_teachers_lesson_is_refused(self):
+        """Чужому тренеру путь закрыт: подпись урока ничего про человека не говорит,
+        поэтому без проверки владельца одна валидная подпись открывала бы чужой урок."""
+        stranger = User.objects.create_user(username='prev_stranger', password='x',
+                                            role='teacher', email='stranger@intellect.kz')
+        before = self.lesson.students.count()
+        r = self._attach(stranger)
         self.assertEqual(r.status_code, 403, r.data)
-        self.assertIn('только ученику', r.data['detail'])
+        self.assertIn('тренеру-владельцу', r.data['detail'])
         self.assertEqual(self.lesson.students.count(), before)
+
+    def test_an_admin_without_the_lesson_is_refused(self):
+        admin = User.objects.create_user(username='prev_admin', password='x',
+                                         role='admin', email='admin@intellect.kz')
+        r = self._attach(admin)
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertEqual(self.lesson.students.count(), 0)
 
     def test_a_staff_student_is_refused(self):
         insider = User.objects.create_user(username='prev_insider', password='x',

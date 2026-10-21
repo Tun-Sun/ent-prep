@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { assignmentsAPI, subjectsAPI, groupsAPI } from '../../api'
 import FormattedText from '../../components/FormattedText'
 import { enterLessonAsDemoStudent } from '../auth/lessonPreview'
@@ -307,6 +307,7 @@ export default function AssignByLevelPage() {
   const [dueAt, setDueAt] = useState('')
   const [mine, setMine] = useState([])
   const [open, setOpen] = useState(null)
+  const [jumpTo, setJumpTo] = useState(0)
   const [results, setResults] = useState(null)
   const [busy, setBusy] = useState(false)
 
@@ -356,7 +357,28 @@ export default function AssignByLevelPage() {
     subjectsAPI.list().then(res => setSubjects(res.data)).catch(() => {})
     groupsAPI.list().then(res => setGroups(res.data)).catch(() => {})
     assignmentsAPI.list().then(res => setMine(res.data)).catch(() => {})
+    // `/teacher/assign?open=<id>` — приход с карточки предпросмотра ссылки GetCourse:
+    // тренер должен увидеть свой урок раскрытым, а не пустой список.
+    const wanted = new URLSearchParams(window.location.search).get('open')
+    if (wanted) {
+      setJumpTo(Number(wanted))
+      assignmentsAPI.detail(wanted).then(res => setOpen(res.data)).catch(() => {})
+    }
   }, [])
+
+  // Список уроков лежит под сборкой набора: без прокрутки человек увидел бы пустой
+  // верх экрана и не понял, что попал именно в свой урок. Ждём и строки списка, и
+  // раскрытого состава: до этого страница короче и прокрутка упёрлась бы не туда.
+  // Один раз — иначе ручная стрелка любого блока швыряла бы экран наверх урока.
+  const jumped = useRef(false)
+  useEffect(() => {
+    if (jumped.current || !jumpTo || !open || open.id !== jumpTo) return
+    if (!mine.some(a => a.id === jumpTo)) return
+    const row = document.getElementById('lesson-' + jumpTo)
+    if (!row) return
+    jumped.current = true
+    row.scrollIntoView({ block: 'start' })
+  }, [jumpTo, mine, open])
 
   useEffect(() => {
     if (subject) subjectsAPI.topics(subject).then(res => setTopics(res.data)).catch(() => setTopics([]))
@@ -672,7 +694,8 @@ export default function AssignByLevelPage() {
         {mine.map(a => {
           const detail = open && open.id === a.id ? open : null
           return (
-            <div key={a.id} style={{ borderBottom: '1px solid var(--border)' }}>
+            <div key={a.id} id={'lesson-' + a.id}
+                 style={{ borderBottom: '1px solid var(--border)' }}>
               <div style={{ padding: '14px 20px', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <button className="btn btn-sm btn-outline" onClick={() => showTasks(a.id)}
                         style={{ borderRadius: 8, padding: '2px 8px' }}>

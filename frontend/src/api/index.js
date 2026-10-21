@@ -112,8 +112,11 @@ export const myAssignmentsAPI = {
   detail: (id) => api.get(`/my/assignments/${id}/`),
   answer: (id, data) => api.post(`/my/assignments/${id}/answer/`, data),
   submit: (id, data) => api.post(`/my/assignments/${id}/submit/`, data),
-  // карточка предпросмотра: ученик уже в браузере, подпись урока его привязывает
-  joinPreview: (data) => api.post('/my/assignments/join-preview/', data),
+  // карточка предпросмотра: человек уже в браузере, подпись урока его привязывает.
+  // Ключи собирает здесь, а не на экране: сервер читает `assignment_id` и
+  // `lesson_token`, своё написание он не опознаёт и отвечает 403 про подпись.
+  joinPreview: (assignmentId, token) => api.post('/my/assignments/join-preview/',
+    { assignment_id: String(assignmentId), lesson_token: token }),
 }
 
 // Импорт Excel
