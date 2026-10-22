@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { myAssignmentsAPI } from '../../api'
 import { enterLessonAsDemoStudent } from './lessonPreview'
+import TelegramLoginButton, { useTelegramConfig } from './TelegramLoginButton'
 
 // Промежуточная страница входа из урока GetCourse (Шаг 6.1, предпросмотр — Шаг 6.6).
 //
@@ -16,9 +17,14 @@ import { enterLessonAsDemoStudent } from './lessonPreview'
 // проверяет подпись урока и редиректит сюда, чтобы человек не видел сырой отказ.
 export default function SsoLandingPage() {
   const { user, loading } = useAuth()
+  const telegram = useTelegramConfig()
   const [error, setError] = useState('')
   const [preview, setPreview] = useState(null)
   const [notice, setNotice] = useState('')
+  // Человек честно вошёл через Telegram, а подпись урока не сошлась: сессия есть,
+  // урока нет. Экран называет причину и остаётся на месте, а не выбрасывает в
+  // пустой список уроков — иначе ученик решит, что ссылка битая.
+  const [entered, setEntered] = useState(null)
   const attached = useRef(false)
 
   useEffect(() => {
@@ -76,6 +82,11 @@ export default function SsoLandingPage() {
   // человек зашёл в урок, а не на чужой конструктор.
   const back = !user ? '/login' : (user.role === 'student' ? '/assignments' : '/teacher/assign')
 
+  // «Войти по логину и паролю» ведёт не в список уроков, а обратно на эту карточку:
+  // после входа подпись урока привяжет ученика к уроку, и он уйдёт сдавать.
+  const passwordHref = '/login?next=' +
+    encodeURIComponent(window.location.pathname + window.location.search)
+
   if (preview) {
     if (loading) {
       return (
@@ -86,32 +97,75 @@ export default function SsoLandingPage() {
         </div>
       )
     }
+    if (entered) {
+      return (
+        <div className="min-h-screen flex items-center justify-center px-4">
+          <div className="card p-6" style={{ maxWidth: 460 }}>
+            <h2 style={{ fontSize: 16, marginBottom: 10 }}>Вы вошли в платформу</h2>
+            {entered.notice && (
+              <p className="text-sm" style={{ color: 'var(--danger)' }}>{entered.notice}</p>
+            )}
+            <div className="mt-4">
+              <button className="btn btn-primary" style={{ borderRadius: 10 }}
+                      onClick={() => window.location.replace(entered.next)}>
+                Открыть мои уроки
+              </button>
+            </div>
+          </div>
+        </div>
+      )
+    }
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <div className="card p-6" style={{ maxWidth: 460 }}>
           <h2 style={{ fontSize: 16, marginBottom: 10 }}>Ссылка открыта вне урока</h2>
           <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
             Эта ссылка предназначена для вставки внутрь урока GetCourse (там имя и почта
-            ученика подставятся автоматически). Хотите проверить, как этот урок видит ученик?
+            ученика подставятся автоматически). Войти можно прямо здесь.
           </p>
+          {telegram.enabled && !user && (
+            <div className="mt-4">
+              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>
+                Войти через Telegram и открыть урок
+              </div>
+              <TelegramLoginButton
+                botName={telegram.botName}
+                extra={{ assignment_id: String(preview.assignmentId), lesson_token: preview.token }}
+                onSuccess={res => res.notice ? setEntered(res) : window.location.replace(res.next)}
+                onError={setNotice} />
+            </div>
+          )}
+          {telegram.loading && <p className="text-sm mt-3 muted">Проверяем вход через Telegram…</p>}
+          {notice && <p className="text-sm mt-3" style={{ color: 'var(--danger)' }}>{notice}</p>}
           {user && user.role !== 'student' && (
             <p className="text-sm mt-3" style={{ color: 'var(--text-secondary)' }}>
               Вы вошли как преподаватель: тестовый вход откроется в этой вкладке, а назад
               вернёт кнопка «Выйти из тестового входа» на экране урока.
             </p>
           )}
-          {notice && <p className="text-sm mt-3" style={{ color: 'var(--danger)' }}>{notice}</p>}
           <div className="mt-4" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button className="btn btn-primary" style={{ borderRadius: 10 }}
-                    onClick={() => enterLessonAsDemoStudent({
-                      assignmentId: preview.assignmentId, token: preview.token, back })}>
-              Войти в урок как тестовый ученик
-            </button>
+            {!user && (
+              <button className="btn btn-outline" style={{ borderRadius: 10 }}
+                      onClick={() => window.location.assign(passwordHref)}>
+                Войти по логину и паролю
+              </button>
+            )}
             {user && (
               <button className="btn btn-outline" style={{ borderRadius: 10 }} onClick={stay}>
                 Остаться в своём аккаунте
               </button>
             )}
+          </div>
+          <div className="mt-5" style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+            <button className="btn btn-outline"
+                    style={{ borderRadius: 10, fontSize: 12, padding: '6px 12px' }}
+                    onClick={() => enterLessonAsDemoStudent({
+                      assignmentId: preview.assignmentId, token: preview.token, back })}>
+              Войти в урок как тестовый ученик
+            </button>
+            <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>
+              Демо-режим для преподавателя (общий профиль)
+            </p>
           </div>
         </div>
       </div>

@@ -397,6 +397,49 @@ class LessonTokenJoinTest(TestCase):
             self.assertEqual(r.status_code, 403)
             self.assertIn('не настроен', r.data['detail'])
 
+    def test_a_guessed_email_never_opens_another_students_account(self):
+        """Режим B подписывает урок, а не человека: почта в ссылке — просто строка.
+
+        Вечная ссылка из учебного чата + угаданная почта ученика раньше выдавала его
+        сессию без пароля. Теперь вход в уже существующий аккаунт открывается только
+        по коду GetCourse, который подставляет сам GetCourse.
+        """
+        victim = User.objects.create_user(username='aidar_real', password='x',
+                                          role='student', email='aidar@mail.kz',
+                                          gc_uid='777')
+        r = self._join(gc_uid='000000', email='aidar@mail.kz')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertIn('коду GetCourse', r.data['detail'])
+        self.assertEqual(self.lesson.students.count(), 0)
+        self.assertNotIn('access', r['Location'] if 'Location' in r else '')
+        self.assertEqual(victim.last_login, None)
+
+    def test_an_account_without_a_code_is_not_adopted_by_the_lesson_link(self):
+        """Аккаунт без кода ГК (школьные заготовки) больше не присваивается по почте:
+        иначе ссылка из чата превращала чужую учётку в свою."""
+        seed = User.objects.create_user(username='seed_student', password='x',
+                                        role='student', email='seed@mail.kz')
+        r = self._join(gc_uid='48123', email='seed@mail.kz')
+        self.assertEqual(r.status_code, 403, r.data)
+        seed.refresh_from_db()
+        self.assertEqual(seed.gc_uid, '')
+        self.assertEqual(self.lesson.students.count(), 0)
+
+    def test_an_email_only_lesson_link_creates_no_account(self):
+        """Ни кода, ни раскрытой почты: по одному `email` ученик больше не заводится,
+        иначе любая ссылка из чата расставляла бы аккаунты-пустышки."""
+        before = self._students().count()
+        r = self._join(gc_uid='', email='novoy@mail.kz')
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertEqual(self._students().count(), before)
+
+    def test_the_demo_account_still_enters_by_its_own_email(self):
+        """Дежурный вход — названный в настройках общий аккаунт тренера, он и дальше
+        открывается по почте: право даёт подпись урока, а не угаданный адрес."""
+        r = self._join(demo='1', gc_uid='', email='')
+        self.assertEqual(r.status_code, 302, r.content)
+        self.assertTrue(r['Location'].startswith('/sso#'), r['Location'])
+
     def test_the_screen_gets_the_token_from_the_api(self):
         """Кнопка «Ссылка для GetCourse» копирует готовую ссылку: токен считает сервер."""
         c = make_client(self.teacher)
@@ -790,6 +833,52 @@ class HomeworkReportTest(TestCase):
         row = LessonReport.objects.get()
         self.assertEqual(row.status, 'failed')
         self.assertIn('RuntimeError', row.last_error)
+
+    def test_the_submit_response_does_not_wait_for_getcourse(self):
+        """24-й деплой, п.1: ученик сдаёт блок, а сеть его не ждёт.
+
+        Поток подменён заглушкой, поэтому за время HTTP-ответа вызов к GetCourse не
+        обязан случиться вовсе — иначе 30 одновременных сдач упирались бы в 4 потока
+        воркера, и экраны сдачи падали бы на `proxy_read_timeout`.
+        """
+        self._answer(self.homework, self.with_key, '5 м/с')
+        with override_settings(GETCOURSE_API_TOKEN='sekret', GC_CUSTOM_FIELD_ID='22383558'):
+            with mock.patch.object(getcourse, '_post', return_value=(True, '')) as post:
+                with mock.patch.object(getcourse, 'threading') as threads:
+                    with self.captureOnCommitCallbacks(execute=True):
+                        r = self._submit(self.homework)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIn('score', r.data)
+        self.assertEqual(post.call_count, 0)
+        self.assertEqual(LessonReport.objects.count(), 0)
+        threads.Thread.return_value.start.assert_called_once_with()
+
+    def test_the_background_body_sends_the_report_after_the_response(self):
+        """Тело фонового потока доводит итог до журнала: строка `sent` появляется
+        именно в нём, а не в запросе ученика."""
+        self._answer(self.homework, self.with_key, '5 м/с')
+        with override_settings(GETCOURSE_API_TOKEN='sekret', GC_CUSTOM_FIELD_ID='22383558'):
+            with mock.patch.object(getcourse, '_post', return_value=(True, '')) as post:
+                with mock.patch.object(getcourse, 'threading') as threads:
+                    with self.captureOnCommitCallbacks(execute=True):
+                        self._submit(self.homework)
+                    kwargs = threads.Thread.call_args.kwargs
+                    self.assertTrue(kwargs['daemon'])
+                    kwargs['target']()
+        self.assertEqual(post.call_count, 1)
+        row = LessonReport.objects.get()
+        self.assertEqual(row.status, 'sent')
+        self.assertIsNotNone(row.sent_at)
+
+    def test_the_http_timeout_is_six_seconds(self):
+        """Зависший GetCourse не должен держать фоновый поток четверть минуты."""
+        answer = mock.Mock(status_code=200)
+        answer.json.return_value = {'status': True}
+        with mock.patch('requests.post', return_value=answer) as post:
+            ok, error = getcourse._post('48123', 'итог')
+        self.assertTrue(ok)
+        self.assertEqual(post.call_args.kwargs['timeout'], 6)
+
 
 WIRE = override_settings(GETCOURSE_API_TOKEN='sekret-token', GC_CUSTOM_FIELD_ID='22383558',
                          GETCOURSE_API_URL='https://pmci-test.getcourse.ru/pl/api/v1')

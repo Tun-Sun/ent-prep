@@ -163,8 +163,13 @@ REST_FRAMEWORK = {
     # (иначе все ученики делят общий лимит логина с адреса 127.0.0.1)
     'NUM_PROXIES': 1,
     'DEFAULT_THROTTLE_RATES': {
-        'login': '10/min',
-        'register': '5/hour',
+        # Класс заходит со одного Wi-Fi, то есть с одного IP: лимит на IP здесь
+        # ограничивает не перебор паролей, а весь класс одновременно.
+        'login': '60/min',
+        'register': '40/hour',
+        # Вход по подписи Telegram — тот же школьный Wi-Fi: класс из 30 человек,
+        # нажавших кнопку, не должен упираться в лимит перебора.
+        'telegram_auth': '60/min',
         'ai_explain': '20/day',
     },
 }
@@ -245,3 +250,15 @@ GETCOURSE_API_TOKEN = os.environ.get('GETCOURSE_API_TOKEN', '')
 # владельцем 19.10; для другого аккаунта GetCourse поле имеет свой номер, поэтому
 # он и здесь настройка, а не константа в коде.
 GC_CUSTOM_FIELD_ID = os.environ.get('GC_CUSTOM_FIELD_ID', '22383558')
+
+# ── Вход через Telegram (24-й деплой) ───────────────────────────────────────
+# Ученики сидят в учебном чате Telegram, поэтому вход без пароля идёт по подписи
+# Telegram Login Widget. Секрет — токен бота: по нему считается SHA256-ключ подписи,
+# наружу он не отдаётся никогда, в сборку фронта не попадает.
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+# Имя бота виджет подставляет в кнопку (`data-telegram-login`); оно не секрет и
+# читается с сервера, чтобы не пересобирать фронт ради смены ника бота.
+TELEGRAM_BOT_USERNAME = os.environ.get('TELEGRAM_BOT_USERNAME', '')
+# Окно жизни ответа Telegram в секундах: перехваченный набор полей не должен
+# становиться вечным пропуском. Telegram рекомендует сутки.
+TELEGRAM_AUTH_MAX_AGE = int(os.environ.get('TELEGRAM_AUTH_MAX_AGE', '86400'))

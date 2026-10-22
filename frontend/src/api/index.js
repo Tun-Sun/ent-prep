@@ -57,6 +57,15 @@ export const authAPI = {
   resetStudentPassword: (studentId, password) => api.post(`/auth/students/${studentId}/reset-password/`, password ? { password } : {}),
 }
 
+// Вход через Telegram: весь учебный чат сидит в Telegram, поэтому пароль и почта
+// ученику не нужны — кнопка мессенджера и есть вход.
+export const telegramAPI = {
+  // `enabled: false` — на сервере нет бота: кнопки на экране показывать нельзя
+  config: () => api.get('/auth/telegram/config/'),
+  // payload — поля, которые прислал виджет Telegram (подпись `hash` обязана быть)
+  login: (payload) => api.post('/auth/telegram/', payload),
+}
+
 // Subjects
 export const subjectsAPI = {
   list: () => api.get('/subjects/'),

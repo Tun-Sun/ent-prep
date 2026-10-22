@@ -30,7 +30,7 @@ from .serializers import (
     MyAssignmentListSerializer, MyAssignmentBlockSerializer,
 )
 from .lesson_grading import grade_assignment_answer, score_submission, close_submission
-from .getcourse import report_submission
+from .getcourse import report_submission, schedule_report
 from . import sso
 
 
@@ -675,8 +675,9 @@ class MyAssignmentViewSet(viewsets.GenericViewSet):
         sub.last_submitted_at = timezone.now()
         sub.save(update_fields=['state', 'last_submitted_at'])
         # Домашка без висячих `pending_review` дозревает до отправки именно здесь;
-        # если очередь не пуста, модуль сам решит, что слать ещё рано.
-        report_submission(sub)
+        # если очередь не пуста, модуль сам решит, что слать ещё рано. Сеть уезжает
+        # из ответа ученику в фоновый поток (24-й деплой, п.1).
+        schedule_report(sub)
         return Response({'state': sub.state, 'autocheck': block.autocheck,
                          'score': score_submission(sub),
                          'pending': sub.answers.filter(verdict='pending_review').count()})
@@ -756,7 +757,8 @@ class LessonJoinView(APIView):
             return HttpResponseRedirect('/sso?%s' % urlencode(
                 {'preview_assignment': assignment.pk, 'lesson_token': lesson_token}))
         student, refusal = self._resolve_student(values['gc_uid'], values['email'],
-                                                 values['first_name'], values['last_name'])
+                                                 values['first_name'], values['last_name'],
+                                                 by_lesson_token=bool(lesson_token) and not demo)
         if student is None:
             return Response({'detail': refusal}, status=status.HTTP_403_FORBIDDEN)
         assignment.students.add(student)
@@ -770,7 +772,7 @@ class LessonJoinView(APIView):
         return HttpResponseRedirect('/sso#%s' % frag)
 
     @staticmethod
-    def _resolve_student(gc_uid, email, first_name, last_name):
+    def _resolve_student(gc_uid, email, first_name, last_name, by_lesson_token=False):
         """Найти ученика по коду GetCourse, затем по почте, иначе завести нового.
 
         Порядок не переставить: код ГК — единственный идентификатор, который человек
@@ -782,6 +784,11 @@ class LessonJoinView(APIView):
         есть только у ученика, и под «учеником» понимается роль **и** отсутствие
         служебных прав: аккаунт с ролью ученика, но `is_staff`, открывает тренерский
         экран, а вход без пароля такого аккаунта не должен давать.
+
+        `by_lesson_token` — Режим B, где подписан только урок, а не человек. Такую
+        почту мог написать кто угодно, кто знает ссылку из чата: вход по одной ей в
+        уже существующий аккаунт запрещён, опознаёт человека только код GetCourse.
+        Режима А это не касается — там подпись считает сервер по конкретному ученику.
         """
         User = get_user_model()
         if gc_uid:
@@ -793,6 +800,9 @@ class LessonJoinView(APIView):
         if email:
             user = User.objects.filter(email__iexact=email).first()
             if user is not None:
+                if by_lesson_token:
+                    return None, ('Вход по подписи урока открывается по коду GetCourse, '
+                                  'а не по почте из ссылки')
                 if user.role != 'student' or user.is_staff or not user.is_active:
                     return None, 'Эта почта в платформе принадлежит не активному ученику'
                 if gc_uid and user.gc_uid and user.gc_uid != gc_uid:
@@ -803,6 +813,11 @@ class LessonJoinView(APIView):
                 return user, ''
         if not gc_uid and not email:
             return None, 'В ссылке нет ни кода GetCourse, ни почты'
+        if by_lesson_token and not gc_uid:
+            # Завести нового ученика по одной почте в Режиме B — значит позволить
+            # любому, у кого есть ссылка из чата, расставлять аккаунты-пустышки.
+            return None, ('В ссылке нет кода GetCourse: вход по подписи урока '
+                          'открывается только по нему')
         username = LessonJoinView._new_username(User, gc_uid, email)
         full_name = ' '.join(part for part in (first_name, last_name) if part).strip()[:150]
         try:

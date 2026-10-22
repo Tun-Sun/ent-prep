@@ -16,6 +16,13 @@ class User(AbstractUser):
     # глядя на письмо (почту в ГК правят чаще, чем теряют аккаунт). Пустое значение
     # — норма для всех, кто в ГК не учится, поэтому уникальность только для непустых.
     gc_uid = models.CharField(max_length=64, blank=True, default='', verbose_name='Код ученика в GetCourse')
+    # Вход из учебного чата: Telegram даёт свой номер, и он надёжнее почты, которую
+    # человек может написать чужую. Пусто — значит человек ещё не входил по-телеграму,
+    # поэтому уникальность только для непустых (иначе второй такой же ученик не влез бы).
+    telegram_id = models.BigIntegerField(null=True, blank=True, unique=True,
+                                         verbose_name='Идентификатор в Telegram')
+    telegram_username = models.CharField(max_length=64, blank=True, default='',
+                                         verbose_name='Ник в Telegram')
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True, verbose_name='Аватар')
     dashboard_subjects = models.ManyToManyField('subjects.Subject', blank=True, verbose_name='Предметы на дашборде')
     profile_subjects = models.ManyToManyField('subjects.Subject', blank=True, related_name='students',

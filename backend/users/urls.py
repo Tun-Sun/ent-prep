@@ -7,11 +7,16 @@ from .views import (
     StudyGroupAddStudentsView, CreateStudentView, StudentListView,
     AdminUserListView, AdminUserDetailView, AdminUserDeleteView,
     AdminSettingListView, AdminSettingDetailView,
+    TelegramAuthView, TelegramConfigView,
 )
 
 urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),
     path('login/change-password/', ChangePasswordView.as_view(), name='change-password'),
+    # Вход из учебного чата: виджет Telegram отдаёт подписанные поля, сервер сверяет
+    # подпись и выдаёт ключи. Конфиг — чтобы фронт не пересобирать ради ника бота.
+    path('telegram/', TelegramAuthView.as_view(), name='telegram-auth'),
+    path('telegram/config/', TelegramConfigView.as_view(), name='telegram-config'),
     path('profile/', ProfileView.as_view(), name='profile'),
     path('profile/subjects/', UpdateProfileSubjectsView.as_view(), name='profile-subjects'),
     path('profile/history/', ClearTestHistoryView.as_view(), name='profile-history'),

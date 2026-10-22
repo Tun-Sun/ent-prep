@@ -6,7 +6,10 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
+from django.conf import settings
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
@@ -389,3 +392,150 @@ class AdminSettingListView(AdminRequiredMixin, generics.ListCreateAPIView):
 class AdminSettingDetailView(AdminRequiredMixin, generics.RetrieveUpdateAPIView):
     queryset = SystemSetting.objects.all()
     serializer_class = SystemSettingSerializer
+
+
+class TelegramConfigView(APIView):
+    """Сконфигурирован ли вход через Telegram и как зовут бота.
+
+    Имя бота нужно виджету, оно не секрет. Отдаём с сервера, чтобы смена ника бота
+    не требовала пересборки фронта: `enabled: false` — и кнопка на экране не показывается.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request):
+        return Response({
+            'enabled': bool(settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_BOT_USERNAME),
+            'telegram_bot_username': settings.TELEGRAM_BOT_USERNAME or '',
+        })
+
+
+class TelegramAuthView(APIView):
+    """Быстрый вход из учебного чата Telegram (24-й деплой, п.3).
+
+    Ученики сидят в чате, поэтому пароль и почта им не нужны: виджет Telegram присылает
+    свои поля с подписью, сервер сверяет её по токену бота и узнаёт человека по
+    `telegram_id`. Право войти без пароля есть только у ученика — преподаватель и админ
+    заходят по логину, иначе одна подпись выдавала бы ключ от тренерского экрана.
+
+    Если человек уже внутри под своей сессией (например, пришёл по подписи GetCourse),
+    Telegram не заводит нового человека, а привязывается к его же аккаунту: уроки и
+    ответы остаются на нём.
+
+    `assignment_id` + `lesson_token` — та самая подпись урока из ссылки шаблона: по ней
+    ученик привязывается к уроку и уходит сразу на его карточку.
+    """
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'telegram_auth'
+
+    def post(self, request):
+        from subjects import sso
+        from subjects.models import Assignment
+        from . import telegram
+
+        payload = request.data if hasattr(request.data, 'get') else {}
+        if not settings.TELEGRAM_BOT_TOKEN:
+            return Response({'detail': 'Вход через Telegram на сервере не настроен'},
+                            status=status.HTTP_403_FORBIDDEN)
+        data, error = telegram.verify(settings.TELEGRAM_BOT_TOKEN, payload,
+                                      max_age=settings.TELEGRAM_AUTH_MAX_AGE)
+        if data is None:
+            return Response({'detail': error}, status=status.HTTP_403_FORBIDDEN)
+
+        tg_id = int(data['id'])
+        tg_username = (data.get('username') or '').strip()[:64]
+        created = False
+        bound = False
+        current = request.user
+
+        if current.is_authenticated:
+            if current.role != 'student' or current.is_staff or not current.is_active:
+                return Response({'detail': 'Вход через Telegram открыт активному ученику: '
+                                           'преподаватель входит по логину и паролю'},
+                                status=status.HTTP_403_FORBIDDEN)
+            if current.telegram_id and current.telegram_id != tg_id:
+                return Response({'detail': 'К этому аккаунту уже привязан другой Telegram'},
+                                status=status.HTTP_403_FORBIDDEN)
+            if User.objects.filter(telegram_id=tg_id).exclude(pk=current.pk).exists():
+                return Response({'detail': 'Этот Telegram уже привязан к другому аккаунту'},
+                                status=status.HTTP_403_FORBIDDEN)
+            student = current
+            student.telegram_id = tg_id
+            student.telegram_username = tg_username
+            student.save(update_fields=['telegram_id', 'telegram_username'])
+            bound = True
+        else:
+            student = User.objects.filter(telegram_id=tg_id).first()
+            if student is not None:
+                if student.role != 'student' or student.is_staff or not student.is_active:
+                    return Response({'detail': 'Этот Telegram привязан не к активному ученику'},
+                                    status=status.HTTP_403_FORBIDDEN)
+            else:
+                first = (data.get('first_name') or '').strip()[:150]
+                last = (data.get('last_name') or '').strip()[:150]
+                try:
+                    with transaction.atomic():
+                        student = User.objects.create_user(
+                            username=self._new_username(User, tg_id, tg_username),
+                            password=None, role='student', telegram_id=tg_id,
+                            telegram_username=tg_username, first_name=first, last_name=last,
+                            full_name=' '.join(p for p in (first, last) if p).strip()[:150])
+                except IntegrityError:
+                    # гонка двух тапов по кнопке на один Telegram-аккаунт
+                    student = User.objects.filter(telegram_id=tg_id).first()
+                    if student is None:
+                        return Response({'detail': 'Этот Telegram заводится прямо сейчас, '
+                                                   'попробуйте ещё раз'},
+                                        status=status.HTTP_403_FORBIDDEN)
+                else:
+                    created = True
+
+        next_url, notice = '/assignments', ''
+        assignment_id = str(payload.get('assignment_id') or '').strip()
+        token = str(payload.get('lesson_token') or '').strip()
+        if assignment_id or token:
+            if (not assignment_id.isdigit() or not settings.GC_SSO_SECRET
+                    or not sso.lesson_token_is_valid(settings.GC_SSO_SECRET, assignment_id, token)):
+                notice = 'Урок по ссылке не открылся: подпись урока не совпала.'
+            else:
+                assignment = Assignment.objects.filter(pk=int(assignment_id),
+                                                       status='active').first()
+                if assignment is None:
+                    notice = 'Урок не найден или уже отозван.'
+                else:
+                    assignment.students.add(student)
+                    next_url = '/assignments?open=%s' % assignment.pk
+
+        student.last_login = timezone.now()
+        student.save(update_fields=['last_login'])
+        tokens = RefreshToken.for_user(student)
+        return Response({
+            'access': str(tokens.access_token),
+            'refresh': str(tokens),
+            'next': next_url,
+            'notice': notice,
+            'created': created,
+            'bound': bound,
+            'user': {'id': student.pk, 'username': student.username, 'role': student.role,
+                     'full_name': student.full_name},
+        })
+
+    @staticmethod
+    def _new_username(User, tg_id, tg_username):
+        """Логин нового ученика: его ник из Telegram, а номер — если ника нет.
+
+        Правило символов то же, что требует экран профиля (`[A-Za-z0-9_]`), чтобы
+        человек потом смог поменять ник сам и он прошёл ту же проверку.
+        """
+        base = re.sub(r'[^A-Za-z0-9_]', '', (tg_username or '')).lower()[:24]
+        if not base:
+            base = 'tg%d' % tg_id
+        candidate, n = base, 0
+        while User.objects.filter(username=candidate).exists():
+            n += 1
+            candidate = '%s%d' % (base, n)
+            if n > 200:
+                candidate = 'tg%s' % secrets.token_hex(4)
+                break
+        return candidate

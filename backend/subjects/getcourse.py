@@ -26,12 +26,14 @@
 """
 import logging
 import re
+import threading
 
 from django.conf import settings
+from django.db import close_old_connections, transaction
 from django.utils import timezone
 
 from .lesson_grading import score_submission
-from .models import LessonReport
+from .models import AssignmentSubmission, LessonReport
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +125,10 @@ def _post(user_id, value):
     body = {'userId': user_id, 'customFields': {settings.GC_CUSTOM_FIELD_ID: value}}
     try:
         import requests
-        resp = requests.post(url, json=body, timeout=15, headers={
+        # 6 секунд, не 15: вызов ушёл из HTTP-ответа ученику, но держать ради него
+        # фоновый поток четверть минуты смысла нет — итог в карточке методиста
+        # опаздывает на секунды, а не на минуты.
+        resp = requests.post(url, json=body, timeout=6, headers={
             'Authorization': 'Bearer %s' % settings.GETCOURSE_API_TOKEN})
     except Exception as exc:
         return False, '%s: %s' % (type(exc).__name__, exc)
@@ -206,3 +211,37 @@ def report_submission(submission):
         logger.warning('GetCourse Lesson API: %s — %s', key, error)
     row.save()
     return row
+
+
+def schedule_report(submission):
+    """Отправить итог в GetCourse ПОСЛЕ того, как ответ ушёл ученику (24-й деплой, п.1).
+
+    В синхронном варианте сдача всего класса упиралась в 4 потока воркера: один
+    вызов к ГК — это ~1 с, а зависший GetCourse держал бы поток все 15. Ученику
+    нужны его вердикты, а не факт отправки методисту, поэтому сеть уезжает оттуда.
+
+    Поток стартует по `on_commit`: до коммита он не увидел бы ответы, сохранённые
+    в этой же сдаче, и отправил бы пустой итог. Соединения БД в потоке свои, их
+    надо закрыть на входе и на выходе — иначе воркер копит мёртвые коннекты.
+    """
+    submission_id = submission.pk
+
+    def _send():
+        close_old_connections()
+        try:
+            sub = AssignmentSubmission.objects.get(pk=submission_id)
+        except AssignmentSubmission.DoesNotExist:
+            return
+        try:
+            report_submission(sub)
+        except Exception as exc:
+            # наружу всё равно нечего: сдача ученика уже состоялась
+            logger.warning('GetCourse Lesson API: фоновая отправка #%s не вышла — %s',
+                           submission_id, exc)
+        finally:
+            close_old_connections()
+
+    def _start():
+        threading.Thread(target=_send, daemon=True, name='gc-report').start()
+
+    transaction.on_commit(_start)
