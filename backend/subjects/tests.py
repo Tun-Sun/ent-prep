@@ -1107,21 +1107,36 @@ class LessonResultsTest(TestCase):
         return c.post(f'/api/my/assignments/{self.lesson.pk}/submit/',
                       {'block': block.pk}, format='json')
 
+    def _graded(self, question):
+        """Строка ответа в базе. Движок ставит вердикт при сохранении, но ученику он
+        приезжает только после сдачи блока — поэтому сверяться приходится с базой."""
+        return AssignmentAnswer.objects.get(submission__student=self.student,
+                                            question=question)
+
+    def assertNoCorrectness(self, payload):
+        """Ни одного поля, по которому ученик прочитал бы правильность ответа.
+
+        Здесь перечислены все ключи, которые когда-либо несли вердикт: `answer/`
+        возвращал `verdict` + `judged_by` + `feedback`, а payload ученика — ещё и
+        `progress` с процентом. Перебор `A..D` жил именно на этих полях.
+        """
+        body = json.dumps(payload, ensure_ascii=False, default=str).lower()
+        for word in ('verdict', 'judged_by', 'etalon', 'feedback', 'percent',
+                     'correct', 'partial', 'incorrect'):
+            self.assertNotIn(word, body)
+
     def test_machine_grades_what_the_book_prints_and_leaves_the_rest(self):
         c = self._auth(self.student)
         r = self._answer(c, self.homework, self.with_answer, '18 см')
         self.assertEqual(r.status_code, 200, r.data)
-        self.assertEqual(r.data['verdict'], 'correct')
-        self.assertEqual(r.data['judged_by'], 'level1')
-        r = self._answer(c, self.homework, self.no_answer, '12 см')
-        self.assertEqual(r.data['verdict'], 'pending_review')
+        self.assertEqual(self._graded(self.with_answer).verdict, 'correct')
+        self.assertEqual(self._graded(self.with_answer).judged_by, 'level1')
+        self._answer(c, self.homework, self.no_answer, '12 см')
+        a = self._graded(self.no_answer)
+        self.assertEqual(a.verdict, 'pending_review')
         # пустой judged_by — это «машина не решила», а не чьё-то молчаливое согласие
-        self.assertEqual(r.data['judged_by'], '')
-        # ученику показываем, что дальше решает человек, а не внутреннюю причину сверки
-        self.assertIn('преподавателя', r.data['feedback']['note'])
-        self.assertEqual(r.data['feedback']['etalon'], '')
-        self.assertIn('в книге ответа нет',
-                      AssignmentAnswer.objects.get(question=self.no_answer).verdict_note)
+        self.assertEqual(a.judged_by, '')
+        self.assertIn('в книге ответа нет', a.verdict_note)
 
         s = self._submit(c, self.homework).data
         self.assertEqual(s['autocheck'], True)
@@ -1130,20 +1145,24 @@ class LessonResultsTest(TestCase):
                          (2, 2, 1, 1))
         self.assertEqual((sc['earned'], sc['possible'], sc['percent']), (2.0, 2.0, 100.0))
         # ложного нуля нет: задача без эталона не попала ни в балл, ни в знаменатель
-        a = AssignmentAnswer.objects.get(question=self.no_answer)
-        self.assertIsNone(a.points_earned)
+        self.assertIsNone(self._graded(self.no_answer).points_earned)
         self.assertEqual(s['pending'], 1)
 
     def test_wrong_answer_is_incorrect_without_the_key(self):
         c = self._auth(self.student)
-        r = self._answer(c, self.homework, self.with_answer, '5 м')
-        self.assertEqual(r.data['verdict'], 'incorrect')
-        self.assertEqual(r.data['feedback']['etalon'], '')
-        self.assertIn('не совпала', r.data['feedback']['note'])
+        self._answer(c, self.homework, self.with_answer, '5 м')
+        self.assertEqual(self._graded(self.with_answer).verdict, 'incorrect')
+        # до сдачи экран не знает ни вердикта, ни причины: ни «не совпала», ни ключ
+        mine = c.get(f'/api/my/assignments/{self.lesson.pk}/').data
+        self.assertEqual(mine['blocks'][0]['answers'][0]['verdict'], '')
+        self.assertEqual(mine['blocks'][0]['answers'][0]['feedback'], {})
+        self._submit(c, self.homework)
         mine = c.get(f'/api/my/assignments/{self.lesson.pk}/').data
         feedback = mine['blocks'][0]['answers'][0]['feedback']
-        self.assertEqual(feedback['etalon'], '')
         self.assertEqual(feedback['verdict'], 'incorrect')
+        # ключ книги не показывается и после сдачи: его открывает только вердикт человека
+        self.assertEqual(feedback['etalon'], '')
+        self.assertIn('не совпала', feedback['note'])
 
     def test_the_solution_reaches_the_student_only_after_the_block_is_submitted(self):
         """П.4: разбор — после сдачи блока, и до сдачи его нет даже в JSON.
@@ -1169,6 +1188,36 @@ class LessonResultsTest(TestCase):
                          r'Решение: $V = 18$ см³')
         # разбор открыт, а ключ книги по-прежнему ждёт вердикта человека
         self.assertEqual(mine['blocks'][0]['answers'][0]['feedback']['etalon'], '')
+
+    def test_no_correctness_reaches_the_student_before_the_block_is_submitted(self):
+        """Блок 1: до `submit/` ученик не знает ни вердикта, ни балла.
+
+        Прежний `answer/` возвращал `verdict`, `judged_by` и `feedback`, а payload
+        блока нёс `progress` с процентом. Итог: четыре тапа по буквам варианта, и
+        экран сам говорит, где «Верно» — тест сдаётся перебором ещё до сдачи.
+        Тест закрывает обе дороги: ответ эндпоинта и перезагрузку страницы.
+        """
+        c = self._auth(self.student)
+        r = self._answer(c, self.homework, self.with_answer, '18 см')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(sorted(r.data.keys()), ['id', 'question', 'saved', 'state'])
+        self.assertNoCorrectness(r.data)
+        # движок свою работу сделал, но остался при ней: вердикт живёт в базе
+        self.assertEqual(self._graded(self.with_answer).verdict, 'correct')
+
+        block = c.get(f'/api/my/assignments/{self.lesson.pk}/').data['blocks'][0]
+        self.assertEqual(block['state'], 'in_progress')
+        self.assertIsNone(block['progress'])
+        self.assertEqual(block['answers'][0]['verdict'], '')
+        self.assertEqual(block['answers'][0]['feedback'], {})
+        # черновик при этом обязан доезжать: без него экран пустой
+        self.assertEqual(block['answers'][0]['raw_answer'], '18 см')
+
+        self._submit(c, self.homework)
+        block = c.get(f'/api/my/assignments/{self.lesson.pk}/').data['blocks'][0]
+        self.assertEqual(block['answers'][0]['verdict'], 'correct')
+        self.assertEqual((block['progress']['checked'], block['progress']['percent']),
+                         (1, 100.0))
 
     def test_the_block_state_tells_the_screen_which_block_is_closed(self):
         """Экран закрывает сданный блок по состоянию сдачи, а не по догадке.
@@ -1206,26 +1255,25 @@ class LessonResultsTest(TestCase):
         c = self._auth(self.student)
 
         r = self._answer(c, self.homework, q, 'б')
-        self.assertEqual(r.data['verdict'], 'correct')
-        self.assertEqual(r.data['judged_by'], 'level1')
+        self.assertEqual(self._graded(q).verdict, 'correct')
+        self.assertEqual(self._graded(q).judged_by, 'level1')
         self.assertEqual(AssignmentAnswer.objects.get(question=q).normalized_answer,
                          'Вариант B')
 
         # та же литера, набранная латиницей и скопированная вместе с текстом варианта
         for raw in ('B', '(в)', 'B) электрлік күштер', 'вариант b'):
-            r = self._answer(c, self.homework, q, raw)
-            self.assertEqual(r.data['verdict'], 'correct', raw)
+            self._answer(c, self.homework, q, raw)
+            self.assertEqual(self._graded(q).verdict, 'correct', raw)
 
         r = self._answer(c, self.homework, q, 'D')
-        self.assertEqual(r.data['verdict'], 'incorrect')
-        # ключ не показывается ученику вместе с причиной неверного ответа
-        self.assertEqual(r.data['feedback']['etalon'], '')
-        self.assertNotIn('B', r.data['feedback']['note'])
+        self.assertEqual(self._graded(q).verdict, 'incorrect')
+        # ответ на сохранение не говорит ничего: ни «неверно», ни тем более ключ
+        self.assertNoCorrectness(r.data)
 
         # текст варианта без буквы — машина его не читает и ложный ноль не ставит
-        r = self._answer(c, self.homework, q, 'ядролық күштер')
-        self.assertEqual(r.data['verdict'], 'pending_review')
-        self.assertEqual(r.data['judged_by'], '')
+        self._answer(c, self.homework, q, 'ядролық күштер')
+        self.assertEqual(self._graded(q).verdict, 'pending_review')
+        self.assertEqual(self._graded(q).judged_by, '')
 
     def test_a_multi_answer_task_is_graded_by_the_whole_set_of_letters(self):
         """Блок ЕНТ №16–20: восемь вариантов, верных от одного до трёх.
@@ -1241,15 +1289,15 @@ class LessonResultsTest(TestCase):
 
         for raw in ('D, F, G', 'GDF', 'd f g', 'g, D, f', 'G, D, F',
                     'D) 47 протон; F) 61 нейтрон; G) 47 электрон'):
-            r = self._answer(c, self.homework, q, raw)
-            self.assertEqual(r.data['verdict'], 'correct', raw)
+            self._answer(c, self.homework, q, raw)
+            self.assertEqual(self._graded(q).verdict, 'correct', raw)
         self.assertEqual(AssignmentAnswer.objects.get(question=q).normalized_answer,
                          'Вариант D, F, G')
 
         for raw in ('D, F', 'D, F, G, H', 'D'):
-            r = self._answer(c, self.homework, q, raw)
-            self.assertEqual(r.data['verdict'], 'incorrect', raw)
-            self.assertEqual(r.data['judged_by'], 'level1', raw)
+            self._answer(c, self.homework, q, raw)
+            self.assertEqual(self._graded(q).verdict, 'incorrect', raw)
+            self.assertEqual(self._graded(q).judged_by, 'level1', raw)
 
     def test_in_class_block_saves_the_answer_and_checks_nothing(self):
         """`in_class` и `advanced` решают вместе на уроке: автопроверки там нет, и
@@ -1258,7 +1306,7 @@ class LessonResultsTest(TestCase):
         c = self._auth(self.student)
         r = self._answer(c, self.classwork, self.classwork_task, 'не так')
         self.assertEqual(r.status_code, 200, r.data)
-        self.assertEqual(r.data['verdict'], 'pending_review')
+        self.assertEqual(self._graded(self.classwork_task).verdict, 'pending_review')
         self.assertEqual(AssignmentAnswer.objects.get(question=self.classwork_task)
                          .normalized_answer, '')
         s = self._submit(c, self.classwork).data
@@ -1268,9 +1316,9 @@ class LessonResultsTest(TestCase):
 
     def test_strict_units_flag_sends_a_bare_number_to_the_teacher(self):
         with override_settings(OPEN_ANSWER_STRICT_UNITS=True):
-            r = self._answer(self._auth(self.student), self.homework, self.with_answer, '18')
-        self.assertEqual(r.data['verdict'], 'pending_review')
-        self.assertEqual(r.data['judged_by'], '')
+            self._answer(self._auth(self.student), self.homework, self.with_answer, '18')
+        self.assertEqual(self._graded(self.with_answer).verdict, 'pending_review')
+        self.assertEqual(self._graded(self.with_answer).judged_by, '')
 
     def test_multiline_answer_keeps_which_part_the_machine_matched(self):
         """Правило от 14.10: словесная часть уводит всю задачу к человеку, но подсказка
@@ -1281,11 +1329,10 @@ class LessonResultsTest(TestCase):
         block = AssignmentBlock.objects.create(assignment=self.lesson, kind='simplified',
                                                order=2, question_ids=[q.pk])
         r = self._answer(self._auth(self.student), block, q, 'а) 18 см; б) вверх')
-        self.assertEqual(r.data['verdict'], 'pending_review')
+        self.assertEqual(self._graded(q).verdict, 'pending_review')
         self.assertIsNone(AssignmentAnswer.objects.get(question=q).points_earned)
-        # ученику — только то, что ответ ждёт человека
-        self.assertIn('преподавателя', r.data['feedback']['note'])
-        self.assertNotIn('совпало', r.data['feedback']['note'])
+        # ученику до сдачи не показывается ничего: ни «ждёт человека», ни какая часть сошлась
+        self.assertNoCorrectness(r.data)
         note = AssignmentAnswer.objects.get(question=q).verdict_note
         self.assertIn('не решается автоматически: 1 из 2 частей', note)
         self.assertIn('а): совпало', note)
@@ -1399,10 +1446,10 @@ class LessonResultsTest(TestCase):
                                       {'verdict': 'correct'}, format='json')
         pending.refresh_from_db()
         self.assertEqual(pending.judged_by, 'human')
-        r = self._answer(self._auth(self.student), self.homework, self.no_answer, '13 см')
-        self.assertEqual(r.data['verdict'], 'pending_review')
-        self.assertEqual(r.data['judged_by'], '')
+        self._answer(self._auth(self.student), self.homework, self.no_answer, '13 см')
         pending.refresh_from_db()
+        self.assertEqual(pending.verdict, 'pending_review')
+        self.assertEqual(pending.judged_by, '')
         self.assertIsNone(pending.reviewed_by_id)
 
     def test_submit_regrades_the_last_draft_of_an_answer(self):

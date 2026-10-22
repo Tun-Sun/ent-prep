@@ -2462,3 +2462,28 @@ tr:hover td { background: #F9FAFB; }
 @media (max-width: 768px) {
   .block-tabs { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* Сдача блока — под списком задач: ребёнок жмёт её, когда дошёл до конца блока, а
+   не ищет кнопку в шапке над первой задачей. На телефоне кнопка во всю ширину,
+   на десктопе — по центру и шире текста. */
+.block-submit {
+  padding: 18px 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+}
+
+.block-submit .btn { font-size: 16px; padding: 14px 22px; border-radius: 12px; }
+
+@media (max-width: 767px) {
+  .block-submit { flex-direction: column; align-items: stretch; }
+  .block-submit .btn { width: 100%; }
+}
+
+/* Тихая подпись автосохранения. Вердиктом она выглядеть не имеет права: до сдачи
+   сервер правильности не отдаёт, и единственное, что ученик узнаёт о своём ответе,
+   — что он сохранён. */
+.save-note { font-size: 12px; color: var(--text-secondary); }
+.save-note.is-kept { color: var(--primary); font-weight: 600; }

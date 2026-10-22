@@ -465,15 +465,25 @@ class AssignmentAnswerSerializer(serializers.ModelSerializer):
 
 
 class StudentAnswerSerializer(serializers.ModelSerializer):
-    """Ответ ученика ему самому: только то, что показывает `AssignmentAnswer.feedback`."""
+    """Ответ ученика ему самому: вердикт и разбор — только после сдачи блока.
+
+    До `submit/` вердикт уходит пустым, а `feedback` — пустым словарём. Экран,
+    отвечающий «Верно / Неверно» на каждое нажатие буквы, превращает тест в перебор
+    `A..D`: четыре тапа и ключ у ребёнка в руках, причём до всякой сдачи. Правильность
+    ученик имеет право видеть ровно один раз — когда блок отправлен.
+    """
+    verdict = serializers.SerializerMethodField()
     feedback = serializers.SerializerMethodField()
 
     class Meta:
         model = AssignmentAnswer
         fields = ('id', 'question', 'raw_answer', 'verdict', 'feedback')
 
+    def get_verdict(self, obj):
+        return obj.verdict if self.context.get('grading_open') else ''
+
     def get_feedback(self, obj):
-        return obj.feedback
+        return obj.feedback if self.context.get('grading_open') else {}
 
 
 class MyAssignmentListSerializer(serializers.ModelSerializer):
@@ -540,6 +550,11 @@ class MyAssignmentBlockSerializer(AssignmentBlockQuestionsSerializer):
         fields = AssignmentBlockQuestionsSerializer.Meta.fields + ('expired', 'state',
                                                                    'answers', 'progress')
 
+    def _opened(self, obj):
+        """Сдан ли блок: с этого момента ученику открываются вердикт, балл и разбор."""
+        submission = self.context.get('submissions', {}).get(obj.pk)
+        return submission is not None and submission.state in ('submitted', 'reviewed')
+
     def get_state(self, obj):
         """`in_progress` / `submitted` / `reviewed` или пусто, если сдачи ещё нет.
 
@@ -551,20 +566,25 @@ class MyAssignmentBlockSerializer(AssignmentBlockQuestionsSerializer):
         return submission.state if submission is not None else ''
 
     def get_questions(self, obj):
-        submission = self.context.get('submissions', {}).get(obj.pk)
         return StudentQuestionSerializer(
-            obj.questions, many=True,
-            context={'solution_open': submission is not None
-                     and submission.state in ('submitted', 'reviewed')},
+            obj.questions, many=True, context={'solution_open': self._opened(obj)},
         ).data
 
     def get_answers(self, obj):
         submission = self.context.get('submissions', {}).get(obj.pk)
         if submission is None:
             return []
-        return StudentAnswerSerializer(submission.answers.all(), many=True).data
+        return StudentAnswerSerializer(submission.answers.all(), many=True,
+                                       context={'grading_open': self._opened(obj)}).data
 
     def get_progress(self, obj):
+        """Итог блока: «решено 3 из 5 · 60 %» — и только после сдачи.
+
+        До сдачи эти числа считают правильность по сохранённым черновикам, то есть
+        дают ровно ту подсказку, ради которой тест перебирают пальцем.
+        """
+        if not self._opened(obj):
+            return None
         return self.context.get('scores', {}).get(obj.pk)
 
 

@@ -629,6 +629,13 @@ class MyAssignmentViewSet(viewsets.GenericViewSet):
 
         Блок без автопроверки (`in_class`, `advanced`) ответ сохраняет, но сверки не
         делает: вердикт по нему ставит человек, и ложного нуля тут не будет.
+
+        Ответ сервера сознательно молчит о правильности. Раньше сюда возвращались
+        `verdict`, `judged_by` и `feedback`, и ученик, тапая `A`, `B`, `C`, `D` и
+        глядя на «Верно / Неверно», снимал тест перебором за четыре нажатия — ещё до
+        сдачи. Сверка по-прежнему идёт здесь (строка в базе получает вердикт сразу,
+        иначе `submit` перепроверял бы то, что уже решено), но наружу уходит только
+        факт сохранения: итог человек увидит в ответе `submit/` и в payload после сдачи.
         """
         assignment = self.get_assignment()
         block, question, error = self._block_and_question(request, assignment)
@@ -645,8 +652,8 @@ class MyAssignmentViewSet(viewsets.GenericViewSet):
                       'reviewed_by': None, 'reviewed_at': None})
         if raw and block.autocheck:
             grade_assignment_answer(answer)
-        return Response({'id': answer.pk, 'verdict': answer.verdict,
-                         'judged_by': answer.judged_by, 'feedback': answer.feedback})
+        return Response({'id': answer.pk, 'question': question.pk, 'saved': True,
+                         'state': sub.state})
 
     @action(detail=True, methods=['post'])
     def submit(self, request, pk=None):

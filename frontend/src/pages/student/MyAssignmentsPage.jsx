@@ -169,6 +169,9 @@ export default function MyAssignmentsPage() {
   // ещё отвечает на предыдущее нажатие
   const draftRef = useRef({})
   const areaRef = useRef({})
+  // отложенное автосохранение по каждой задаче: поле ждёт 800 мс после последнего
+  // знака и не дёргает сервер на каждую букву
+  const timers = useRef({})
 
   // После сдачи ребёнок не обязан сам искать, куда идти дальше: экран сам переходит
   // к первому несданному блоку, а когда сдано всё — остаётся на месте и смотрит итог.
@@ -183,6 +186,9 @@ export default function MyAssignmentsPage() {
     setLoading(true)
     setNotice('')
     setAskBlock(0)
+    // экран перезагружается — недосланные черновики из таймеров берём уже с сервера
+    Object.values(timers.current).forEach(clearTimeout)
+    timers.current = {}
     myAssignmentsAPI.detail(id)
       .then(res => {
         setLesson(res.data)
@@ -223,39 +229,52 @@ export default function MyAssignmentsPage() {
     if (id) open(id)
   }, [])
 
-  // Черновик считается изменённым, только если он непустой и отличается от того,
-  // что уже легло на сервер: пустое поле сдавать нечем, а неизменённое — не о чем
-  // просить сервер дважды.
-  const dirtyFor = (id) => {
-    const raw = drafts[id] || ''
-    return raw.trim() !== '' && raw !== (baseline[id] || '')
-  }
+  // уход с экрана не должен оставлять висеть таймер, который дёрнет сервер после
+  // размонтирования
+  useEffect(() => () => Object.values(timers.current).forEach(clearTimeout), [])
 
-  // `silent` — путь onBlur, чипа и сдачи: сохранение идёт тихо, без кнопки «Сохраняю…»,
-  // а ученик видит только «Сохранено ✓». `rawArg` приходит от тапа по варианту: поле
-  // обновлено только что, и ждать перерисовки, чтобы прочитать его, нельзя.
-  const save = (block, q, silent, rawArg) => {
+  // Черновик считается изменённым, если он отличается от того, что легло на сервер,
+  // — в том числе когда ребёнок поле очистил: пустой ответ тоже нужно отправить,
+  // иначе прежняя буква доживёт до сдачи.
+  const changedFor = (id) => (drafts[id] || '') !== (baseline[id] || '')
+
+  // Сохранение идёт тихо и без кнопки: чип с буквой летит на сервер сразу, поле —
+  // по `onBlur` или через 800 мс после последней буквы. Ученик видит только «✓
+  // сохранено» — правильности до сдачи экран не знает ни в каком виде.
+  const save = (block, q, rawArg) => {
     const raw = rawArg === undefined ? (drafts[q.id] || '') : rawArg
-    // `rawArg === ''` — ответ сняли чипом: его обязан отпустить и сервер, иначе
-    // прежние буквы дожили бы до перезагрузки экрана. Клавиатурную правку «в никуда»
-    // сохранять нечем.
     if (raw === (baseline[q.id] || '')) return Promise.resolve(false)
-    if (raw.trim() === '' && rawArg !== '') return Promise.resolve(false)
-    if (!silent) setBusy(q.id)
     setNotice('')
+    setTicks(prev => ({ ...prev, [q.id]: 'saving' }))
     return myAssignmentsAPI.answer(lesson.id, { block: block.id, question: q.id, raw_answer: raw })
       .then(res => {
         setAnswers(prev => ({ ...prev, [q.id]: { ...prev[q.id], ...res.data, question: q.id } }))
         setBaseline(prev => ({ ...prev, [q.id]: raw }))
-        setTicks(prev => ({ ...prev, [q.id]: true }))
+        setTicks(prev => ({ ...prev, [q.id]: 'saved' }))
         // ребёнок успел нажать ещё раз, пока сервер отвечал на предыдущее: иначе
         // на экране останется одно, а на сервере — другое
         const latest = draftRef.current[q.id] || ''
-        if (latest !== raw) return save(block, q, true, latest)
+        if (latest !== raw) return save(block, q, latest)
         return true
       })
-      .catch(e => { setNotice(errorText(e)); return false })
-      .finally(() => { if (!silent) setBusy(0) })
+      .catch(e => {
+        // сбой сохранения ученик видит как ошибку в шапке и как «не сохранено» у
+        // задачи: сдача такой черновик всё равно досылает сама
+        setNotice(errorText(e))
+        return false
+      })
+  }
+
+  const cancelTimer = (qid) => {
+    if (timers.current[qid]) { clearTimeout(timers.current[qid]); delete timers.current[qid] }
+  }
+
+  const scheduleSave = (block, q) => {
+    cancelTimer(q.id)
+    timers.current[q.id] = setTimeout(() => {
+      delete timers.current[q.id]
+      save(block, q, draftRef.current[q.id] || '')
+    }, 800)
   }
 
   // Черновик пишется в ref синхронно: по нему чипы решают, что отправлять, в тот же
@@ -273,12 +292,14 @@ export default function MyAssignmentsPage() {
     else picked.add(letter)
     const raw = Array.from(picked).sort().join(', ')
     setDraft(q.id, raw)
-    save(block, q, true, raw)
+    cancelTimer(q.id)
+    save(block, q, raw)
   }
 
   // Знак вставляется в позицию курсора, а не в конец: ребёнок правит `4,9·10^-18`
   // посередине, и кнопка не имеет права переписывать ему ответ.
-  const insertSymbol = (qid, snippet, caretShift) => {
+  const insertSymbol = (block, q, snippet, caretShift) => {
+    const qid = q.id
     const area = areaRef.current[qid]
     const raw = draftRef.current[qid] || ''
     const from = area ? area.selectionStart : raw.length
@@ -287,15 +308,19 @@ export default function MyAssignmentsPage() {
     const caret = from + snippet.length + (caretShift || 0)
     // после смены controlled-значения карета уезжает в конец — возвращаем её на место
     if (area) requestAnimationFrame(() => { area.focus(); area.setSelectionRange(caret, caret) })
+    scheduleSave(block, q)
   }
 
   // Сдача не имеет права терять введённое: сначала досохраняем каждое поле, которого
-  // сервер ещё не видел, и только на ответ сервера идём в `submit`.
+  // сервер ещё не видел (включая очищенное), и только на ответ сервера идём в `submit`.
   const flushAndSubmit = (block) => {
     setAskBlock(0)
     setFlushing(true)
     setNotice('')
-    const pending = block.questions.filter(q => dirtyFor(q.id)).map(q => save(block, q, true))
+    block.questions.forEach(q => cancelTimer(q.id))
+    const pending = block.questions
+      .filter(q => (draftRef.current[q.id] || '') !== (baseline[q.id] || ''))
+      .map(q => save(block, q, draftRef.current[q.id] || ''))
     Promise.all(pending)
       .then(results => {
         setFlushing(false)
@@ -321,7 +346,7 @@ export default function MyAssignmentsPage() {
           </h1>
           <p className="page-subtitle">
             Урок состоит из блоков: классная работа, домашка, сложные, упрощённые. Домашку и
-            упрощённые проверяет машина сразу, классную работу и сложные зачитывает преподаватель.
+            упрощённые проверяет машина, классную работу и сложные зачитывает преподаватель.
           </p>
         </div>
         {notice && <div style={{ marginBottom: 14, fontSize: 13, color: '#991B1B' }}>{notice}</div>}
@@ -394,7 +419,7 @@ export default function MyAssignmentsPage() {
                           gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <b style={{ fontSize: 17 }}>{block.label} · {tasks(block.tasks)}</b>
               <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                {block.autocheck ? 'проверяет машина сразу' : 'зачитывает преподаватель'}
+                {block.autocheck ? 'итоги проверяет машина — после сдачи' : 'итоги зачитывает преподаватель'}
               </span>
               <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center',
                              flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -410,25 +435,10 @@ export default function MyAssignmentsPage() {
                                 padding: '8px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     <Check size={15} strokeWidth={2.5} /> Блок сдан
                   </span>
-                ) : askBlock === block.id ? (
-                  <>
-                    <span style={{ fontSize: 13 }}>Ответы будут отправлены. Сдаём?</span>
-                    <button className="btn btn-primary" onClick={() => flushAndSubmit(block)}
-                            disabled={flushing || busy === -1}
-                            style={{ borderRadius: 10, padding: '10px 20px', fontSize: 15 }}>
-                      {flushing ? 'Сохраняю ответы…' : busy === -1 ? 'Сдаю…' : 'Да, сдать'}
-                    </button>
-                    <button className="btn btn-outline" onClick={() => setAskBlock(0)}
-                            style={{ borderRadius: 10, padding: '10px 18px', fontSize: 15 }}>
-                      Отмена
-                    </button>
-                  </>
                 ) : (
-                  <button className="btn btn-primary" onClick={() => setAskBlock(block.id)}
-                          disabled={lesson.expired || flushing || busy === -1}
-                          style={{ borderRadius: 12, padding: '12px 30px', fontSize: 16 }}>
-                    {flushing ? 'Сохраняю ответы…' : busy === -1 ? 'Сдаю…' : 'Сдать блок'}
-                  </button>
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                    сдать — кнопка под списком задач
+                  </span>
                 )}
               </span>
             </div>
@@ -456,7 +466,7 @@ export default function MyAssignmentsPage() {
                     <b style={{ fontSize: 13 }}>{i + 1}</b>
                     <span style={chip('rgba(99,102,241,0.08)', 'var(--primary)')}>{LEVELS[q.difficulty] || q.difficulty}</span>
                     <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{points(q.points)}</span>
-                    {a && <VerdictChip verdict={a.verdict} />}
+                    {isSent(block) && a && <VerdictChip verdict={a.verdict} />}
                   </div>
                   <div style={{ fontSize: 14 }}><FormattedText text={q.latex || q.text} markdown /></div>
                   {q.image && (
@@ -477,8 +487,8 @@ export default function MyAssignmentsPage() {
                   )}
                   <textarea ref={el => { areaRef.current[q.id] = el }}
                             value={drafts[q.id] || ''} disabled={locked}
-                            onChange={e => setDraft(q.id, e.target.value)}
-                            onBlur={() => { if (!locked && dirtyFor(q.id)) save(block, q, true) }}
+                            onChange={e => { setDraft(q.id, e.target.value); scheduleSave(block, q) }}
+                            onBlur={() => { cancelTimer(q.id); if (changedFor(q.id)) save(block, q) }}
                             placeholder={placeholderFor(block, q)} rows={block.autocheck ? 2 : 3}
                             style={{ width: '100%', marginTop: 10, borderRadius: 10, padding: 10, fontSize: 13,
                                      border: '1px solid var(--border)', fontFamily: 'inherit', resize: 'vertical',
@@ -490,28 +500,28 @@ export default function MyAssignmentsPage() {
                       {SYMBOLS.map(s => (
                         <button key={s.label} type="button" className="symbol-btn"
                                 onMouseDown={e => e.preventDefault()}
-                                onClick={() => insertSymbol(q.id, s.insert, s.caret)}>
+                                onClick={() => insertSymbol(block, q, s.insert, s.caret)}>
                           {s.label}
                         </button>
                       ))}
                     </div>
                   )}
+                  {/* Кнопки «Сохранить ответ» под задачей больше нет: черновик едет на
+                      сервер сам, и единственное, что ученик о нём узнаёт до сдачи, —
+                      сохранён он или ещё нет. Правильности здесь не будет ни в каком
+                      виде: четыре тапа по буквам не должны снимать тест перебором. */}
                   {!locked && (
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
-                      <button className="btn btn-sm btn-outline" onClick={() => save(block, q)}
-                              disabled={!(drafts[q.id] || '').trim() || busy === q.id}
-                              style={{ borderRadius: 10, padding: '4px 12px' }}>
-                        {busy === q.id ? 'Сохраняю…' : 'Сохранить ответ'}
-                      </button>
-                      {ticks[q.id] && !dirtyFor(q.id) && (
-                        <span style={chip('rgba(16,185,129,0.12)', '#065F46')}>Сохранено ✓</span>
-                      )}
-                      {dirtyFor(q.id) && (
-                        <span style={{ fontSize: 12, color: '#92400E' }}>Не сохранено — сохранится само при сдаче</span>
-                      )}
+                    <div style={{ marginTop: 6 }}>
+                      {changedFor(q.id) ? (
+                        <span className="save-note">не сохранено — сохранится само</span>
+                      ) : ticks[q.id] === 'saving' ? (
+                        <span className="save-note">сохраняю…</span>
+                      ) : (drafts[q.id] || '').trim() !== '' ? (
+                        <span className="save-note is-kept">✓ сохранено</span>
+                      ) : null}
                     </div>
                   )}
-                  {a && (a.feedback || {}).etalon && (
+                  {isSent(block) && a && (a.feedback || {}).etalon && (
                     <div style={{ marginTop: 8, fontSize: 13 }}>
                       <b style={{ fontSize: 11, color: 'var(--text-secondary)' }}>ПРАВИЛЬНЫЙ ОТВЕТ · </b>
                       <FormattedText text={(a.feedback || {}).etalon} markdown />
@@ -536,6 +546,36 @@ export default function MyAssignmentsPage() {
             })}
             {!block.questions.length && (
               <div style={{ padding: 20, fontSize: 13, color: 'var(--text-secondary)' }}>В блоке нет задач.</div>
+            )}
+
+            {/* Сдача — под последним списком задач: ребёнок жмёт её, когда дошёл до
+                конца блока, а не сверяет наугад буквы ради «Верно» в шапке. */}
+            {isSent(block) ? (
+              <div className="block-submit">
+                <span style={{ ...chip('rgba(16,185,129,0.14)', '#065F46'), fontSize: 14,
+                               padding: '10px 16px', display: 'inline-flex', alignItems: 'center',
+                               gap: 8, fontWeight: 700 }}>
+                  <Check size={16} strokeWidth={2.5} /> Блок сдан
+                </span>
+              </div>
+            ) : (
+              <div className="block-submit">
+                {askBlock === block.id ? (
+                  <>
+                    <span style={{ fontSize: 14 }}>Ответы будут отправлены. Сдаём?</span>
+                    <button className="btn btn-primary" onClick={() => flushAndSubmit(block)}
+                            disabled={flushing || busy === -1}>
+                      {flushing ? 'Сохраняю ответы…' : busy === -1 ? 'Сдаю…' : 'Да, сдать'}
+                    </button>
+                    <button className="btn btn-outline" onClick={() => setAskBlock(0)}>Отмена</button>
+                  </>
+                ) : (
+                  <button className="btn btn-primary" onClick={() => setAskBlock(block.id)}
+                          disabled={lesson.expired || flushing || busy === -1}>
+                    {flushing ? 'Сохраняю ответы…' : busy === -1 ? 'Сдаю…' : 'Сдать блок'}
+                  </button>
+                )}
+              </div>
             )}
 
             <div style={{ padding: '14px 20px', display: 'flex', gap: 10, justifyContent: 'space-between' }}>
