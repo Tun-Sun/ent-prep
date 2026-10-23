@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { myAssignmentsAPI } from '../../api'
 import { enterLessonAsDemoStudent } from './lessonPreview'
-import TelegramLoginButton, { useTelegramConfig } from './TelegramLoginButton'
+import TelegramLoginButton, {
+  TelegramReturnPanel, useTelegramConfig, useTelegramReturn,
+} from './TelegramLoginButton'
 
 // Промежуточная страница входа из урока GetCourse (Шаг 6.1, предпросмотр — Шаг 6.6).
 //
@@ -21,13 +23,13 @@ export default function SsoLandingPage() {
   const [error, setError] = useState('')
   const [preview, setPreview] = useState(null)
   const [notice, setNotice] = useState('')
-  // Человек честно вошёл через Telegram, а подпись урока не сошлась: сессия есть,
-  // урока нет. Экран называет причину и остаётся на месте, а не выбрасывает в
-  // пустой список уроков — иначе ученик решит, что ссылка битая.
-  const [entered, setEntered] = useState(null)
+  // Ответ Telegram приходит на этот же адрес: страница доносит подпись до сервера
+  // сама, а не ждёт колбэк виджета, который на телефоне не доживает.
+  const tg = useTelegramReturn()
   const attached = useRef(false)
 
   useEffect(() => {
+    if (tg.waiting) return
     const params = new URLSearchParams(window.location.hash.replace(/^#/, ''))
     const query = new URLSearchParams(window.location.search)
     const access = params.get('access')
@@ -87,6 +89,16 @@ export default function SsoLandingPage() {
   const passwordHref = '/login?next=' +
     encodeURIComponent(window.location.pathname + window.location.search)
 
+  if (tg.waiting) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="card p-6" style={{ maxWidth: 420 }}>
+          <TelegramReturnPanel />
+        </div>
+      </div>
+    )
+  }
+
   if (preview) {
     if (loading) {
       return (
@@ -97,17 +109,17 @@ export default function SsoLandingPage() {
         </div>
       )
     }
-    if (entered) {
+    if (tg.entered) {
       return (
         <div className="min-h-screen flex items-center justify-center px-4">
           <div className="card p-6" style={{ maxWidth: 460 }}>
             <h2 style={{ fontSize: 16, marginBottom: 10 }}>Вы вошли в платформу</h2>
-            {entered.notice && (
-              <p className="text-sm" style={{ color: 'var(--danger)' }}>{entered.notice}</p>
+            {tg.entered.notice && (
+              <p className="text-sm" style={{ color: 'var(--danger)' }}>{tg.entered.notice}</p>
             )}
             <div className="mt-4">
               <button className="btn btn-primary" style={{ borderRadius: 10 }}
-                      onClick={() => window.location.replace(entered.next)}>
+                      onClick={() => window.location.replace(tg.entered.next)}>
                 Открыть мои уроки
               </button>
             </div>
@@ -130,13 +142,13 @@ export default function SsoLandingPage() {
               </div>
               <TelegramLoginButton
                 botName={telegram.botName}
-                extra={{ assignment_id: String(preview.assignmentId), lesson_token: preview.token }}
-                onSuccess={res => res.notice ? setEntered(res) : window.location.replace(res.next)}
-                onError={setNotice} />
+                extra={{ assignment_id: String(preview.assignmentId), lesson_token: preview.token }} />
             </div>
           )}
           {telegram.loading && <p className="text-sm mt-3 muted">Проверяем вход через Telegram…</p>}
-          {notice && <p className="text-sm mt-3" style={{ color: 'var(--danger)' }}>{notice}</p>}
+          {(notice || tg.error) && (
+            <p className="text-sm mt-3" style={{ color: 'var(--danger)' }}>{notice || tg.error}</p>
+          )}
           {user && user.role !== 'student' && (
             <p className="text-sm mt-3" style={{ color: 'var(--text-secondary)' }}>
               Вы вошли как преподаватель: тестовый вход откроется в этой вкладке, а назад
@@ -175,8 +187,8 @@ export default function SsoLandingPage() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="card p-6 text-center" style={{ maxWidth: 420 }}>
-        {error
-          ? <p className="text-sm" style={{ color: 'var(--danger)' }}>{error}</p>
+        {error || tg.error
+          ? <p className="text-sm" style={{ color: 'var(--danger)' }}>{error || tg.error}</p>
           : <div><div className="spinner"></div><p className="text-sm mt-3 muted">Открываем урок…</p></div>}
       </div>
     </div>
