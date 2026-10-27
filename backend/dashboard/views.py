@@ -2,6 +2,7 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from django.conf import settings
 from django.db.models import Avg, Count, Max, Prefetch, Q, Sum
 from django.db.models import Case, When, F, FloatField
 from django.db.models.functions import TruncDate
@@ -10,7 +11,8 @@ from django.utils import timezone
 from datetime import timedelta
 
 from users.models import User
-from subjects.models import Subject
+from subjects import sso
+from subjects.models import Subject, Question, Assignment, AssignmentSubmission, AssignmentAnswer
 from subjects.permissions import IsTeacherOrAdmin
 from tests.models import TestSession, TestSectionResult, AnswerRecord
 
@@ -79,6 +81,12 @@ class StudentDashboardView(APIView):
 class TeacherDashboardView(APIView):
     permission_classes = [IsAuthenticated]
 
+    # Предметы по умолчанию, пока тренер сам ничего не выбрал: платформа выросла из
+    # тренажёра ЕНТ, и 15 предметов ЕНТ в его кабинете — это шум.
+    DEFAULT_SUBJECT_SLUGS = ('math', 'physics', 'informatics', 'chemistry', 'geography')
+    # сдача считается сданной в обоих состояниях: «проверено» — это тоже сданное
+    SENT_STATES = ('submitted', 'reviewed')
+
     def get(self, request):
         if request.user.role not in ('teacher', 'admin'):
             return Response({'error': 'Доступ только для учителей'}, status=403)
@@ -100,6 +108,58 @@ class TeacherDashboardView(APIView):
         completed = TestSession.objects.filter(is_completed=True)
         total_tests = completed.count()
         avg_score = completed.aggregate(avg=Avg('score_percent'))['avg'] or 0
+
+        # Свои уроки тренера; админ смотрит все, как на остальных его экранах
+        lesson_filter = Q(status='active')
+        if request.user.role != 'admin':
+            lesson_filter &= Q(teacher=request.user)
+        lessons = Assignment.objects.filter(lesson_filter).select_related('subject') \
+            .order_by('-published_at')
+        lesson_ids = list(lessons.values_list('id', flat=True))
+
+        # Очередь ручной проверки: сколько ответов ждут вердикта именно по этим урокам
+        pending_review = AssignmentAnswer.objects.filter(
+            verdict='pending_review', submission__assignment_id__in=lesson_ids).count()
+
+        lesson_stats = lessons.annotate(
+            # считаем людей, а не строки сдачи: ученик, сдавший два блока урока,
+            # для тренера — один сдавший, а не «2 из 1»
+            submitted_count=Count('submissions__student',
+                                  filter=Q(submissions__state__in=self.SENT_STATES),
+                                  distinct=True),
+            assigned_count=Count('students', distinct=True),
+        )
+        lesson_data = [
+            {
+                'id': a.id,
+                'title': a.title,
+                'subject_id': a.subject_id,
+                'subject_name': a.subject.name,
+                'due_at': a.due_at,
+                'assigned_count': a.assigned_count,
+                'submitted_count': a.submitted_count,
+                # подпись урока: без неё ссылка для GetCourse заведомо не работает,
+                # и экран честко гасит «Скопировать ссылку урока»
+                'lesson_token': sso.make_lesson_token(settings.GC_SSO_SECRET, a.id),
+            }
+            for a in lesson_stats
+        ]
+
+        # Книжный банк RU/KK: сколько задач оцифровано из книг на обоих языках
+        bank_rows = (Question.objects.filter(source_type='book_scan')
+                     .values('language').annotate(count=Count('id')))
+        book_bank = {r['language'] or 'ru': r['count'] for r in bank_rows}
+
+        # Уроки и банк по каждому предмету — по ним дашборд и решает, показывать
+        # предмет или это пустая позиция-призрак
+        lessons_by_subject = {}
+        for row in lesson_data:
+            lessons_by_subject[row['subject_id']] = lessons_by_subject.get(row['subject_id'], 0) + 1
+        bank_by_subject = {
+            r['topic__subject_id']: r['count']
+            for r in Question.objects.filter(source_type='book_scan')
+            .values('topic__subject_id').annotate(count=Count('id'))
+        }
 
         # Топ учеников — по умолчанию только выбранные учителем предметы
         dashboard_ids = request.user.dashboard_subjects.values_list('id', flat=True)
@@ -127,9 +187,10 @@ class TeacherDashboardView(APIView):
             for s in top_students
         ]
 
-        # Фильтр по выбранным предметам
+        # Фильтр по выбранным предметам; без выбора — профильные, а не весь список ЕНТ
         selected = request.user.dashboard_subjects.all()
-        subjects_qs = selected if selected.exists() else Subject.objects.all()
+        subjects_qs = (selected if selected.exists()
+                       else Subject.objects.filter(slug__in=self.DEFAULT_SUBJECT_SLUGS))
 
         # Средний балл по предметам
         subject_stats = subjects_qs.annotate(
@@ -144,8 +205,12 @@ class TeacherDashboardView(APIView):
                 'icon': s.icon,
                 'avg_score': round(s.avg_score or 0, 1),
                 'test_count': s.test_count,
+                'lesson_count': lessons_by_subject.get(s.id, 0),
+                'bank_count': bank_by_subject.get(s.id, 0),
             }
             for s in subject_stats
+            # предмет без уроков, без банка и без сданных тестов в кабинете не нужен
+            if lessons_by_subject.get(s.id, 0) or bank_by_subject.get(s.id, 0) or s.test_count
         ]
 
         return Response({
@@ -155,6 +220,10 @@ class TeacherDashboardView(APIView):
             'top_students': top_data,
             'subject_stats': subject_data,
             'dashboard_subject_ids': list(selected.values_list('id', flat=True)),
+            'pending_review': pending_review,
+            'active_lessons': lesson_data,
+            'active_lesson_count': len(lesson_data),
+            'book_bank': {'ru': book_bank.get('ru', 0), 'kk': book_bank.get('kk', 0)},
         })
 
 
@@ -167,9 +236,17 @@ class TeacherStudentsView(APIView):
         subject_id = request.query_params.get('subject_id')
         date_from = request.query_params.get('date_from')
         date_to = request.query_params.get('date_to')
+        grade = request.query_params.get('grade')
 
         # Base student query
         students = User.objects.filter(role='student')
+
+        # Класс 5–11: журнал тренера покрывает всю школу, а не только 11-й
+        if grade:
+            try:
+                students = students.filter(grade=int(grade))
+            except (TypeError, ValueError):
+                return Response({'error': 'Класс — число от 5 до 11'}, status=400)
 
         # Filter by group membership
         if group_id:
@@ -225,6 +302,7 @@ class TeacherStudentsView(APIView):
                 'username': s.username,
                 'full_name': s.full_name,
                 'school': s.school,
+                'grade': s.grade,
                 'total_tests': s.total_tests,
                 'avg_score': round(s.avg_score or 0, 1),
                 'subject_progress': subject_progress,

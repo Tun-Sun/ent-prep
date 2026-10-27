@@ -4,10 +4,47 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer
 } from 'recharts'
-import { Settings, X, ExternalLink, Users, FileText, BarChart3, Trophy, Medal, GraduationCap, BookOpen, CheckCircle2 } from 'lucide-react'
+import { Settings, X, ExternalLink, Users, Trophy, Medal, GraduationCap, BookOpen,
+         CheckCircle2, Inbox, Link2, Library, ClipboardList } from 'lucide-react'
 import { dashboardAPI, subjectsAPI, testsAPI } from '../../api'
 
 const COLORS = ['#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316']
+
+// «1 ответов ждут» глаз цепляет сразу: русская форма числительного считается по правилам
+const plural = (n, one, few, many) => {
+  const m10 = n % 10, m100 = n % 100
+  if (m10 === 1 && m100 !== 11) return one
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few
+  return many
+}
+
+// Ссылка урока та же, что на экране конструктора: макросы в фигурных скобках
+// подставит GetCourse при показе. Без `GC_SSO_SECRET` сервер подпись урока не даёт,
+// и ссылка заведомо отклоняется — кнопка честно гаснет, а не копирует нерабочий URL.
+function LessonLinkButton({ lesson }) {
+  const [copied, setCopied] = useState('')
+  const token = lesson.lesson_token || ''
+  const link = `${window.location.origin}/api/lesson/join/` +
+    `?assignment_id=${lesson.id}&lesson_token=${token}` +
+    `&gc_uid={uid}&email={email}&first_name={first_name}&last_name={last_name}`
+
+  const copy = () => {
+    navigator.clipboard?.writeText(link).then(() => setCopied('ok'), () => setCopied('manual'))
+    setTimeout(() => setCopied(''), 2500)
+  }
+
+  return (
+    <button className="btn btn-sm btn-outline" onClick={copy} disabled={!token}
+            style={{ borderRadius: 10 }}
+            title={token ? link
+                         : 'На сервере не задан GC_SSO_SECRET — без подписи урока ссылка не работает'}>
+      <Link2 size={13} strokeWidth={1.5} style={{ verticalAlign: -2, marginRight: 5 }} />
+      {copied === 'ok' ? 'Ссылка скопирована'
+       : copied === 'manual' ? 'Скопируйте вручную'
+       : 'Скопировать ссылку урока'}
+    </button>
+  )
+}
 
 export default function TeacherDashboardPage() {
   const navigate = useNavigate()
@@ -89,6 +126,8 @@ export default function TeacherDashboardPage() {
     name: s.name,
     value: s.test_count,
     avg: s.avg_score,
+    lessons: s.lesson_count || 0,
+    bank: s.bank_count || 0,
     color: COLORS[i % COLORS.length],
   }))
 
@@ -112,7 +151,7 @@ export default function TeacherDashboardPage() {
         <div className="modal-overlay" onClick={() => setShowSettings(false)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420, borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)' }}>
             <div className="modal-header">
-              <h3 style={{ fontSize: 18, fontWeight: 800 }}>Предметы на дашборде</h3>
+              <h3 style={{ fontSize: 18, fontWeight: 600 }}>Предметы на дашборде</h3>
               <button className="btn btn-sm" onClick={() => setShowSettings(false)}
                 style={{ borderRadius: 8, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <X size={16} />
@@ -145,39 +184,91 @@ export default function TeacherDashboardPage() {
         </div>
       )}
 
+      {/* Четыре метрики сверху. «Ждут проверки» — кликабельная: с дашборда тренер
+          идёт доводить ответы, а не смотреть на цифру. */}
       <div className="stats-grid">
         <div className="stat-card">
-          <Users size={22} strokeWidth={1.5} style={{ color: 'var(--primary)', marginBottom: 6 }} />
+          <ClipboardList size={22} strokeWidth={1.5} style={{ color: 'var(--primary)', marginBottom: 6 }} />
+          <div className="stat-value">{data.active_lesson_count || 0}</div>
+          <div className="stat-label">Активных уроков</div>
+        </div>
+        <button type="button" className={`stat-card stat-card-clickable${data.pending_review ? ' is-alert' : ''}`}
+                onClick={() => navigate('/teacher/assign')}>
+          <Inbox size={22} strokeWidth={1.5} style={{ color: data.pending_review ? '#B45309' : '#10B981', marginBottom: 6 }} />
+          <div className="stat-value">{data.pending_review || 0}</div>
+          <div className="stat-label">Ждут проверки</div>
+          <div className="stat-meta">
+            {data.pending_review
+              ? `${data.pending_review} ${plural(data.pending_review, 'ответ ждёт', 'ответа ждут', 'ответов ждут')} вердикта →`
+              : 'Очередь ручных вердиктов пуста'}
+          </div>
+        </button>
+        <div className="stat-card">
+          <Users size={22} strokeWidth={1.5} style={{ color: '#10B981', marginBottom: 6 }} />
           <div className="stat-value">{data.total_students}</div>
           <div className="stat-label">Учеников</div>
         </div>
         <div className="stat-card">
-          <FileText size={22} strokeWidth={1.5} style={{ color: '#10B981', marginBottom: 6 }} />
-          <div className="stat-value">{data.total_tests}</div>
-          <div className="stat-label">Тестов сдано</div>
+          <Library size={22} strokeWidth={1.5} style={{ color: '#8B5CF6', marginBottom: 6 }} />
+          <div className="stat-value">{(data.book_bank?.ru || 0) + (data.book_bank?.kk || 0)}</div>
+          <div className="stat-label">Задач в книжном банке</div>
+          <div className="stat-meta">RU {data.book_bank?.ru || 0} · KK {data.book_bank?.kk || 0}</div>
         </div>
-        <div className="stat-card">
-          <BarChart3 size={22} strokeWidth={1.5} style={{ color: '#F59E0B', marginBottom: 6 }} />
-          <div className="stat-value">{data.avg_score}%</div>
-          <div className="stat-label">Средний балл</div>
+      </div>
+
+      <div className="card" style={{ padding: 20, marginBottom: 24 }}>
+        <div className="card-header">
+          <BookOpen size={16} strokeWidth={1.5} style={{ display: 'inline', marginRight: 6, verticalAlign: -2 }} />
+          Активные уроки и сдача блоков
         </div>
-        <div className="stat-card">
-          <Trophy size={22} strokeWidth={1.5} style={{ color: '#8B5CF6', marginBottom: 6 }} />
-          <div className="stat-value">{data.top_students?.[0]?.avg_score || 0}%</div>
-          <div className="stat-label">Лучший ученик</div>
-        </div>
+        {(data.active_lessons || []).length === 0 && (
+          <div style={{ padding: '8px 0 16px' }}>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
+              Активных уроков нет: соберите первый из книжного банка или базы ЕНТ.
+            </div>
+            <button className="btn btn-primary" style={{ borderRadius: 10 }}
+                    onClick={() => navigate('/teacher/assign')}>
+              Собрать урок
+            </button>
+          </div>
+        )}
+        {data.active_lessons?.map(l => (
+          <div key={l.id} className="lesson-row">
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontSize: 15, fontWeight: 600 }}>{l.title}</div>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
+                {l.subject_name}
+                {l.due_at ? ` · срок до ${String(l.due_at).slice(0, 10)}` : ''}
+              </div>
+            </div>
+            <div style={{ minWidth: 130 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: l.submitted_count ? '#065F46' : 'var(--text-secondary)' }}>
+                Сдали: {l.submitted_count} из {l.assigned_count}
+              </div>
+              <div className="d-subj-bar" style={{ marginTop: 6 }}>
+                <div className={`d-subj-bar-fill ${l.assigned_count && l.submitted_count === l.assigned_count ? 'gold' : 'blue'}`}
+                     style={{ width: `${l.assigned_count ? Math.max(l.submitted_count / l.assigned_count * 100, 2) : 2}%` }} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn btn-sm btn-primary" style={{ borderRadius: 10 }}
+                      onClick={() => navigate(`/teacher/assign?open=${l.id}`)}>
+                Матрица результатов
+              </button>
+              <LessonLinkButton lesson={l} />
+            </div>
+          </div>
+        ))}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
         <div className="card" style={{ padding: 20 }}>
-          <div className="card-header" style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 16 }}>
-            Средний балл по предметам
-          </div>
+          <div className="card-header">Средний балл по предметам</div>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={data.subject_stats || []}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-              <XAxis dataKey="name" stroke="#9CA3AF" fontSize={12} tick={{ fill: '#9CA3AF' }} />
-              <YAxis domain={[0, 100]} stroke="#9CA3AF" fontSize={12} tick={{ fill: '#9CA3AF' }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+              <XAxis dataKey="name" stroke="#94A3B8" fontSize={12} tick={{ fill: '#94A3B8' }} />
+              <YAxis domain={[0, 100]} stroke="#94A3B8" fontSize={12} tick={{ fill: '#94A3B8' }} />
               <Tooltip
                 contentStyle={{ borderRadius: 12, border: '1px solid var(--border)', boxShadow: 'var(--shadow)' }}
                 formatter={(value) => [`${value}%`, 'Средний балл']} />
@@ -187,9 +278,7 @@ export default function TeacherDashboardPage() {
         </div>
 
         <div className="card" style={{ padding: 20 }}>
-          <div className="card-header" style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 16 }}>
-            Тесты по предметам
-          </div>
+          <div className="card-header">Предметы в работе</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {pieData.map((item, i) => (
               <div key={item.name}
@@ -202,19 +291,24 @@ export default function TeacherDashboardPage() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
                     <span style={{ fontWeight: 600 }}>{item.name}</span>
-                    <span style={{ color: 'var(--text-secondary)' }}>{item.value}</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>{item.value} {plural(item.value, 'тест', 'теста', 'тестов')}</span>
                   </div>
-                  <div style={{ height: 6, background: '#E5E7EB', borderRadius: 4, overflow: 'hidden' }}>
+                  <div style={{ height: 6, background: '#E2E8F0', borderRadius: 4, overflow: 'hidden' }}>
                     <div style={{
                       height: '100%', borderRadius: 4, background: item.color,
                       width: `${(item.value / maxCount) * 100}%`, minWidth: item.value > 0 ? 4 : 0,
                     }} />
                   </div>
+                  <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
+                    Уроков: {item.lessons} · Банк: {item.bank}
+                  </div>
                 </div>
               </div>
             ))}
             {pieData.length === 0 && (
-              <div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: 24 }}>Нет данных</div>
+              <div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: 24 }}>
+                Предметов в работе пока нет: они появятся, когда в них будет урок, банк задач или сданные тесты
+              </div>
             )}
           </div>
         </div>
@@ -222,7 +316,7 @@ export default function TeacherDashboardPage() {
 
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ padding: '20px 24px 0' }}>
-          <div className="card-header" style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 16 }}>
+          <div className="card-header">
             <Trophy size={16} strokeWidth={1.5} style={{ display: 'inline', marginRight: 6, verticalAlign: -2 }} />
             Топ учеников
           </div>
@@ -234,7 +328,7 @@ export default function TeacherDashboardPage() {
                   style={{
                     padding: '6px 16px', borderRadius: 100, border: 'none', cursor: 'pointer',
                     fontSize: 13, fontWeight: 600,
-                    background: active ? 'var(--primary)' : 'rgba(0,0,0,0.04)',
+                    background: active ? 'var(--primary)' : '#F1F5F9',
                     color: active ? '#fff' : 'var(--text)',
                   }}>
                   {p}
@@ -247,7 +341,7 @@ export default function TeacherDashboardPage() {
               style={{
                 flexShrink: 0, height: 34, borderRadius: 100, border: 'none', cursor: 'pointer',
                 padding: '0 16px', fontSize: 13, fontWeight: 600,
-                background: topSubject === null ? 'var(--primary)' : 'rgba(0,0,0,0.04)',
+                background: topSubject === null ? 'var(--primary)' : '#F1F5F9',
                 color: topSubject === null ? '#fff' : 'var(--text)',
               }}>
               Все предметы
@@ -259,7 +353,7 @@ export default function TeacherDashboardPage() {
                   style={{
                     flexShrink: 0, height: 34, borderRadius: 100, border: 'none', cursor: 'pointer',
                     padding: '0 16px', fontSize: 13, fontWeight: 600,
-                    background: active ? 'var(--primary)' : 'rgba(0,0,0,0.04)',
+                    background: active ? 'var(--primary)' : '#F1F5F9',
                     color: active ? '#fff' : 'var(--text)',
                   }}>
                   {s.icon} {s.name}
@@ -330,7 +424,7 @@ export default function TeacherDashboardPage() {
         <div className="modal-overlay" onClick={() => setDetailSubject(null)}>
           <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 600, borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)' }}>
             <div className="modal-header">
-              <h3 style={{ fontSize: 18, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <BookOpen size={18} strokeWidth={1.5} />
                 {detailSubject} — результаты
               </h3>

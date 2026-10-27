@@ -183,6 +183,7 @@ export function useTelegramReturn() {
   const [phase, setPhase] = useState(() => (readTelegramReturn() ? 'waiting' : 'idle'))
   const [error, setError] = useState('')
   const [entered, setEntered] = useState(null)
+  const [profile, setProfile] = useState(null)
   const busy = useRef(false)
 
   useEffect(() => {
@@ -199,7 +200,12 @@ export function useTelegramReturn() {
         .then(res => {
           localStorage.setItem('access_token', res.data.access)
           localStorage.setItem('refresh_token', res.data.refresh)
-          if (res.data.notice) {
+          // Сервер сам сказал, что ученик ему неизвестен: без фамилии и класса его
+          // баллы в журнале тренера висели бы без имени. Карточка — перед уроком.
+          if (res.data.need_profile) {
+            setProfile(res.data)
+            setPhase('profile')
+          } else if (res.data.notice) {
             setEntered(res.data)
             setPhase('entered')
           } else {
@@ -233,7 +239,12 @@ export function useTelegramReturn() {
     }
   }, [])
 
-  return { waiting: phase === 'waiting', failed: phase === 'failed', error, entered }
+  return {
+    waiting: phase === 'waiting',
+    failed: phase === 'failed',
+    needsProfile: phase === 'profile',
+    error, entered, profile,
+  }
 }
 
 /** Полоса приёма возврата: пока страница доносит подпись серверу, экран показывает ход. */

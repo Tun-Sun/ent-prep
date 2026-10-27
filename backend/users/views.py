@@ -94,6 +94,7 @@ class ProfileView(APIView):
 
     def patch(self, request):
         from django.contrib.auth import get_user_model
+        from .serializers import split_full_name
         User = get_user_model()
         update_fields = []
         if 'avatar' in request.FILES:
@@ -112,7 +113,29 @@ class ProfileView(APIView):
         if 'full_name' in request.data:
             full_name = request.data.get('full_name', '').strip()
             request.user.full_name = full_name
-            update_fields.append('full_name')
+            # Экран знает одно поле «Фамилия и Имя», а журнал тренера читает
+            # first_name/last_name — поэтому правим их вместе, иначе карточка
+            # «Представься» заполнит половину, а в журнале человек останется без имени.
+            first_name, last_name = split_full_name(full_name)
+            request.user.first_name = first_name
+            request.user.last_name = last_name
+            update_fields += ['full_name', 'first_name', 'last_name']
+        if 'grade' in request.data:
+            grade = request.data.get('grade')
+            if grade in (None, '', 'null'):
+                request.user.grade = None
+            else:
+                try:
+                    grade = int(grade)
+                except (TypeError, ValueError):
+                    return Response({'error': 'Класс — число от 5 до 11'}, status=400)
+                if grade not in dict(User.GRADE_CHOICES):
+                    return Response({'error': 'Класс бывает 5–11'}, status=400)
+                request.user.grade = grade
+            update_fields.append('grade')
+        if 'school' in request.data:
+            request.user.school = (request.data.get('school') or '').strip()
+            update_fields.append('school')
         if update_fields:
             request.user.save(update_fields=update_fields)
         serializer = UserSerializer(request.user, context={'request': request})
@@ -510,8 +533,12 @@ class TelegramAuthView(APIView):
             'next': next_url,
             'notice': notice,
             'created': created,
+            # Карточка «Представься для преподавателя»: в Telegram человек может сидеть
+            # под ником и без фамилии, а в журнале тренера его баллы обязаны быть
+            # подписаны настоящим именем и классом. Экран решает показ, не сервер.
+            'need_profile': not student.is_profile_completed,
             'user': {'id': student.pk, 'username': student.username, 'role': student.role,
-                     'full_name': student.full_name},
+                     'full_name': student.full_name, 'grade': student.grade},
         })
 
     @staticmethod
@@ -524,17 +551,26 @@ class TelegramAuthView(APIView):
 
         Пустое поле не затирает: мессенджер отдаёт `last_name` только если человек его
         заполнял, а пустая строка в ответе виджета — не его вердикт.
+
+        Как только человек представился сам (карточка «Представься»: настоящие фамилия,
+        имя и класс), ник из Telegram перестаёт быть истиной — иначе каждый вход
+        стирал бы то, что учитель читает в журнале.
         """
+        introduced = student.is_profile_completed
         changed = []
         for field, value in (('first_name', first), ('last_name', last),
                              ('telegram_username', tg_username)):
+            if introduced and field in ('first_name', 'last_name'):
+                continue
             if value and getattr(student, field) != value:
                 setattr(student, field, value)
                 changed.append(field)
         if changed:
-            student.full_name = TelegramAuthView._full_name(student.first_name,
-                                                            student.last_name)
-            student.save(update_fields=changed + ['full_name'])
+            if any(f in changed for f in ('first_name', 'last_name')):
+                student.full_name = TelegramAuthView._full_name(student.first_name,
+                                                                student.last_name)
+                changed.append('full_name')
+            student.save(update_fields=changed)
 
     @staticmethod
     def _new_username(User, tg_id, tg_username):

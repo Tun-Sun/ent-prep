@@ -487,21 +487,29 @@ class StudentAnswerSerializer(serializers.ModelSerializer):
 
 
 class MyAssignmentListSerializer(serializers.ModelSerializer):
-    """«Мои уроки»: что назначено, когда срок и из каких блоков состоит."""
+    """«Мои уроки»: что назначено, когда срок, из каких блоков состоит и сколько сдано."""
     subject_name = serializers.CharField(source='subject.name', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     expired = serializers.BooleanField(source='is_expired', read_only=True)
     blocks = serializers.SerializerMethodField()
+    blocks_sent = serializers.SerializerMethodField()
+    blocks_total = serializers.SerializerMethodField()
 
     class Meta:
         model = Assignment
         fields = ('id', 'title', 'subject', 'subject_name', 'status', 'status_display',
-                  'due_at', 'expired', 'published_at', 'blocks')
+                  'due_at', 'expired', 'published_at', 'blocks', 'blocks_sent', 'blocks_total')
 
     def get_blocks(self, obj):
         return [{'kind': b.kind, 'label': b.label, 'order': b.order,
                  'tasks': len(b.question_ids or []), 'autocheck': b.autocheck}
                 for b in obj.blocks_ordered]
+
+    def get_blocks_sent(self, obj):
+        return (self.context.get('sent_blocks') or {}).get(obj.pk, 0)
+
+    def get_blocks_total(self, obj):
+        return len(obj.blocks_ordered)
 
 
 class StudentQuestionSerializer(serializers.ModelSerializer):

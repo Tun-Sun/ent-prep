@@ -9,6 +9,7 @@ export default function StudentsPage() {
   const [loading, setLoading] = useState(true)
 
   const [filterGroupId, setFilterGroupId] = useState('')
+  const [filterGrade, setFilterGrade] = useState('')
   const [filterSubjectId, setFilterSubjectId] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -27,6 +28,7 @@ export default function StudentsPage() {
     setLoading(true)
     const params = {}
     if (filterGroupId) params.group_id = filterGroupId
+    if (filterGrade) params.grade = filterGrade
     if (filterSubjectId) params.subject_id = filterSubjectId
     if (dateFrom) params.date_from = dateFrom
     if (dateTo) params.date_to = dateTo
@@ -44,7 +46,7 @@ export default function StudentsPage() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { loadData() }, [filterGroupId, filterSubjectId, dateFrom, dateTo])
+  useEffect(() => { loadData() }, [filterGroupId, filterGrade, filterSubjectId, dateFrom, dateTo])
 
   const handleAssign = async () => {
     if (!assignStudent || !selectedGroup) return
@@ -82,7 +84,7 @@ export default function StudentsPage() {
   }
 
   const clearFilters = () => {
-    setFilterGroupId(''); setFilterSubjectId(''); setDateFrom(''); setDateTo('')
+    setFilterGroupId(''); setFilterGrade(''); setFilterSubjectId(''); setDateFrom(''); setDateTo('')
   }
 
   const downloadReport = async (student) => {
@@ -126,7 +128,7 @@ export default function StudentsPage() {
       return (a.full_name || a.username).localeCompare(b.full_name || b.username)
     })
 
-  const hasFilters = filterGroupId || filterSubjectId || dateFrom || dateTo
+  const hasFilters = filterGroupId || filterGrade || filterSubjectId || dateFrom || dateTo
 
   return (
     <div>
@@ -137,6 +139,17 @@ export default function StudentsPage() {
 
       <div className="card" style={{ padding: 16, marginBottom: 20 }}>
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <GraduationCap size={12} strokeWidth={1.5} style={{ display: 'inline', marginRight: 4, verticalAlign: -1 }} />
+              Класс
+            </div>
+            <select value={filterGrade} onChange={e => setFilterGrade(e.target.value)}
+              style={{ height: 38, borderRadius: 10, border: '1px solid var(--border)', padding: '0 12px', fontSize: 13, background: '#fff', cursor: 'pointer', minWidth: 130 }}>
+              <option value="">Все классы</option>
+              {[5, 6, 7, 8, 9, 10, 11].map(g => <option key={g} value={g}>{g} класс</option>)}
+            </select>
+          </div>
           <div>
             <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               <Filter size={12} strokeWidth={1.5} style={{ display: 'inline', marginRight: 4, verticalAlign: -1 }} />
@@ -199,6 +212,7 @@ export default function StudentsPage() {
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
                 <th style={{ textAlign: 'left', padding: '12px 16px', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ученик</th>
+                <th style={{ textAlign: 'left', padding: '12px 8px', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Класс</th>
                 <th style={{ textAlign: 'left', padding: '12px 8px', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Школа</th>
                 <th style={{ textAlign: 'left', padding: '12px 8px', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Группы</th>
                 <th style={{ textAlign: 'center', padding: '12px 8px', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Предметы</th>
@@ -216,6 +230,11 @@ export default function StudentsPage() {
                       <GraduationCap size={16} strokeWidth={1.5} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
                       {s.full_name || s.username}
                     </div>
+                  </td>
+                  <td style={{ padding: '14px 8px', fontSize: 13 }}>
+                    {s.grade
+                      ? <span style={{ padding: '2px 8px', borderRadius: 100, fontSize: 12, fontWeight: 600, background: 'rgba(99,102,241,0.08)', color: 'var(--primary)' }}>{s.grade} класс</span>
+                      : <span style={{ color: 'var(--text-secondary)' }}>не указан</span>}
                   </td>
                   <td style={{ padding: '14px 8px', color: 'var(--text-secondary)', fontSize: 13 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>

@@ -555,7 +555,17 @@ class MyAssignmentViewSet(viewsets.GenericViewSet):
 
     def list(self, request):
         qs = self.get_queryset().order_by('-published_at')
-        return Response(MyAssignmentListSerializer(qs, many=True).data)
+        # «Сдано блоков: X/4» на кабинете ученика: сданным считается и `submitted`,
+        # и `reviewed` — блок уже закрыт для ребёнка в любом из этих состояний.
+        # Один запрос на весь список, а не по уроку в цикле.
+        sent = {}
+        for assignment_id in (AssignmentSubmission.objects
+                              .filter(student=request.user, assignment__in=qs,
+                                      state__in=('submitted', 'reviewed'))
+                              .values_list('assignment_id', flat=True)):
+            sent[assignment_id] = sent.get(assignment_id, 0) + 1
+        return Response(MyAssignmentListSerializer(
+            qs, many=True, context={'sent_blocks': sent}).data)
 
     def retrieve(self, request, pk=None):
         assignment = self.get_assignment()
@@ -767,9 +777,14 @@ class LessonJoinView(APIView):
         tokens = RefreshToken.for_user(student)
         # `/assignments` — одна страница со списком уроков и внутренней открыткой
         # карточки, поэтому переход из GetCourse приходит параметром, а не маршрутом.
-        frag = urlencode({'access': str(tokens.access_token), 'refresh': str(tokens),
-                          'next': '/assignments?open=%s' % assignment.pk})
-        return HttpResponseRedirect('/sso#%s' % frag)
+        frag = {'access': str(tokens.access_token), 'refresh': str(tokens),
+                'next': '/assignments?open=%s' % assignment.pk}
+        # Ученик из GetCourse может прийти без имени и класса: в журнале тренера его
+        # баллы должны быть подписаны по-человечески, поэтому страница входа сама
+        # спросит, если сервер видит незаполненную карточку.
+        if not student.is_profile_completed:
+            frag['need_profile'] = '1'
+        return HttpResponseRedirect('/sso#%s' % urlencode(frag))
 
     @staticmethod
     def _resolve_student(gc_uid, email, first_name, last_name, by_lesson_token=False):

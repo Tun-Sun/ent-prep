@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
+import { ViewModeProvider, useViewMode } from './context/ViewModeContext'
 import Layout from './components/Layout'
 import ProtectedRoute from './components/ProtectedRoute'
 
@@ -31,8 +32,7 @@ import MyAssignmentsPage from './pages/student/MyAssignmentsPage'
 // Teacher
 import TeacherDashboardPage from './pages/teacher/DashboardPage'
 
-import StudentsPage from './pages/teacher/StudentsPage'
-import GroupsPage from './pages/teacher/GroupsPage'
+import TeacherStudentsSectionPage from './pages/teacher/TeacherStudentsSectionPage'
 import AnalyticsPage from './pages/teacher/AnalyticsPage'
 import QuestionsPage from './pages/teacher/QuestionsPage'
 import BookBankPage from './pages/teacher/BookBankPage'
@@ -47,62 +47,71 @@ import AuthorialTestsPage from './pages/teacher/AuthorialTestsPage'
 import AuthorialTestEditorPage from './pages/teacher/AuthorialTestEditorPage'
 import AdminPanelPage from './pages/teacher/AdminPanelPage'
 import TeacherSettingsPage from './pages/teacher/TeacherSettingsPage'
+import TeacherBankPage from './pages/teacher/TeacherBankPage'
 
 function HomePage() {
   const { user, loading } = useAuth()
+  const { mode } = useViewMode()
   if (loading) return <div className="text-center mt-8"><div className="spinner"></div></div>
   if (!user) return <Navigate to="/login" replace />
-  if (user.role === 'teacher' || user.role === 'admin') return <Navigate to="/teacher" replace />
+  // Тренер на `/` остаётся в кабинете тренера, пока сам не переключится на
+  // «Кабинет ученика» — иначе владелец платформы не видит `/` глазами ребёнка
+  if ((user.role === 'teacher' || user.role === 'admin') && mode === 'teacher') {
+    return <Navigate to="/teacher" replace />
+  }
   return <StudentDashboardPage />
 }
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
-      {/* Вход из урока GetCourse: экран без пароля, токен остаётся в браузере ученика */}
-      <Route path="/sso" element={<SsoLandingPage />} />
+    <ViewModeProvider>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        {/* Вход из урока GetCourse: экран без пароля, токен остаётся в браузере ученика */}
+        <Route path="/sso" element={<SsoLandingPage />} />
 
-      {/* Все авторизованные маршруты в одном Layout */}
-      <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-        <Route index element={<HomePage />} />
-        <Route path="subjects" element={<SubjectListPage />} />
-        <Route path="progress" element={<StudentDashboardPage />} />
-        <Route path="history" element={<HistoryPage />} />
-        <Route path="grant-calc" element={<GrantCalcPage />} />
-        <Route path="leaderboard" element={<LeaderboardPage />} />
-        <Route path="settings" element={<SettingsPage />} />
-        <Route path="duels" element={<DuelsPage />} />
-        <Route path="assignments" element={<MyAssignmentsPage />} />
-        <Route path="test/start/:subjectId" element={<TestPage />} />
-        <Route path="test/ent" element={<TestPage />} />
-        <Route path="test/rush" element={<TestPage />} />
-        <Route path="test/duel/:duelId" element={<TestPage />} />
-        <Route path="test/result/:sessionId" element={<ResultsPage />} />
+        {/* Все авторизованные маршруты в одном Layout */}
+        <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+          <Route index element={<HomePage />} />
+          <Route path="subjects" element={<SubjectListPage />} />
+          <Route path="progress" element={<StudentDashboardPage />} />
+          <Route path="history" element={<HistoryPage />} />
+          <Route path="grant-calc" element={<GrantCalcPage />} />
+          <Route path="leaderboard" element={<LeaderboardPage />} />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="duels" element={<DuelsPage />} />
+          <Route path="assignments" element={<MyAssignmentsPage />} />
+          <Route path="test/start/:subjectId" element={<TestPage />} />
+          <Route path="test/ent" element={<TestPage />} />
+          <Route path="test/rush" element={<TestPage />} />
+          <Route path="test/duel/:duelId" element={<TestPage />} />
+          <Route path="test/result/:sessionId" element={<ResultsPage />} />
 
-        {/* Teacher / Admin */}
-        <Route path="teacher" element={<TeacherRoute><TeacherDashboardPage /></TeacherRoute>} />
-        <Route path="teacher/questions" element={<TeacherRoute><QuestionsPage /></TeacherRoute>} />
-        <Route path="teacher/book-bank" element={<TeacherRoute><BookBankPage /></TeacherRoute>} />
-        <Route path="teacher/book-ingest" element={<TeacherRoute><BookIngestPage /></TeacherRoute>} />
-        <Route path="teacher/assign" element={<TeacherRoute><AssignByLevelPage /></TeacherRoute>} />
-        <Route path="teacher/import" element={<TeacherRoute><ImportPage /></TeacherRoute>} />
-        <Route path="teacher/import/google-forms" element={<TeacherRoute><GoogleFormsImportPage /></TeacherRoute>} />
+          {/* Teacher / Admin */}
+          <Route path="teacher" element={<TeacherRoute><TeacherDashboardPage /></TeacherRoute>} />
+          {/* Единый раздел банка: вопросы, авторские тесты и импорт — вкладки одного экрана */}
+          <Route path="teacher/bank" element={<TeacherRoute><TeacherBankPage /></TeacherRoute>} />
+          <Route path="teacher/questions" element={<TeacherRoute><QuestionsPage /></TeacherRoute>} />
+          <Route path="teacher/book-bank" element={<TeacherRoute><BookBankPage /></TeacherRoute>} />
+          <Route path="teacher/book-ingest" element={<TeacherRoute><BookIngestPage /></TeacherRoute>} />
+          <Route path="teacher/assign" element={<TeacherRoute><AssignByLevelPage /></TeacherRoute>} />
+          <Route path="teacher/import" element={<TeacherRoute><ImportPage /></TeacherRoute>} />
+          <Route path="teacher/import/google-forms" element={<TeacherRoute><GoogleFormsImportPage /></TeacherRoute>} />
 
-        <Route path="teacher/students" element={<TeacherRoute><StudentsPage /></TeacherRoute>} />
-        <Route path="teacher/groups" element={<TeacherRoute><GroupsPage /></TeacherRoute>} />
-        <Route path="teacher/analytics" element={<TeacherRoute><AnalyticsPage /></TeacherRoute>} />
-        <Route path="teacher/tests/preview" element={<TeacherRoute><TestPreviewPage /></TeacherRoute>} />
-        <Route path="teacher/tests/authorial/:formId/edit" element={<TeacherRoute><AuthorialTestEditorPage /></TeacherRoute>} />
-        <Route path="teacher/tests/authorial" element={<TeacherRoute><AuthorialTestsPage /></TeacherRoute>} />
-        <Route path="teacher/tests" element={<TeacherRoute><TestHistoryPage /></TeacherRoute>} />
-        <Route path="teacher/tests/:sessionId" element={<TeacherRoute><TestResultPage /></TeacherRoute>} />
-        <Route path="teacher/settings" element={<TeacherRoute><TeacherSettingsPage /></TeacherRoute>} />
-        <Route path="admin" element={<TeacherRoute><AdminPanelPage /></TeacherRoute>} />
-      </Route>
+          <Route path="teacher/students" element={<TeacherRoute><TeacherStudentsSectionPage /></TeacherRoute>} />
+          <Route path="teacher/analytics" element={<TeacherRoute><AnalyticsPage /></TeacherRoute>} />
+          <Route path="teacher/tests/preview" element={<TeacherRoute><TestPreviewPage /></TeacherRoute>} />
+          <Route path="teacher/tests/authorial/:formId/edit" element={<TeacherRoute><AuthorialTestEditorPage /></TeacherRoute>} />
+          <Route path="teacher/tests/authorial" element={<TeacherRoute><AuthorialTestsPage /></TeacherRoute>} />
+          <Route path="teacher/tests" element={<TeacherRoute><TestHistoryPage /></TeacherRoute>} />
+          <Route path="teacher/tests/:sessionId" element={<TeacherRoute><TestResultPage /></TeacherRoute>} />
+          <Route path="teacher/settings" element={<TeacherRoute><TeacherSettingsPage /></TeacherRoute>} />
+          <Route path="admin" element={<TeacherRoute><AdminPanelPage /></TeacherRoute>} />
+        </Route>
 
-      <Route path="*" element={<HomePage />} />
-    </Routes>
+        <Route path="*" element={<HomePage />} />
+      </Routes>
+    </ViewModeProvider>
   )
 }

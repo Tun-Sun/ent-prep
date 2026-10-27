@@ -259,6 +259,25 @@ class LessonTokenJoinTest(TestCase):
         self.assertEqual(student.gc_uid, '48123')
         self.assertTrue(self.lesson.students.filter(pk=student.pk).exists())
 
+    def test_a_new_student_is_asked_to_introduce_himself(self):
+        """Из урока GetCourse приходит человек без класса: экран входа обязан показать
+        карточку «Представься», а не молча вести его сдавать."""
+        r = self._join()
+        self.assertEqual(r.status_code, 302, r.content)
+        frag = parse_qs(r['Location'].split('#', 1)[1])
+        self.assertEqual(frag['need_profile'], ['1'])
+
+    def test_a_student_with_class_and_name_skips_the_card(self):
+        self._join()
+        student = self._students().order_by('-id').first()
+        student.grade = 11
+        student.full_name = 'Сатов Айдар'
+        student.save(update_fields=['grade', 'full_name'])
+        again = self._join(gc_uid='48123')
+        frag = parse_qs(again['Location'].split('#', 1)[1])
+        self.assertNotIn('need_profile', frag)
+        self.assertEqual(student.pk, self._students().order_by('-id').first().pk)
+
     def test_lesson_token_needs_no_ts(self):
         """Ссылка живёт столько, сколько живёт урок: `ts` в шаблоне не бывает живым."""
         r = self._join(ts='1000000000')

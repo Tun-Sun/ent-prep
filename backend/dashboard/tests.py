@@ -1,10 +1,14 @@
 from datetime import timedelta
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from subjects.models import Answer, Question, Subject, Topic
+from subjects import sso
+from subjects.models import (
+    Answer, Assignment, AssignmentAnswer, AssignmentBlock, AssignmentSubmission,
+    Question, Subject, Topic,
+)
 from tests.models import AnswerRecord, TestSectionResult, TestSession, TestSessionQuestion
 from users.models import User
 
@@ -194,3 +198,203 @@ class TeacherStudentsPermissionTest(TestCase):
         response = client.get('/api/dashboard/teacher/students/')
 
         self.assertEqual(response.status_code, 200)
+
+
+def _client(user):
+    client = APIClient()
+    client.force_authenticate(user)
+    return client
+
+
+class TeacherCabinetOverviewTest(TestCase):
+    """Что тренер видит на `/teacher` после того, как платформа стала общей для 5–11.
+
+    Три вещи здесь раньше были не те: дашборд показывал все 15 предметов ЕНТ, очередь
+    ручной проверки была невидимой, а активные уроки не отдавали счётчик сдавших.
+    """
+
+    def setUp(self):
+        self.teacher = User.objects.create_user(username='cab-teacher', password='password', role='teacher')
+        self.other_teacher = User.objects.create_user(username='cab-teacher2', password='password', role='teacher')
+        self.student = User.objects.create_user(username='cab-student', password='password', role='student')
+        self.second = User.objects.create_user(username='cab-student2', password='password', role='student')
+
+        self.math = _subject('Математика', 'math')
+        self.physics = _subject('Физика', 'physics')
+        self.history = _subject('История', 'history')
+        self.topic = Topic.objects.create(name='Алгебра', subject=self.math)
+        self.questions = _add_questions(self.topic, n=2)
+        self.block = self._lesson(self.teacher, self.math, 'Термодинамика · 10 класс')
+
+    def _lesson(self, teacher, subject, title, status='active'):
+        lesson = Assignment.objects.create(
+            teacher=teacher, subject=subject, title=title, status=status,
+            published_at=timezone.now(), due_at=timezone.now() + timedelta(days=3),
+        )
+        block = AssignmentBlock.objects.create(
+            assignment=lesson, kind='homework', order=0,
+            question_ids=[q.pk for q in self.questions])
+        lesson.students.set([self.student, self.second])
+        return block
+
+    def _submit(self, block, student, state, verdict):
+        submission = AssignmentSubmission.objects.create(
+            assignment=block.assignment, block=block, student=student, state=state)
+        AssignmentAnswer.objects.create(
+            submission=submission, question=self.questions[0],
+            raw_answer='18 см', verdict=verdict,
+        )
+        return submission
+
+    def _book_question(self, subject, language):
+        """Строка книжного банка: предмет в неё смотрит через тему."""
+        topic = Topic.objects.create(name=f'Тема книги · {subject.name}', subject=subject)
+        return Question.objects.create(
+            text='Задача из книги', topic=topic,
+            source_type='book_scan', language=language, verification_status='verified',
+        )
+
+    def test_shows_pending_review_queue_for_own_lessons(self):
+        # своя сдача: ответ ждёт вердикта
+        self._submit(self.block, self.student, 'submitted', 'pending_review')
+        # чужой урок тренера тоже содержит непроверенный ответ — в очередь он не входит
+        foreign_block = self._lesson(self.other_teacher, self.physics, 'Чужой урок')
+        self._submit(foreign_block, self.second, 'submitted', 'pending_review')
+
+        response = _client(self.teacher).get('/api/dashboard/teacher/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['pending_review'], 1)
+
+    def test_reviewed_submission_still_counts_as_sent(self):
+        self._submit(self.block, self.student, 'submitted', 'pending_review')
+        self._submit(self.block, self.second, 'reviewed', 'correct')
+
+        lessons = _client(self.teacher).get('/api/dashboard/teacher/').data['active_lessons']
+
+        self.assertEqual(len(lessons), 1)
+        self.assertEqual(lessons[0]['title'], 'Термодинамика · 10 класс')
+        self.assertEqual(lessons[0]['subject_name'], 'Математика')
+        self.assertEqual(lessons[0]['assigned_count'], 2)
+        self.assertEqual(lessons[0]['submitted_count'], 2)
+
+    def test_two_blocks_from_one_student_count_once(self):
+        """Ученик, сдавший два блока, — один сдавший, а не «Сдали: 2 из 1».
+
+        Строка сдачи привязана к блоку, поэтому счётчик обязан идти по людям.
+        """
+        second_block = AssignmentBlock.objects.create(
+            assignment=self.block.assignment, kind='in_class', order=1,
+            question_ids=[q.pk for q in self.questions])
+        self._submit(self.block, self.student, 'submitted', 'pending_review')
+        self._submit(second_block, self.student, 'submitted', 'pending_review')
+
+        lesson = _client(self.teacher).get('/api/dashboard/teacher/').data['active_lessons'][0]
+
+        self.assertEqual(lesson['submitted_count'], 1)
+        self.assertEqual(lesson['assigned_count'], 2)
+
+    def test_draft_lesson_is_not_active(self):
+        self._lesson(self.teacher, self.math, 'Черновик урока', status='draft')
+
+        lessons = _client(self.teacher).get('/api/dashboard/teacher/').data['active_lessons']
+
+        self.assertEqual([l['title'] for l in lessons], ['Термодинамика · 10 класс'])
+
+    def test_admin_sees_every_lesson(self):
+        self._lesson(self.other_teacher, self.physics, 'Урок collegi')
+        admin = User.objects.create_user(username='cab-admin', password='password', role='admin')
+
+        lessons = _client(admin).get('/api/dashboard/teacher/').data['active_lessons']
+
+        self.assertEqual(len(lessons), 2)
+
+    def test_subject_stats_default_to_profile_subjects_not_ent_list(self):
+        _completed_session(self.student, self.questions, correct_count=2, subject=self.math)
+        _completed_session(self.student, self.questions, correct_count=1, subject=self.history)
+
+        stats = _client(self.teacher).get('/api/dashboard/teacher/').data['subject_stats']
+
+        # Физика в списке предметов по умолчанию, но ни урока, ни банка, ни тестов в ней
+        # нет — в кабинете это пустая позиция-призрак, её не показываем
+        self.assertEqual([s['name'] for s in stats], ['Математика'])
+
+    def test_subject_with_only_book_bank_is_shown(self):
+        self._book_question(self.physics, 'kk')
+
+        stats = _client(self.teacher).get('/api/dashboard/teacher/').data['subject_stats']
+
+        self.assertEqual(sorted(s['name'] for s in stats), ['Математика', 'Физика'])
+        physics = [s for s in stats if s['name'] == 'Физика'][0]
+        self.assertEqual(physics['bank_count'], 1)
+
+    def test_chosen_dashboard_subjects_override_the_default(self):
+        _completed_session(self.student, self.questions, correct_count=1, subject=self.history)
+        self.teacher.dashboard_subjects.set([self.history])
+
+        stats = _client(self.teacher).get('/api/dashboard/teacher/').data['subject_stats']
+
+        self.assertEqual([s['name'] for s in stats], ['История'])
+
+    def test_four_cards_on_top(self):
+        """Метрики сверху: активные уроки, очередь проверки, ученики, книжный банк RU/KK."""
+        self._submit(self.block, self.student, 'submitted', 'pending_review')
+        self._book_question(self.math, 'ru')
+        self._book_question(self.physics, 'kk')
+        self._lesson(self.teacher, self.physics, 'Второй урок')
+
+        data = _client(self.teacher).get('/api/dashboard/teacher/').data
+
+        self.assertEqual(data['active_lesson_count'], 2)
+        self.assertEqual(data['pending_review'], 1)
+        self.assertEqual(data['total_students'], 2)
+        self.assertEqual(data['book_bank'], {'ru': 1, 'kk': 1})
+
+    def test_lesson_token_travels_with_the_lesson(self):
+        """Ссылка урока для GetCourse строится на фронте, поэтому подпись нужна в дашборде."""
+        lesson = self._lesson(self.teacher, self.math, 'Урок со ссылкой')
+        with override_settings(GC_SSO_SECRET='dashboard-secret'):
+            data = _client(self.teacher).get('/api/dashboard/teacher/').data
+
+        row = [l for l in data['active_lessons'] if l['title'] == 'Урок со ссылкой'][0]
+        self.assertEqual(row['lesson_token'], sso.make_lesson_token('dashboard-secret', lesson.assignment_id))
+
+    def test_without_a_secret_the_lesson_carries_no_token(self):
+        """Без `GC_SSO_SECRET` ссылка не работает — фронт по пустому токену гасит кнопку."""
+        with override_settings(GC_SSO_SECRET=''):
+            lessons = _client(self.teacher).get('/api/dashboard/teacher/').data['active_lessons']
+
+        self.assertEqual(lessons[0]['lesson_token'], '')
+
+
+class TeacherStudentsGradeFilterTest(TestCase):
+    def setUp(self):
+        self.teacher = User.objects.create_user(username='grade-teacher', password='password', role='teacher')
+        self.ninth = User.objects.create_user(username='g9', password='password', role='student', grade=9)
+        self.tenth = User.objects.create_user(username='g10', password='password', role='student', grade=10)
+        self.tenth2 = User.objects.create_user(username='g10b', password='password', role='student', grade=10)
+        self.unknown = User.objects.create_user(username='g-none', password='password', role='student')
+
+    def _usernames(self, response):
+        return sorted(s['username'] for s in response.data)
+
+    def test_filter_by_grade(self):
+        response = _client(self.teacher).get('/api/dashboard/teacher/students/?grade=10')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self._usernames(response), ['g10', 'g10b'])
+
+    def test_rows_carry_grade(self):
+        response = _client(self.teacher).get('/api/dashboard/teacher/students/?grade=9')
+
+        self.assertEqual(response.data[0]['grade'], 9)
+
+    def test_no_filter_returns_every_student(self):
+        response = _client(self.teacher).get('/api/dashboard/teacher/students/')
+
+        self.assertEqual(len(response.data), 4)
+
+    def test_non_numeric_grade_is_an_error_not_empty_list(self):
+        response = _client(self.teacher).get('/api/dashboard/teacher/students/?grade=abc')
+
+        self.assertEqual(response.status_code, 400)

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import { myAssignmentsAPI } from '../../api'
+import { myAssignmentsAPI, authAPI } from '../../api'
 import { enterLessonAsDemoStudent } from './lessonPreview'
+import ProfileIntroCard from './ProfileIntroCard'
 import TelegramLoginButton, {
   TelegramDirectButton, TelegramReturnPanel, useTelegramConfig, useTelegramReturn,
 } from './TelegramLoginButton'
@@ -17,19 +18,28 @@ import TelegramLoginButton, {
 // Второй случай — `/sso?preview_assignment=..&lesson_token=..`: ссылку шаблона
 // открыли во вкладке, и макросы `{uid}`/`{email}` остались нераскрытыми. Сервер
 // проверяет подпись урока и редиректит сюда, чтобы человек не видел сырой отказ.
+// Имя для карточки «Представься»: у входа из Telegram заполнены first/last, у ученика
+// из GetCourse часто одно поле full_name — показываем то, что реально есть.
+const fields = (u) => ({
+  fullName: u ? ([u.first_name, u.last_name].filter(Boolean).join(' ') || u.full_name || '') : '',
+  grade: u ? u.grade : null,
+})
+
 export default function SsoLandingPage() {
   const { user, loading } = useAuth()
   const telegram = useTelegramConfig()
   const [error, setError] = useState('')
   const [preview, setPreview] = useState(null)
   const [notice, setNotice] = useState('')
-  // Ответ Telegram приходит на этот же адрес: страница доносит подпись до сервера
+  const [intro, setIntro] = useState(null)
+  // Ответ Telegram приходит на этот же адрес: страница доносит подпись серверу
   // сама, а не ждёт колбэк виджета, который на телефоне не доживает.
   const tg = useTelegramReturn()
   const attached = useRef(false)
 
   useEffect(() => {
     if (tg.waiting) return
+    if (tg.needsProfile) return
     const params = new URLSearchParams(window.location.hash.replace(/^#/, ''))
     const query = new URLSearchParams(window.location.search)
     const access = params.get('access')
@@ -51,10 +61,20 @@ export default function SsoLandingPage() {
     }
     localStorage.setItem('access_token', access)
     if (refresh) localStorage.setItem('refresh_token', refresh)
+    // Ученик пришёл из GetCourse без имени и класса: в журнале тренера его баллы
+    // должны быть подписаны по-человечески, поэтому сперва карточка, потом урок.
+    if (params.get('need_profile') === '1') {
+      // Имя и класс приходят из профиля, а не из провайдера авторизации: токен лёг в
+      // `localStorage` только что, и `user` в этом окне ещё пустой. Если профиль не
+      // дочитался — карточку открыть всё равно надо, пустую форму человек заполнит.
+      setIntro({ next })
+      authAPI.profile().then(res => setIntro({ next, me: res.data })).catch(() => setIntro({ next, me: {} }))
+      return
+    }
     // Полная перезагрузка, а не `navigate`: провайдер авторизации читает токен один
     // раз при старте приложения, и без него ученик ушёл бы на экран логина.
     window.location.replace(next)
-  }, [])
+  }, [tg.waiting, tg.needsProfile])
 
   // Довести человека из карточки до его же урока: ученик привязывается по подписи и
   // уходит сдавать, тренер-владелец открывается в конструкторе. Адрес отдаёт сервер —
@@ -97,6 +117,27 @@ export default function SsoLandingPage() {
         </div>
       </div>
     )
+  }
+
+  // Карточка «Представься» — по сигналу сервера: вход по подписи Telegram или из
+  // урока GetCourse. Обойти её прямой ссылкой нельзя, потому что решение принимает
+  // не адрес строки, а сервер по заполненности профиля.
+  if (tg.needsProfile) {
+    return <ProfileIntroCard {...fields(tg.profile.user)} next={tg.profile.next} />
+  }
+
+  if (intro) {
+    // Профиль ещё не дочитан — карточка без имени была бы пустой формой.
+    if (!intro.me) {
+      return (
+        <div className="min-h-screen flex items-center justify-center px-4">
+          <div className="card p-6 text-center" style={{ maxWidth: 420 }}>
+            <div className="spinner"></div><p className="text-sm mt-3 muted">Заполняем анкету…</p>
+          </div>
+        </div>
+      )
+    }
+    return <ProfileIntroCard {...fields(intro.me)} next={intro.next} />
   }
 
   if (preview) {

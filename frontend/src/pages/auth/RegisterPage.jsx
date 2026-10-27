@@ -3,11 +3,25 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { subjectsAPI } from '../../api'
 
+// Экран регистрации (Блок 2.2): до этого платформа была тренажёром ЕНТ для
+// одиннадцатиклассников, теперь в неё входят ученики 5–11 классов и преподаватели —
+// поэтому две вкладки, обязательный класс и код преподавателя.
+//
+// Роль решает сервер: вкладка «преподаватель» без верного кода из `TEACHER_INVITE_CODE`
+// даёт 400, а не тренерский вход. Ответ сервера (`role`) решает и адрес после входа.
+const GRADES = [5, 6, 7, 8, 9, 10, 11]
+// Физика и математика — то, ради чего в центр приходят чаще всего: их видим
+// первыми и держим предвыбранными. Совпадает с `DEFAULT_STUDENT_SLUGS` на сервере.
+const PRIORITY_SLUGS = ['physics', 'math', 'math_profile']
+const DEFAULT_SUBJECT_SLUGS = ['physics', 'math']
+
 export default function RegisterPage() {
+  const [kind, setKind] = useState('student')
   const [form, setForm] = useState({
-    username: '', email: '', password: '', password_confirm: '',
-    full_name: '', school: '', role: 'student',
+    username: '', email: '', password: '', full_name: '', school: '',
+    grade: null, subject: '', invite_code: '',
   })
+  const [showPassword, setShowPassword] = useState(false)
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
   const [subjects, setSubjects] = useState([])
@@ -17,13 +31,21 @@ export default function RegisterPage() {
 
   useEffect(() => {
     subjectsAPI.forRegistration().then(res => {
-      setSubjects(Array.isArray(res.data) ? res.data : [])
+      const list = Array.isArray(res.data) ? res.data : []
+      const sorted = list.slice().sort((a, b) => {
+        const pa = PRIORITY_SLUGS.indexOf(a.slug)
+        const pb = PRIORITY_SLUGS.indexOf(b.slug)
+        if (pa !== pb) return pa === -1 ? 1 : -1
+        return 0
+      })
+      setSubjects(sorted)
+      // Профильные предметы по умолчанию — те же два, что ставит сервер: ребёнок
+      // видит предвыбранные чипы, а не пустой список.
+      setProfileSubjects(sorted.filter(s => DEFAULT_SUBJECT_SLUGS.includes(s.slug)).map(s => s.id))
     }).catch(() => {})
   }, [])
 
-  const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value })
-  }
+  const set = (name, value) => setForm(prev => ({ ...prev, [name]: value }))
 
   const toggleSubject = (id) => {
     setProfileSubjects(prev =>
@@ -34,15 +56,25 @@ export default function RegisterPage() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setErrors({})
-    if (profileSubjects.length === 0) {
-      setErrors({ profile_subjects: 'Выберите хотя бы один предмет' })
+    if (kind === 'student' && !form.grade) {
+      setErrors({ grade: 'Выберите класс' })
       return
     }
     setLoading(true)
+    const payload = kind === 'student'
+      ? {
+          account_type: 'student', username: form.username, password: form.password,
+          full_name: form.full_name, school: form.school, grade: form.grade,
+          email: form.email, profile_subjects: profileSubjects,
+        }
+      : {
+          account_type: 'teacher', username: form.username, password: form.password,
+          full_name: form.full_name, email: form.email, subject: form.subject || null,
+          invite_code: form.invite_code,
+        }
     try {
-      // Публичная регистрация — только ученики (учителей создаёт админ)
-      await register({ ...form, role: 'student', profile_subjects: profileSubjects })
-      navigate('/')
+      const me = await register(payload)
+      navigate(me.role === 'student' ? '/' : '/teacher', { replace: true })
     } catch (err) {
       const data = err.response?.data
       if (data) {
@@ -57,79 +89,142 @@ export default function RegisterPage() {
     }
   }
 
-  const allowedSlugs = ['history', 'math_profile', 'physics', 'geography', 'math']
-  const visibleSubjects = subjects.filter(s => allowedSlugs.includes(s.slug))
+  const nameField = (
+    <div className="form-group">
+      <label className="form-label">Фамилия и Имя</label>
+      <input className="form-input" value={form.full_name}
+        onChange={e => set('full_name', e.target.value)} placeholder="Ахметов Арман" required />
+      {errors.full_name && <div className="form-error">{errors.full_name}</div>}
+    </div>
+  )
+
+  const passwordField = (
+    <div className="form-group">
+      <label className="form-label">Пароль</label>
+      <div className="password-wrap">
+        <input className="form-input" type={showPassword ? 'text' : 'password'}
+          value={form.password} onChange={e => set('password', e.target.value)}
+          placeholder="Минимум 8 символов" required autoComplete="new-password" />
+        <button type="button" className="password-eye"
+                onClick={() => setShowPassword(v => !v)}
+                aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}>
+          {showPassword ? '🙈' : '👁'}
+        </button>
+      </div>
+      {errors.password && <div className="form-error">{errors.password}</div>}
+    </div>
+  )
 
   return (
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-logo"><img src="/assets/logo2.png" alt="" /></div>
-        <h1 className="auth-title">Регистрация</h1>
-        <p className="auth-subtitle">Создайте аккаунт для подготовки к ЕНТ</p>
+        <h1 className="auth-title">Регистрация в INTELLECT</h1>
+        <p className="auth-subtitle">Единая учебная платформа 5–11 классов</p>
 
         {errors.general && <div className="alert alert-error">{errors.general}</div>}
 
+        <div className="reg-tabs" role="tablist">
+          <button type="button" role="tab" aria-selected={kind === 'student'}
+                  className={'reg-tab' + (kind === 'student' ? ' active' : '')}
+                  onClick={() => { setKind('student'); setErrors({}) }}>
+            🎒 Ученик
+          </button>
+          <button type="button" role="tab" aria-selected={kind === 'teacher'}
+                  className={'reg-tab' + (kind === 'teacher' ? ' active' : '')}
+                  onClick={() => { setKind('teacher'); setErrors({}) }}>
+            👨‍🏫 Преподаватель
+          </button>
+        </div>
+
         <form onSubmit={handleSubmit}>
+          {nameField}
+
+          {kind === 'student' && (
+            <div className="form-group">
+              <label className="form-label">Класс</label>
+              <div className="grade-chips">
+                {GRADES.map(g => (
+                  <button type="button" key={g}
+                          className={'grade-chip' + (form.grade === g ? ' active' : '')}
+                          onClick={() => set('grade', g)}>{g}</button>
+                ))}
+              </div>
+              {errors.grade && <div className="form-error">{errors.grade}</div>}
+            </div>
+          )}
+
+          {kind === 'teacher' && (
+            <div className="form-group">
+              <label className="form-label">Предмет преподавания (не обязательно)</label>
+              <select className="form-input" value={form.subject}
+                      onChange={e => set('subject', e.target.value)}>
+                <option value="">Ещё не выбрал</option>
+                {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+          )}
+
           <div className="form-group">
             <label className="form-label">Логин</label>
-            <input className="form-input" name="username" value={form.username}
-              onChange={handleChange} placeholder="Введите логин" required />
+            <input className="form-input" value={form.username}
+              onChange={e => set('username', e.target.value)} placeholder="armankh" required />
             {errors.username && <div className="form-error">{errors.username}</div>}
           </div>
-          <div className="form-group">
-            <label className="form-label">Email</label>
-            <input className="form-input" name="email" type="email" value={form.email}
-              onChange={handleChange} placeholder="email@example.com" />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Полное имя</label>
-            <input className="form-input" name="full_name" value={form.full_name}
-              onChange={handleChange} placeholder="Иванов Иван" />
-          </div>
-          <div className="form-group">
-            <label className="form-label">Школа</label>
-            <input className="form-input" name="school" value={form.school}
-              onChange={handleChange} placeholder="Школа №1" />
-          </div>
 
-          <div className="form-group">
-            <label className="form-label">Профильные предметы</label>
-            <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>
-              Выберите предметы, по которым будете тренироваться
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {visibleSubjects.map(s => (
-                <label key={s.id} style={{
-                  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
-                  borderRadius: 10, border: profileSubjects.includes(s.id) ? '2px solid var(--primary)' : '1px solid var(--border)',
-                  background: profileSubjects.includes(s.id) ? '#eef2ff' : '#fafafa',
-                  cursor: 'pointer', transition: 'all 0.1s',
-                }}>
-                  <input type="checkbox" checked={profileSubjects.includes(s.id)}
-                    onChange={() => toggleSubject(s.id)}
-                    style={{ width: 18, height: 18, cursor: 'pointer' }} />
-                  <span style={{ fontSize: 16 }}>{s.icon}</span>
-                  <span style={{ fontWeight: 500, fontSize: 14 }}>{s.name}</span>
-                </label>
-              ))}
+          {kind === 'teacher' && (
+            <div className="form-group">
+              <label className="form-label">Email</label>
+              <input className="form-input" type="email" value={form.email}
+                onChange={e => set('email', e.target.value)} placeholder="email@example.com" required />
+              {errors.email && <div className="form-error">{errors.email}</div>}
             </div>
-            {errors.profile_subjects && <div className="form-error">{errors.profile_subjects}</div>}
-          </div>
+          )}
 
-          <div className="form-group">
-            <label className="form-label">Пароль</label>
-            <input className="form-input" name="password" type="password" value={form.password}
-              onChange={handleChange} placeholder="Минимум 8 символов" required />
-            {errors.password && <div className="form-error">{errors.password}</div>}
-          </div>
-          <div className="form-group">
-            <label className="form-label">Подтвердите пароль</label>
-            <input className="form-input" name="password_confirm" type="password"
-              value={form.password_confirm} onChange={handleChange} required />
-            {errors.password_confirm && <div className="form-error">{errors.password_confirm}</div>}
-          </div>
-          <button className="btn btn-primary btn-lg" style={{ width: '100%' }} disabled={loading}>
-            {loading ? <span className="spinner"></span> : 'Создать аккаунт'}
+          {passwordField}
+
+          {kind === 'teacher' && (
+            <div className="form-group">
+              <label className="form-label">Инвайт-код центра</label>
+              <input className="form-input" value={form.invite_code}
+                onChange={e => set('invite_code', e.target.value)}
+                placeholder="его выдаёт администратор" required autoComplete="off" />
+              <p className="form-hint">
+                Тренерский вход открывает банк задач с ответами и разборами, поэтому
+                он только по коду.
+              </p>
+              {errors.invite_code && <div className="form-error">{errors.invite_code}</div>}
+            </div>
+          )}
+
+          {kind === 'student' && subjects.length > 0 && (
+            <div className="form-group">
+              <label className="form-label">Профильные предметы</label>
+              <p className="form-hint">Физику и математику оставим по умолчанию, лишнее можно убрать.</p>
+              <div className="subject-chips">
+                {subjects.map(s => (
+                  <button type="button" key={s.id}
+                          className={'grade-chip' + (profileSubjects.includes(s.id) ? ' active' : '')}
+                          onClick={() => toggleSubject(s.id)}>
+                    {s.icon} {s.name}
+                  </button>
+                ))}
+              </div>
+              {errors.profile_subjects && <div className="form-error">{errors.profile_subjects}</div>}
+            </div>
+          )}
+
+          {kind === 'student' && (
+            <div className="form-group">
+              <label className="form-label">Школа (не обязательно)</label>
+              <input className="form-input" value={form.school}
+                onChange={e => set('school', e.target.value)} placeholder="Школа №1" />
+            </div>
+          )}
+
+          <button className="btn btn-primary btn-lg" style={{ width: '100%', marginTop: 8 }} disabled={loading}>
+            {loading ? <span className="spinner"></span>
+                     : (kind === 'student' ? 'Создать аккаунт ученика' : 'Создать аккаунт преподавателя')}
           </button>
         </form>
 

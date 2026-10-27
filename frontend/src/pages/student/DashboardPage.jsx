@@ -1,21 +1,25 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { TrendingUp, Trophy, Wallet, Settings, FileText, BookOpen, Zap, Award, Target, Flame, Star, Swords, TrendingDown, Minus } from 'lucide-react'
-import { dashboardAPI, gamificationAPI } from '../../api'
+import { TrendingUp, Trophy, Wallet, Settings, FileText, BookOpen, Zap, Award, Target, Flame, Star, Swords, TrendingDown, Minus, ClipboardList } from 'lucide-react'
+import { dashboardAPI, gamificationAPI, myAssignmentsAPI } from '../../api'
 import { useAuth } from '../../context/AuthContext'
 import ProgressRing from '../../components/ProgressRing'
 
 const iconSize = 20
 
-const menuItems = [
-  { icon: <TrendingUp size={iconSize} strokeWidth={1.5} />, iconClass: 'purple', label: 'Прогресс', sub: 'Последний тест и динамика', to: '/progress' },
-  { icon: <Swords size={iconSize} strokeWidth={1.5} />, iconClass: 'red', label: 'Дуэли', sub: 'Соревнуйся с одноклассниками', to: '/duels' },
-  { icon: <Trophy size={iconSize} strokeWidth={1.5} />, iconClass: 'yellow', label: 'Таблица лидеров', sub: 'Соревнуйся со всеми', to: '/leaderboard' },
-  { icon: <BookOpen size={iconSize} strokeWidth={1.5} />, iconClass: 'green', label: 'Предметы', sub: 'Выбери предмет для теста', to: '/subjects' },
-  { icon: <Wallet size={iconSize} strokeWidth={1.5} />, iconClass: 'red', label: 'Калькулятор грантов', sub: 'Узнай свои шансы', to: '/grant-calc' },
-  { icon: <Settings size={iconSize} strokeWidth={1.5} />, iconClass: 'gray', label: 'Настройки', sub: 'Аккаунт и уведомления', to: '/settings' },
-]
+// Плитки главного экрана. Дуэли, гранты и обратный отсчёт до ЕНТ — только 11 классу:
+// восьмикласснику эти плитки не о чем, а «235 дней» он читает как обещание.
+function buildMenuItems(isEntYear) {
+  return [
+    { icon: <BookOpen size={iconSize} strokeWidth={1.5} />, iconClass: 'green', label: 'Тренажёр по предметам', sub: 'Выбери предмет для теста', to: '/subjects' },
+    isEntYear && { icon: <Swords size={iconSize} strokeWidth={1.5} />, iconClass: 'red', label: 'Дуэли', sub: 'Соревнуйся с одноклассниками', to: '/duels' },
+    { icon: <TrendingUp size={iconSize} strokeWidth={1.5} />, iconClass: 'purple', label: 'Прогресс', sub: 'Последний тест и динамика', to: '/progress' },
+    { icon: <Trophy size={iconSize} strokeWidth={1.5} />, iconClass: 'yellow', label: 'Таблица лидеров', sub: 'Соревнуйся со всеми', to: '/leaderboard' },
+    isEntYear && { icon: <Wallet size={iconSize} strokeWidth={1.5} />, iconClass: 'red', label: 'Калькулятор грантов', sub: 'Узнай свои шансы', to: '/grant-calc' },
+    { icon: <Settings size={iconSize} strokeWidth={1.5} />, iconClass: 'gray', label: 'Настройки', sub: 'Аккаунт и уведомления', to: '/settings' },
+  ].filter(Boolean)
+}
 
 const TREND_META = {
   rising: { label: 'растёт', icon: <TrendingUp size={15} strokeWidth={2} />, color: '#10B981' },
@@ -33,6 +37,8 @@ export default function StudentDashboardPage() {
   const [forecast, setForecast] = useState(null)
   const [weakTopics, setWeakTopics] = useState([])
   const [leaderboard, setLeaderboard] = useState(null)
+  // свои уроки: экран ученика начинается с назначенного, а не с тренажёра
+  const [lessons, setLessons] = useState([])
   const [lbLoading, setLbLoading] = useState(false)
   const [lbSubject, setLbSubject] = useState('all')
   const lbFetched = useRef(false)
@@ -44,6 +50,7 @@ export default function StudentDashboardPage() {
       gamificationAPI.achievements().then(res => setAchievementsData(res.data)).catch(() => {}),
       dashboardAPI.entForecast().then(res => setForecast(res.data)).catch(() => {}),
       dashboardAPI.weakTopics().then(res => setWeakTopics(res.data.groups || [])).catch(() => {}),
+      myAssignmentsAPI.list().then(res => setLessons(res.data || [])).catch(() => {}),
     ])
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -93,6 +100,11 @@ export default function StudentDashboardPage() {
 
   const xpPercent = Math.min(Math.floor((testCount % 10) / 10 * 100), 100)
 
+  // ЕНТ в этом году: обратный отсчёт и калькулятор грантов показываем только 11-му
+  // классу — остальным они не о чём.
+  const isEntYear = Number(user?.grade) === 11
+  const menuItems = buildMenuItems(isEntYear)
+
   const achievements = (achievementsData?.achievements || []).slice(0, 6).map(a => ({
     icon: a.icon,
     label: a.title,
@@ -102,6 +114,48 @@ export default function StudentDashboardPage() {
   if (!isProgress) {
     return (
       <div className="dashboard">
+        <div className="d-lessons">
+          <div className="d-subj-header">
+            <div className="d-subj-title">
+              <ClipboardList size={15} strokeWidth={1.8} style={{ verticalAlign: -2, marginRight: 6 }} />
+              Мои активные уроки и задания
+            </div>
+          </div>
+          {lessons.length === 0 && (
+            <div className="d-card" style={{ padding: 18, color: 'var(--text-secondary)', fontSize: 13 }}>
+              Уроков пока не назначали. Тренажёр по предметам доступен и без них.
+            </div>
+          )}
+          {lessons.map(a => (
+            <div key={a.id} className="d-card" style={{ padding: 16, marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <b style={{ fontSize: 16 }}>{a.title}</b>
+                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{a.subject_name}</span>
+                {a.expired
+                  ? <span style={{ fontSize: 11, fontWeight: 600, color: '#991B1B', background: 'rgba(239,68,68,0.1)', padding: '2px 8px', borderRadius: 100 }}>срок вышел</span>
+                  : a.due_at
+                    ? <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>сдать до {String(a.due_at).slice(0, 10)}</span>
+                    : null}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
+                <div style={{ flex: 1, minWidth: 90 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                    Сдано: {a.blocks_sent}/{a.blocks_total}
+                  </div>
+                  <div className="d-subj-bar">
+                    <div className={`d-subj-bar-fill ${a.blocks_sent === a.blocks_total ? 'gold' : 'blue'}`}
+                         style={{ width: `${a.blocks_total ? Math.max(a.blocks_sent / a.blocks_total * 100, 2) : 2}%` }} />
+                  </div>
+                </div>
+                <button className="btn btn-primary" style={{ borderRadius: 10 }}
+                        onClick={() => navigate(`/assignments?open=${a.id}`)}>
+                  Открыть урок →
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
         <div className="d-card d-profile">
           <div className="d-profile-left">
             <div className="d-avatar">{user?.avatar ? <img src={user.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initials}</div>
@@ -126,18 +180,20 @@ export default function StudentDashboardPage() {
           </ProgressRing>
         </div>
 
-        <div className="d-ent-countdown d-card" onClick={() => navigate('/subjects')}>
-          <span className="d-countdown-icon">📅</span>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-              <span className="d-countdown-number">235</span>
-              <span className="d-countdown-unit">дней</span>
+        {isEntYear && (
+          <div className="d-ent-countdown d-card" onClick={() => navigate('/subjects')}>
+            <span className="d-countdown-icon">📅</span>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                <span className="d-countdown-number">235</span>
+                <span className="d-countdown-unit">дней</span>
+              </div>
+              <div className="d-countdown-label">до ЕНТ — начни подготовку сегодня</div>
             </div>
-            <div className="d-countdown-label">до ЕНТ — начни подготовку сегодня</div>
+            <div style={{ flex: 1 }} />
+            <span style={{ fontSize: 20, color: 'var(--text-secondary)', opacity: 0.4 }}>→</span>
           </div>
-          <div style={{ flex: 1 }} />
-          <span style={{ fontSize: 20, color: 'var(--text-secondary)', opacity: 0.4 }}>→</span>
-        </div>
+        )}
 
         <div className="d-stats">
           <div className="d-card d-stat">

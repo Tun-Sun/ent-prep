@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import TelegramLoginButton, {
   TelegramDirectButton, TelegramReturnPanel, useTelegramConfig, useTelegramReturn,
 } from './TelegramLoginButton'
+import ProfileIntroCard from './ProfileIntroCard'
 
 // Вход в личный кабинет. Ученики учебного чата входят через Telegram: пароль и почта
 // им не нужны, а ссылка из чата ведёт сразу на урок. Форма с логином и паролем
@@ -58,6 +59,17 @@ export default function LoginPage() {
           <TelegramReturnPanel />
         </div>
       </div>
+    )
+  }
+
+  // Telegram пускает без пароля и часто без фамилии: карточку показывает сервер,
+  // а не экран, — иначе ученик обошёл бы её прямой ссылкой на `/assignments`.
+  if (tg.needsProfile) {
+    return (
+      <ProfileIntroCard
+        fullName={tg.profile.user.full_name}
+        grade={tg.profile.user.grade}
+        next={tg.profile.next} />
     )
   }
 

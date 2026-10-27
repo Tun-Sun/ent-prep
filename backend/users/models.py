@@ -8,8 +8,13 @@ class User(AbstractUser):
         ('teacher', 'Учитель'),
         ('admin', 'Администратор'),
     ]
+    # Платформа выросла из тренажёра 11 класса: класс теперь спрашиваем и при
+    # регистрации, и после входа через Telegram — по нему режем ЕНТ-виджеты.
+    GRADE_CHOICES = [(g, f'{g} класс') for g in range(5, 12)]
 
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='student')
+    grade = models.PositiveSmallIntegerField(null=True, blank=True, choices=GRADE_CHOICES,
+                                             verbose_name='Класс')
     full_name = models.CharField(max_length=150, blank=True)
     school = models.CharField(max_length=200, blank=True)
     # Код ученика в GetCourse: по нему вход из урока находит своего человека, не
@@ -38,6 +43,19 @@ class User(AbstractUser):
 
     def __str__(self):
         return f'{self.username} ({self.get_role_display()})'
+
+    @property
+    def is_profile_completed(self):
+        """Ученик «представился»: без класса и имени его баллы не к чему приложить в
+        журнале тренера, поэтому после входа по Telegram или из урока GetCourse он
+        обязан заполнить карточку. Тренеру и админу карточка не показывается."""
+        if self.role != 'student':
+            return True
+        name = (self.full_name or '').strip()
+        # Telegram отдаёт ник вместо имени: «mr.axmetov» в журнале — не ученик.
+        if not name or name.lower() == (self.telegram_username or '').strip().lower():
+            return False
+        return bool(self.grade)
 
 
 class StudyGroup(models.Model):

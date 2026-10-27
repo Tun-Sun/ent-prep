@@ -276,6 +276,27 @@ class TelegramLoginTest(TestCase):
         self.assertEqual(student.last_name, 'Сатов')
         self.assertEqual(student.full_name, 'Айдар Сатов')
 
+    def test_a_new_student_is_asked_to_introduce_himself(self):
+        """Без класса ученика тренера не знают, кого они видят в журнале: сервер сам
+        говорит экрану показать карточку «Представься»."""
+        r = self._post(widget_data())
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(r.data['need_profile'])
+        self.assertEqual(r.data['user']['grade'], None)
+
+    def test_a_student_who_already_introduced_skips_the_card(self):
+        student = User.objects.create_user(username='tg_aidar', password='x', role='student',
+                                           telegram_id=481234567, first_name='Айдар',
+                                           last_name='Сатов', full_name='Сатов Айдар', grade=10)
+        r = self._post(widget_data(first_name='Ник', last_name='ИзТелеграма'))
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertFalse(r.data['need_profile'])
+        student.refresh_from_db()
+        # Представился сам — значит ник мессенджера не пересиливает то, что читает
+        # тренер в журнале.
+        self.assertEqual(student.full_name, 'Сатов Айдар')
+        self.assertEqual(student.grade, 10)
+
     def test_a_staff_student_is_refused(self):
         insider = User.objects.create_user(username='tg_insider', password='x',
                                            role='student', telegram_id=481234567)
