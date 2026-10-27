@@ -10,13 +10,21 @@ import { telegramAPI } from '../../api'
 // Возврат от Telegram читает страница, а не замыкание внутри виджета. На телефоне
 // (особенно в Telegram In-App Browser, откуда ученики открывают ссылки из чата)
 // колбэк `data-onauth` теряется при переходе между окнами, и кнопка «ничего не
-// делает». Надёжных пути два, и оба приводят к одному запросу на сервер:
-//  · `data-auth-url` — виджет сам несёт человека на эту же страницу, дописав в
+// делает». Пути доставки три, и все три ведут в один запрос на сервер:
+//  · `postMessage` от `oauth.telegram.org` с `{event:'auth_user', auth_data}` — так
+//    виджет отдаёт результат, когда человек уже авторизован в мессенджере: адрес
+//    страницы при этом не меняется ни в строке запроса, ни во фрагменте; скрипт
+//    Telegram принимает это сообщение сам и только потом сочиняет переход по
+//    `data-auth-url`, который на мобильном Chrome может не состояться;
+//  · `data-auth-url` — виджет несёт человека на эту же страницу, дописав в
 //    строку запроса `id`, `first_name`, `username`, `auth_date`, `photo_url`, `hash`;
-//  · `#tgAuthResult=` — когда мессенджер вернул ответ фрагментом, страница
-//    распаковывает его сама, не дожидаясь, пока скрипт Telegram инициализируется.
+//  · `#tgAuthResult=` — когда мессенджер вернулся ответом во фрагмент (именно так
+//    приходит возврат на нашу отдельную кнопку: она идёт в том же окне, без iframe
+//    и без попапа), страница распаковывает его сама, не дожидаясь, пока скрипт
+//    Telegram инициализируется.
 
 const WIDGET_SRC = 'https://telegram.org/js/telegram-widget.js?22'
+const OAUTH_ORIGIN = 'https://oauth.telegram.org'
 
 // Поля, которые Telegram подписывает и приносит обратно.
 const TG_FIELDS = ['id', 'first_name', 'last_name', 'username', 'photo_url', 'auth_date', 'hash']
@@ -24,15 +32,16 @@ const RETURN_MARKER = 'tg_auth'
 
 /** Живёт ли вход через Telegram на сервере: без бота кнопку показывать нельзя. */
 export function useTelegramConfig() {
-  const [config, setConfig] = useState({ loading: true, enabled: false, botName: '' })
+  const [config, setConfig] = useState({ loading: true, enabled: false, botName: '', botId: '' })
   useEffect(() => {
     telegramAPI.config()
       .then(res => setConfig({
         loading: false,
         enabled: !!res.data.enabled,
         botName: res.data.telegram_bot_username || '',
+        botId: res.data.telegram_bot_id ? String(res.data.telegram_bot_id) : '',
       }))
-      .catch(() => setConfig({ loading: false, enabled: false, botName: '' }))
+      .catch(() => setConfig({ loading: false, enabled: false, botName: '', botId: '' }))
   }, [])
   return config
 }
@@ -50,6 +59,25 @@ export function telegramReturnUrl(extra) {
     if (extra.assignment_id) url.searchParams.set('assignment_id', extra.assignment_id)
     if (extra.lesson_token) url.searchParams.set('lesson_token', extra.lesson_token)
   }
+  return url.toString()
+}
+
+/**
+ * Наш собственный вход без виджета: тот же адрес, на который Telegram ведёт из
+ * своего попапа (`telegram-widget.js` строит `oauth.telegram.org/auth?bot_id=…`),
+ * только переход делаем в этом же окне. Попапа нет — значит, попап-блокер мобильного
+ * Chrome нечему блокировать, а возвращаться Telegram будет на `return_to` фрагментом
+ * `#tgAuthResult=`, который страница читает сама.
+ *
+ * `request_access` не просим: для входа достаточно подписанных полей ученика, а
+ * `write` дал бы боту право писать от его имени.
+ */
+export function telegramAuthUrl(botId, extra) {
+  if (!botId) return ''
+  const url = new URL(OAUTH_ORIGIN + '/auth')
+  url.searchParams.set('bot_id', String(botId))
+  url.searchParams.set('origin', window.location.origin)
+  url.searchParams.set('return_to', telegramReturnUrl(extra))
   return url.toString()
 }
 
@@ -84,8 +112,12 @@ function readHashReturn() {
   const match = (window.location.hash || '').match(/[#?&]tgAuthResult=([A-Za-z0-9\-_=]*)/)
   if (!match || !match[1]) return null
   let packed = match[1].replace(/-/g, '+').replace(/_/g, '/')
+  // добивка «====».slice(0, 5 - pad) давала лишний символ: длина после неё не кратна 4,
+  // и atob падал, а вход молчал. Нужно ровно 4 - pad знаков '='.
   const pad = packed.length % 4
-  if (pad > 1) packed += '===='.slice(0, 5 - pad)
+  if (pad === 2) packed += '=='
+  else if (pad === 3) packed += '='
+  else if (pad !== 0) return null
   try {
     // имена учеников кириллицей: atob отдаёт latin-1, без UTF-8 Айдар превратился бы в «Ð'»
     const binary = window.atob(packed)
@@ -96,6 +128,25 @@ function readHashReturn() {
   } catch (e) {
     return null
   }
+}
+
+/**
+ * Ответ виджета, присланный в окно сообщением: `{event:'auth_user', auth_data}` от
+ * `oauth.telegram.org`. Это единственный путь, при котором адрес страницы не меняется
+ * вообще, поэтому без него вход «ничего не делает».
+ *
+ * Доверие — по origin: сообщение с любого другого домена принесло бы чужой
+ * `telegram_id`, а сервер по нему выдал бы сессию.
+ */
+function readMessageReturn(event) {
+  if (!event || event.origin !== OAUTH_ORIGIN) return null
+  let body = event.data
+  if (typeof body === 'string') {
+    try { body = JSON.parse(body) } catch (e) { return null }
+  }
+  if (!body || body.event !== 'auth_user' || !body.auth_data) return null
+  const user = body.auth_data
+  return pickFields(key => user[key])
 }
 
 /** Что Telegram уже вернул (в запросе или фрагменте) — или null, если возврата нет. */
@@ -119,9 +170,14 @@ function scrubReturnFromAddress() {
  * кладёт токены в `localStorage` и уходит туда, куда сказал сервер (`/assignments?open=..`).
  * Человек видит ход дела и текст ошибки, а не молчаливый `console.error`.
  *
- * Слушает и `hashchange`: если мессенджер вернулся во фрагмент на тот же адрес,
- * браузер не перезагружает страницу, и одного mount-обработчика не хватило бы —
- * именно так вход и «змирал» на телефоне.
+ * Слушаем три доставки сразу: уже пришедший ответ (запрос или фрагмент), `hashchange`
+ * (мессенджер вернулся во фрагмент на тот же адрес — браузер страницу не перезагружает)
+ * и `message` от `oauth.telegram.org` (виджет отдаёт результат сообщением, и адрес при
+ * этом остаётся прежним).
+ *
+ * Старые токены снимаются до запроса: в `localStorage` телефона могла остаться чужая
+ * сессия (тестовая ссылка), а вход по Telegram касается только того, чью подпись
+ * прислал мессенджер.
  */
 export function useTelegramReturn() {
   const [phase, setPhase] = useState(() => (readTelegramReturn() ? 'waiting' : 'idle'))
@@ -130,16 +186,16 @@ export function useTelegramReturn() {
   const busy = useRef(false)
 
   useEffect(() => {
-    const run = () => {
+    const finish = (data, lesson) => {
       if (busy.current) return
-      const found = readTelegramReturn()
-      if (!found) return
       busy.current = true
       scrubReturnFromAddress()
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('refresh_token')
       setError('')
       setPhase('waiting')
 
-      telegramAPI.login(Object.assign({}, found.data, found.lesson))
+      telegramAPI.login(Object.assign({}, data, lesson))
         .then(res => {
           localStorage.setItem('access_token', res.data.access)
           localStorage.setItem('refresh_token', res.data.refresh)
@@ -159,9 +215,22 @@ export function useTelegramReturn() {
         })
     }
 
+    const run = () => {
+      const found = readTelegramReturn()
+      if (found) finish(found.data, found.lesson)
+    }
+    const onMessage = event => {
+      const data = readMessageReturn(event)
+      if (data) finish(data, lessonFromQuery(new URLSearchParams(window.location.search)))
+    }
+
     run()
     window.addEventListener('hashchange', run)
-    return () => window.removeEventListener('hashchange', run)
+    window.addEventListener('message', onMessage)
+    return () => {
+      window.removeEventListener('hashchange', run)
+      window.removeEventListener('message', onMessage)
+    }
   }, [])
 
   return { waiting: phase === 'waiting', failed: phase === 'failed', error, entered }
@@ -181,18 +250,43 @@ export function TelegramReturnPanel({ error }) {
 }
 
 /**
- * `extra` — что приложить к ответу Telegram: `assignment_id` и `lesson_token` из
- * ссылки урока. Они уезжают в `data-auth-url`, чтобы возврат пришёл сразу на урок:
- * в подпись входят только поля Telegram, поэтому лишние параметры её не ломают.
+ * Наша крупная синяя кнопка: переход в этом же окне на страницу согласия Telegram.
+ * Работает там, где виджет молчит, — без iframe, без попапа и без чужого скрипта,
+ * который решает, как отдать ответ. `botId` приходит с сервера.
  */
-export default function TelegramLoginButton({ botName, extra }) {
+export function TelegramDirectButton({ botId, extra, label }) {
+  if (!botId) return null
+  return (
+    <button
+      className="btn btn-primary"
+      style={{ width: '100%', borderRadius: 10, minHeight: 46, fontSize: 15, fontWeight: 700,
+               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+      onClick={() => { window.location.href = telegramAuthUrl(botId, extra) }}>
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.85-6.11c.73-.33 1.43.18 1.15 1.3l-2.62 12.39c-.19.91-.73 1.13-1.5.71L12.6 16.6l-2.82 2.05z"/>
+      </svg>
+      {label || 'Войти через Telegram'}
+    </button>
+  )
+}
+
+/**
+ * Кнопка Telegram рисует его скрипт, но приём возврата целиком у нас. `data-auth-url`
+ * сюда не передаём: увидев `auth_user`, скрипт сам уходит по этому адресу, и тогда на
+ * один тап приходится два входа — наш запрос и перезагрузка страницы с полями в строке
+ * запроса, которая запускает приёмник ещё раз. Хуже того, свой `#tgAuthResult=` скрипт
+ * распаковывает «latin-1» (у него `atob` без UTF-8), и на сервер уезжает `ÐÐ¹Ð´Ð°` —
+ * подпись не сходится, ученик видит «Подпись Telegram не совпала». Наш читатель декодирует
+ * по-честному, а переход в том же окне делает крупная кнопка выше.
+ */
+export default function TelegramLoginButton({ botName, retryToken }) {
   const box = useRef(null)
-  // `data-auth-url` виджет читает один раз при инициализации, поэтому строка, а не
-  // объект: свежий литерал на каждый рендер пересоздавал бы кнопку.
-  const authUrl = telegramReturnUrl(extra)
 
   useEffect(() => {
     if (!botName || !box.current) return undefined
+    // Пока возврат не разыбран, виджет не ставим: он сам читает `#tgAuthResult=` и
+    // распаковывает base64 без UTF-8, а его переход дублировал бы наш запрос.
+    if (readTelegramReturn()) return undefined
     const node = box.current
     const script = document.createElement('script')
     script.async = true
@@ -200,13 +294,14 @@ export default function TelegramLoginButton({ botName, extra }) {
     script.setAttribute('data-telegram-login', botName)
     script.setAttribute('data-size', 'large')
     script.setAttribute('data-radius', '10')
-    script.setAttribute('data-auth-url', authUrl)
     node.appendChild(script)
     return () => {
       script.remove()
       node.innerHTML = ''
     }
-  }, [botName, authUrl])
+    // `retryToken` меняется после отказа: адрес к тому времени уже очищен от возврата,
+    // и кнопка Telegram обязана встать на место, а не исчезнуть до перезагрузки.
+  }, [botName, retryToken])
 
   return <div ref={box}></div>
 }

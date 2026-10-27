@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext'
 import { myAssignmentsAPI } from '../../api'
 import { enterLessonAsDemoStudent } from './lessonPreview'
 import TelegramLoginButton, {
-  TelegramReturnPanel, useTelegramConfig, useTelegramReturn,
+  TelegramDirectButton, TelegramReturnPanel, useTelegramConfig, useTelegramReturn,
 } from './TelegramLoginButton'
 
 // Промежуточная страница входа из урока GetCourse (Шаг 6.1, предпросмотр — Шаг 6.6).
@@ -137,12 +137,20 @@ export default function SsoLandingPage() {
           </p>
           {telegram.enabled && !user && (
             <div className="mt-4">
-              <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>
-                Войти через Telegram и открыть урок
-              </div>
-              <TelegramLoginButton
-                botName={telegram.botName}
-                extra={{ assignment_id: String(preview.assignmentId), lesson_token: preview.token }} />
+              <TelegramDirectButton
+                botId={telegram.botId}
+                extra={{ assignment_id: String(preview.assignmentId), lesson_token: preview.token }}
+                label="Войти через Telegram и открыть урок" />
+              {telegram.botName && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                    или кнопкой Telegram
+                  </div>
+                  <TelegramLoginButton
+                    botName={telegram.botName}
+                    retryToken={tg.error} />
+                </div>
+              )}
             </div>
           )}
           {telegram.loading && <p className="text-sm mt-3 muted">Проверяем вход через Telegram…</p>}

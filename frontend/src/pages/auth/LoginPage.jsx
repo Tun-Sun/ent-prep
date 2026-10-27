@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import TelegramLoginButton, {
-  TelegramReturnPanel, useTelegramConfig, useTelegramReturn,
+  TelegramDirectButton, TelegramReturnPanel, useTelegramConfig, useTelegramReturn,
 } from './TelegramLoginButton'
 
 // Вход в личный кабинет. Ученики учебного чата входят через Telegram: пароль и почта
@@ -77,10 +77,18 @@ export default function LoginPage() {
 
         {showTelegram && (
           <div style={{ marginBottom: 18 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>
-              {lesson ? 'Войти через Telegram и открыть урок' : 'Войти через Telegram'}
-            </div>
-            <TelegramLoginButton botName={telegram.botName} extra={lesson || {}} />
+            <TelegramDirectButton
+              botId={telegram.botId}
+              extra={lesson || {}}
+              label={lesson ? 'Войти через Telegram и открыть урок' : 'Войти через Telegram'} />
+            {telegram.botName && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                  или кнопкой Telegram
+                </div>
+                <TelegramLoginButton botName={telegram.botName} retryToken={tg.error} />
+              </div>
+            )}
             {tg.entered && (
               <div style={{ marginTop: 10 }}>
                 <p className="text-sm" style={{ color: 'var(--danger)' }}>{tg.entered.notice}</p>

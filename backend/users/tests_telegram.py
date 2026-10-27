@@ -6,8 +6,10 @@
 
 1. **Подпись.** Её считает сервер по токену бота; подделанная, пустая или протухшая —
    отказ и ни одной новой строки в базе.
-2. **Кем становится человек.** Новый — отдельный ученик без пароля; уже вошедший по
-   ссылке GetCourse — тот же аккаунт, а не второй на него.
+2. **Кем становится человек.** Новый — отдельный ученик без пароля; уже заведённый по
+   этому `telegram_id` — тот же аккаунт. Чужая сессия в `Authorization` не влияет ни
+   на что: вход по Telegram никогда не привязывается к тому, под чьим токеном пришёл
+   запрос (26-й деплой).
 3. **Урок.** `assignment_id` + `lesson_token` из ссылки чата привязывают ученика к
    уроку и уводят его на карточку задания; неверная подпись урока урок не открывает.
 """
@@ -90,16 +92,22 @@ class TelegramLoginTest(TestCase):
             status='active', published_at=timezone.now())
         cls.token = sso.make_lesson_token(SSO_SECRET, cls.lesson.pk)
 
-    def _post(self, payload, user=None):
-        c = APIClient()
-        if user is not None:
-            c.force_authenticate(user=user)
-        return c.post(URL, payload, format='json')
+    def _post(self, payload):
+        return APIClient().post(URL, payload, format='json')
 
     def test_the_config_answers_whether_the_button_is_ready(self):
         r = APIClient().get(URL + 'config/')
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(r.data, {'enabled': True, 'telegram_bot_username': 'entprep_bot'})
+        self.assertEqual(r.data, {'enabled': True, 'telegram_bot_username': 'entprep_bot',
+                                  'telegram_bot_id': '123456'})
+
+    def test_the_config_never_leaks_the_bot_token(self):
+        """Номер бота — левая часть токена, она открыта в адресе `oauth.telegram.org`.
+        Правая часть (секрет) наружу не уходит ни целиком, ни хвостом."""
+        r = APIClient().get(URL + 'config/')
+        self.assertNotIn('test-telegram-bot-token', str(r.data))
+        with override_settings(TELEGRAM_BOT_TOKEN='без-двоеточия'):
+            self.assertEqual(APIClient().get(URL + 'config/').data['telegram_bot_id'], '')
 
     def test_without_a_bot_token_the_config_switches_the_button_off(self):
         with override_settings(TELEGRAM_BOT_TOKEN=''):
@@ -199,43 +207,74 @@ class TelegramLoginTest(TestCase):
         self.assertIn('не найден или уже отозван', r.data['notice'])
         self.assertEqual(self.lesson.students.count(), 0)
 
-    def test_an_already_signed_in_student_keeps_his_account_and_binds_telegram(self):
-        """Пришёл по ссылке GetCourse, а потом нажал «Войти через Telegram» — тот же
-        человек и тот же аккаунт, уроки остаются на нём."""
-        aidar = User.objects.create_user(username='tg_aidar', password='x', role='student',
-                                         email='aidar@mail.kz', gc_uid='777')
-        r = self._post(widget_data(), user=aidar)
+    def test_a_stale_token_never_binds_telegram_to_that_account(self):
+        """26-й деплой: в `localStorage` телефона мог остаться чужим (тестовая ссылка
+        с `gc_uid`/`email`). Живой `Authorization` теперь не читается вовсе: подпись
+        Telegram заводит **своего** ученика, а чужой аккаунт остаётся чистым.
+        Иначе человек входил в чужой профиль, сам того не заметив."""
+        from rest_framework_simplejwt.tokens import RefreshToken
+        other = User.objects.create_user(username='tg_admin1', password='x', role='student',
+                                         email='admin@pmci.kz', gc_uid='361272234')
+        r = APIClient().post(URL, widget_data(), format='json',
+                             HTTP_AUTHORIZATION='Bearer ' + str(RefreshToken.for_user(other).access_token))
         self.assertEqual(r.status_code, 200, r.data)
-        self.assertTrue(r.data['bound'])
-        self.assertEqual(r.data['user']['id'], aidar.pk)
-        aidar.refresh_from_db()
-        self.assertEqual(aidar.telegram_id, 481234567)
-        self.assertEqual(User.objects.filter(telegram_id=481234567).count(), 1)
+        self.assertNotEqual(r.data['user']['id'], other.pk)
+        other.refresh_from_db()
+        self.assertIsNone(other.telegram_id)
+        student = User.objects.get(telegram_id=481234567)
+        self.assertEqual(student.username, 'aidar_satov')
+        self.assertEqual(student.full_name, 'Айдар Сатов')
 
-    def test_binding_a_telegram_that_already_belongs_to_someone_is_refused(self):
-        other = User.objects.create_user(username='tg_other', password='x', role='student',
-                                         telegram_id=481234567)
-        aidar = User.objects.create_user(username='tg_aidar', password='x', role='student')
-        r = self._post(widget_data(), user=aidar)
-        self.assertEqual(r.status_code, 403, r.data)
-        self.assertIn('другому аккаунту', r.data['detail'])
-        aidar.refresh_from_db()
-        self.assertIsNone(aidar.telegram_id)
-
-    def test_a_second_telegram_on_one_account_is_refused(self):
-        aidar = User.objects.create_user(username='tg_aidar', password='x', role='student',
-                                         telegram_id=111)
-        r = self._post(widget_data(), user=aidar)
-        self.assertEqual(r.status_code, 403, r.data)
-        self.assertIn('другой Telegram', r.data['detail'])
-
-    def test_a_teacher_does_not_get_a_passwordless_key(self):
+    def test_a_teacher_session_does_not_become_a_passwordless_key(self):
         """Подпись Telegram опознаёт человека, но право войти без пароля есть только
-        у ученика: иначе виджет в чате открывал бы тренерский экран."""
-        r = self._post(widget_data(), user=self.teacher)
-        self.assertEqual(r.status_code, 403, r.data)
-        self.assertIn('по логину и паролю', r.data['detail'])
-        self.assertEqual(User.objects.filter(telegram_id=481234567).count(), 0)
+        у ученика: тренер под своей сессией получает своего же ученика, а не ключ
+        от тренерского экрана."""
+        from rest_framework_simplejwt.tokens import RefreshToken
+        r = APIClient().post(URL, widget_data(), format='json',
+                             HTTP_AUTHORIZATION='Bearer ' +
+                             str(RefreshToken.for_user(self.teacher).access_token))
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['user']['role'], 'student')
+        self.assertEqual(User.objects.get(telegram_id=481234567).pk, r.data['user']['id'])
+        self.teacher.refresh_from_db()
+        self.assertIsNone(self.teacher.telegram_id)
+
+    def test_the_key_the_server_returns_belongs_to_the_telegram_student(self):
+        """Выданный токен открывает список уроков **своего** ученика: фронт кладёт его
+        поверх старых токенов, и чужая сессия не остаётся в браузере."""
+        from rest_framework_simplejwt.tokens import RefreshToken
+        other = User.objects.create_user(username='tg_admin1', password='x', role='student')
+        c = APIClient()
+        r = c.post(URL, widget_data(), format='json',
+                   HTTP_AUTHORIZATION='Bearer ' + str(RefreshToken.for_user(other).access_token))
+        fresh = APIClient()
+        fresh.credentials(HTTP_AUTHORIZATION='Bearer ' + r.data['access'])
+        self.assertEqual(fresh.get('/api/auth/profile/').data['id'], r.data['user']['id'])
+
+    def test_an_existing_account_is_named_as_telegram_sees_it(self):
+        """Человек поменял имя в Telegram — платформа называет его так же, а не держит
+        старую строку: по имени тренера ищут ученика."""
+        student = User.objects.create_user(username='tg_aidar', password='x', role='student',
+                                           telegram_id=481234567, first_name='Старый',
+                                           last_name='', full_name='Старый')
+        r = self._post(widget_data(first_name='Айдар', last_name='Сатов'))
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertFalse(r.data['created'])
+        self.assertEqual(r.data['user']['id'], student.pk)
+        student.refresh_from_db()
+        self.assertEqual(student.first_name, 'Айдар')
+        self.assertEqual(student.full_name, 'Айдар Сатов')
+
+    def test_an_empty_field_from_telegram_keeps_the_name_in_the_base(self):
+        """Виджет отдаёт `last_name` только если человек его заполнял: пустая строка
+        в ответе — не отказ от фамилии, затирать её нельзя."""
+        student = User.objects.create_user(username='tg_aidar', password='x', role='student',
+                                           telegram_id=481234567, first_name='Айдар',
+                                           last_name='Сатов', full_name='Айдар Сатов')
+        self._post(widget_data(last_name=''))
+        student.refresh_from_db()
+        self.assertEqual(student.last_name, 'Сатов')
+        self.assertEqual(student.full_name, 'Айдар Сатов')
 
     def test_a_staff_student_is_refused(self):
         insider = User.objects.create_user(username='tg_insider', password='x',
