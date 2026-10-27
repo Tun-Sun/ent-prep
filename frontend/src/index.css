@@ -493,6 +493,19 @@ a:hover { color: var(--primary-dark); }
   color: var(--primary);
 }
 
+/* Вторичное действие рядом с главным: серая подложка вместо синей, чтобы на экране
+   был один яркий фокус (правило Primary CTA). */
+.btn-secondary {
+  background: #F1F5F9;
+  border: 1px solid #E2E8F0;
+  color: #334155;
+}
+.btn-secondary:hover {
+  background: #E2E8F0;
+  border-color: #CBD5E1;
+  color: #1E293B;
+}
+
 .btn-lg { padding: 14px 28px; font-size: 17px; }
 
 /* Form */

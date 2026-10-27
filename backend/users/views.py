@@ -454,7 +454,9 @@ class TelegramAuthView(APIView):
 
     Право войти без пароля есть только у ученика: если на этот `telegram_id` заведён
     преподаватель, сотрудник или отключённый аккаунт — отказ; одна подпись не должна
-    открывать тренерский экран.
+    открывать тренерский экран. Единственное исключение — ник из
+    `TELEGRAM_OWNER_BINDINGS` (владелец центра): его подпись привязывается к уже
+    заведённому вручную аккаунту, а не создаёт пустого ученика.
 
     `assignment_id` + `lesson_token` — подпись урока из ссылки шаблона: по ней ученик
     привязывается к уроку и уходит сразу на его карточку.
@@ -484,35 +486,51 @@ class TelegramAuthView(APIView):
         last = (data.get('last_name') or '').strip()[:150]
         created = False
 
+        owner_login = settings.TELEGRAM_OWNER_BINDINGS.get(tg_username.lower())
         student = User.objects.filter(telegram_id=tg_id).first()
         if student is not None:
-            if student.role != 'student' or student.is_staff or not student.is_active:
+            is_owner = bool(owner_login) and student.username == owner_login
+            if not is_owner and (student.role != 'student' or student.is_staff
+                                 or not student.is_active):
                 return Response({'detail': 'Этот Telegram привязан не к активному ученику'},
                                 status=status.HTTP_403_FORBIDDEN)
             self._rename(student, first, last, tg_username)
         else:
-            try:
-                with transaction.atomic():
-                    student = User.objects.create_user(
-                        username=self._new_username(User, tg_id, tg_username),
-                        password=None, role='student', telegram_id=tg_id,
-                        telegram_username=tg_username, first_name=first, last_name=last,
-                        full_name=self._full_name(first, last))
-            except IntegrityError:
-                # гонка двух тапов по кнопке на один Telegram-аккаунт
-                student = User.objects.filter(telegram_id=tg_id).first()
-                if student is None:
-                    return Response({'detail': 'Этот Telegram заводится прямо сейчас, '
-                                               'попробуйте ещё раз'},
-                                    status=status.HTTP_403_FORBIDDEN)
+            owner = self._owner(owner_login)
+            if owner is not None:
+                # Хозяин аккаунта уже заведён вручную и вход без пароля ему разрешён
+                # по его слову: привязываем подпись к нему, а не заводим пустого ученика.
+                owner.telegram_id = tg_id
+                owner.telegram_username = tg_username
+                owner.save(update_fields=['telegram_id', 'telegram_username'])
+                student = owner
             else:
-                created = True
+                try:
+                    with transaction.atomic():
+                        student = User.objects.create_user(
+                            username=self._new_username(User, tg_id, tg_username),
+                            password=None, role='student', telegram_id=tg_id,
+                            telegram_username=tg_username, first_name=first, last_name=last,
+                            full_name=self._full_name(first, last))
+                except IntegrityError:
+                    # гонка двух тапов по кнопке на один Telegram-аккаунт
+                    student = User.objects.filter(telegram_id=tg_id).first()
+                    if student is None:
+                        return Response({'detail': 'Этот Telegram заводится прямо сейчас, '
+                                                   'попробуйте ещё раз'},
+                                        status=status.HTTP_403_FORBIDDEN)
+                else:
+                    created = True
 
-        next_url, notice = '/assignments', ''
+        next_url, notice = ('/assignments' if student.role == 'student' else '/teacher'), ''
         assignment_id = str(payload.get('assignment_id') or '').strip()
         token = str(payload.get('lesson_token') or '').strip()
         if assignment_id or token:
-            if (not assignment_id.isdigit() or not settings.GC_SSO_SECRET
+            if student.role != 'student':
+                # Тренер, открывший ссылку своего урока, не должен становиться его
+                # учеником: иначе его строка появится в собственной матрице результатов.
+                notice = 'Урок по ссылке не открылся: этот вход не ученический.'
+            elif (not assignment_id.isdigit() or not settings.GC_SSO_SECRET
                     or not sso.lesson_token_is_valid(settings.GC_SSO_SECRET, assignment_id, token)):
                 notice = 'Урок по ссылке не открылся: подпись урока не совпала.'
             else:
@@ -544,6 +562,18 @@ class TelegramAuthView(APIView):
     @staticmethod
     def _full_name(first, last):
         return ' '.join(p for p in (first, last) if p).strip()[:150]
+
+    @staticmethod
+    def _owner(login):
+        """Аккаунт, к которому привязывается ник из `TELEGRAM_OWNER_BINDINGS`.
+
+        Пустой `login` (ник не хозяйский) — None, и тогда идёт обычная ветка «завести
+        ученика». Подпись Telegram доказывает владение именно этим ником, поэтому
+        прежний `telegram_id` переключаем: человек мог сменить аккаунт в мессенджере.
+        """
+        if not login:
+            return None
+        return User.objects.filter(username=login, is_active=True).first()
 
     @staticmethod
     def _rename(student, first, last, tg_username):

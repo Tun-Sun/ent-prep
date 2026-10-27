@@ -251,7 +251,7 @@ export default function TeacherDashboardPage() {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button className="btn btn-sm btn-primary" style={{ borderRadius: 10 }}
+              <button className="btn btn-sm btn-secondary" style={{ borderRadius: 10 }}
                       onClick={() => navigate(`/teacher/assign?open=${l.id}`)}>
                 Матрица результатов
               </button>

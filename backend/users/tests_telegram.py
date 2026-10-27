@@ -9,7 +9,8 @@
 2. **Кем становится человек.** Новый — отдельный ученик без пароля; уже заведённый по
    этому `telegram_id` — тот же аккаунт. Чужая сессия в `Authorization` не влияет ни
    на что: вход по Telegram никогда не привязывается к тому, под чьим токеном пришёл
-   запрос (26-й деплой).
+   запрос (26-й деплой). Ник из `TELEGRAM_OWNER_BINDINGS` (владелец центра) —
+   исключение: он привязывается к уже заведённому вручную аккаунту (28-й деплой).
 3. **Урок.** `assignment_id` + `lesson_token` из ссылки чата привязывают ученика к
    уроку и уводят его на карточку задания; неверная подпись урока урок не открывает.
 """
@@ -314,3 +315,90 @@ class TelegramLoginTest(TestCase):
         rows = c.get('/api/my/assignments/').data
         self.assertIn(self.lesson.pk, [row['id'] for row in rows['results']]
                       if isinstance(rows, dict) and 'results' in rows else [row['id'] for row in rows])
+
+
+@override_settings(TELEGRAM_BOT_TOKEN=BOT, TELEGRAM_BOT_USERNAME='entprep_bot',
+                   TELEGRAM_AUTH_MAX_AGE=86400,
+                   TELEGRAM_OWNER_BINDINGS={'mr.axmetov': 'bolatkhan'})
+class TelegramOwnerBindingTest(TestCase):
+    """Ник владельца центра привязывается к его аккаунту, а не заводит пустого ученика.
+
+    Владелец входит через тот же виджет, что и ученики, но его аккаунт заведён вручную.
+    Подпись Telegram доказывает владение ником, поэтому её достаточно для привязки.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.owner = User.objects.create_user(username='bolatkhan', password='x',
+                                             role='teacher', first_name='Болатхан',
+                                             full_name='Болатхан')
+        cls.owner.is_staff = True
+        cls.owner.save(update_fields=['is_staff'])
+        cls.subject = Subject.objects.create(name='Математика', slug='own-tg', icon='📐')
+        cls.lesson = Assignment.objects.create(title='Урок владельца', subject=cls.subject,
+                                               teacher=cls.owner, status='active',
+                                               published_at=timezone.now())
+
+    def login(self, **overrides):
+        cache.clear()
+        return APIClient().post(URL, widget_data(**overrides), format='json')
+
+    def test_the_owner_nick_lands_on_his_existing_account(self):
+        res = self.login(id='777000222', username='mr.axmetov', first_name='Bolatkhan',
+                         last_name='')
+        self.assertEqual(res.status_code, 200, res.data)
+        self.owner.refresh_from_db()
+        self.assertEqual(self.owner.telegram_id, 777000222)
+        self.assertEqual(self.owner.telegram_username, 'mr.axmetov')
+        self.assertEqual(res.data['user']['id'], self.owner.pk)
+        self.assertFalse(res.data['created'])
+        # пустого ученика с таким ником база не получила
+        self.assertEqual(User.objects.filter(telegram_id=777000222).count(), 1)
+
+    def test_the_nick_registr_is_not_the_case(self):
+        res = self.login(id='777000223', username='MR.AXmetov')
+        self.assertEqual(res.status_code, 200, res.data)
+        self.owner.refresh_from_db()
+        self.assertEqual(self.owner.telegram_id, 777000223)
+
+    def test_the_owner_goes_to_his_cabinet_not_the_student_list(self):
+        res = self.login(id='777000224', username='mr.axmetov')
+        self.assertEqual(res.data['next'], '/teacher')
+
+    def test_the_owner_is_not_written_as_a_student_into_his_own_lesson(self):
+        token = sso.make_lesson_token(SSO_SECRET, self.lesson.pk)
+        res = self.login(id='777000225', username='mr.axmetov',
+                         assignment_id=str(self.lesson.pk), lesson_token=token)
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertIn('не ученический', res.data['notice'])
+        self.assertNotIn(self.owner.pk,
+                         [u.pk for u in self.lesson.students.all()])
+
+    def test_the_owner_moves_his_bind_when_his_number_changed(self):
+        self.owner.telegram_id = 777000111
+        self.owner.save(update_fields=['telegram_id'])
+        res = self.login(id='777000226', username='mr.axmetov')
+        self.assertEqual(res.status_code, 200, res.data)
+        self.owner.refresh_from_db()
+        self.assertEqual(self.owner.telegram_id, 777000226)
+
+    def test_the_owner_enters_again_after_the_first_tap(self):
+        """Второй тап по кнопке — тот же вход, а не «привязан не к активному ученику».
+
+        После первой привязки аккаунт владельца перестал быть «не учеником» только для
+        этого ника: без исключения в проверке второй вход дал бы 403.
+        """
+        first = self.login(id='777000228', username='mr.axmetov')
+        self.assertEqual(first.status_code, 200, first.data)
+        again = self.login(id='777000228', username='mr.axmetov')
+        self.assertEqual(again.status_code, 200, again.data)
+        self.assertEqual(again.data['user']['id'], self.owner.pk)
+        self.assertEqual(User.objects.filter(telegram_id=777000228).count(), 1)
+
+    def test_an_ordinary_student_is_still_created_as_a_student(self):
+        res = self.login(id='777000227', username='some_kid')
+        self.assertEqual(res.status_code, 200, res.data)
+        kid = User.objects.get(telegram_id=777000227)
+        self.assertEqual(kid.role, 'student')
+        self.assertFalse(kid.is_staff)
+        self.assertEqual(res.data['next'], '/assignments')

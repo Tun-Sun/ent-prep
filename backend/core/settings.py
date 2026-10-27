@@ -263,6 +263,27 @@ TELEGRAM_BOT_USERNAME = os.environ.get('TELEGRAM_BOT_USERNAME', '')
 # становиться вечным пропуском. Telegram рекомендует сутки.
 TELEGRAM_AUTH_MAX_AGE = int(os.environ.get('TELEGRAM_AUTH_MAX_AGE', '86400'))
 
+
+def _telegram_owner_bindings(raw):
+    """Ники Telegram, которые привязываются к существующему аккаунту, а не к новому ученику.
+
+    Формат: `ник:логин_на_платформе,ник2:логин2` (регистр ника не значим).
+    """
+    pairs = {}
+    for chunk in (raw or '').split(','):
+        nick, _, login = chunk.partition(':')
+        nick, login = nick.strip().lower(), login.strip()
+        if nick and login:
+            pairs[nick] = login
+    return pairs
+
+
+# Владелец центра входит через тот же виджет, что и ученики, но его аккаунт уже
+# заведён вручную. Без этого правила первый тап создал бы пустого `student`-а
+# вместо входа в его кабинет. Пустая строка — правило выключено.
+TELEGRAM_OWNER_BINDINGS = _telegram_owner_bindings(
+    os.environ.get('TELEGRAM_OWNER_BINDINGS', 'mr.axmetov:bolatkhan'))
+
 # ── Код преподавателя при регистрации ────────────────────────────────────────
 # Роль «преподаватель» даёт не форма, а этот код: без него любой школьник
 # зарегистрировал бы себе тренерский вход, а там лежат ответы и разборы банка.
