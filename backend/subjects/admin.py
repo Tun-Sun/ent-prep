@@ -16,11 +16,16 @@ class TopicInline(admin.TabularInline):
 
 @admin.register(Subject)
 class SubjectAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'icon', 'topics_count', 'questions_count')
+    list_display = ('name', 'slug', 'icon', 'is_visible', 'topics_count', 'questions_count')
     list_display_links = ('name',)
+    # Галочка прямо в списке: снять предмет с платформы нужно массово, а не входя
+    # в карточку каждого из 15 предметов.
+    list_editable = ('is_visible',)
+    list_filter = ('is_visible',)
     prepopulated_fields = {'slug': ('name',)}
     search_fields = ('name', 'slug')
     inlines = [TopicInline]
+    actions = ('hide_subjects', 'show_subjects')
 
     @admin.display(description='Тем')
     def topics_count(self, obj):
@@ -29,6 +34,21 @@ class SubjectAdmin(admin.ModelAdmin):
     @admin.display(description='Вопросов')
     def questions_count(self, obj):
         return Question.objects.filter(topic__subject=obj).count()
+
+    @admin.action(description='Скрыть выбранные предметы')
+    def hide_subjects(self, request, queryset):
+        """Мягкое скрытие: строки предметов, тем и вопросов остаются на месте.
+
+        Удалять предмет нельзя — `Topic.subject` висит на CASCADE, и вместе с
+        предметом из банка ушла бы вся его оцифровка.
+        """
+        updated = queryset.update(is_visible=False)
+        self.message_user(request, f'Скрыто с платформы: {updated}', messages.WARNING)
+
+    @admin.action(description='Показать / активировать выбранные предметы')
+    def show_subjects(self, request, queryset):
+        updated = queryset.update(is_visible=True)
+        self.message_user(request, f'Возвращено на платформу: {updated}')
 
 
 @admin.register(Variant)

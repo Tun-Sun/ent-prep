@@ -252,6 +252,16 @@ class StartEntView(APIView):
         except Subject.DoesNotExist:
             return Response({'error': 'Предмет не найден'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Тот же запрет, что в StartTestView: id предмета приходит из запроса, а не
+        # из меню ученика, поэтому скрытый предмет нельзя протащить в симуляцию ЕНТ.
+        if getattr(request.user, 'role', '') == 'student':
+            for subj in (profile1_subj, profile2_subj):
+                if not subj.is_visible:
+                    return Response(
+                        {'error': 'Этот предмет сейчас недоступен'},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+
         selected = {}
         selected_question_ids = set()
         sections_order = ['history', 'reading', 'math_lit', 'profile1', 'profile2']

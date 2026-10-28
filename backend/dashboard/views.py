@@ -33,7 +33,9 @@ class StudentDashboardView(APIView):
 
         # Прогресс по каждому предмету (только выбранные + обязательные)
         profile_ids = student.profile_subjects.values_list('id', flat=True)
-        all_subjects = Subject.objects.all()
+        # Скрытый предмет исчезает и из «Прогресса», даже если тесты в нём уже были:
+        # иначе снятая с платформы галочка оставляла бы его в ученическом кабинете.
+        all_subjects = Subject.objects.filter(is_visible=True)
         if profile_ids:
             subjects = all_subjects.filter(
                 Q(subject_type='mandatory') | Q(id__in=profile_ids)
@@ -476,6 +478,13 @@ class LeaderboardView(APIView):
 
         period = request.query_params.get('period', 'all')
         subject_id = request.query_params.get('subject_id')
+
+        # Выпадающий список ученику уже отфильтрован сервером, но `?subject_id=`
+        # приходит из запроса: таблицу лидеров по снятому предмету не отдаём.
+        if subject_id and getattr(request.user, 'role', '') == 'student':
+            if not Subject.objects.filter(pk=subject_id, is_visible=True).exists():
+                return Response({'error': 'Этот предмет сейчас недоступен'},
+                                status=status.HTTP_403_FORBIDDEN)
 
         now = timezone.now()
         if period == 'week':

@@ -92,7 +92,9 @@ class RegisterSerializer(serializers.ModelSerializer):
 
         from subjects.models import Subject
         if user.role == 'student':
-            chosen = Subject.objects.filter(id__in=subjects_ids)
+            # Скрытый предмет не должен оседать в профиле ученика: id приходят из
+            # запроса, а экран регистрации показывает только видимые предметы.
+            chosen = Subject.objects.filter(id__in=subjects_ids, is_visible=True)
             if not chosen.exists():
                 chosen = Subject.objects.filter(slug__in=DEFAULT_STUDENT_SLUGS)
             user.profile_subjects.set(chosen)

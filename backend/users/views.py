@@ -150,7 +150,9 @@ class UpdateProfileSubjectsView(APIView):
         subject_ids = request.data.get('profile_subjects', [])
         if not isinstance(subject_ids, list):
             return Response({'error': 'Ожидается список ID предметов'}, status=400)
-        subjects = Subject.objects.filter(id__in=subject_ids)
+        # Скрытый предмет в профиль ученика не кладём: иначе он висел бы в его
+        # выборке, хотя на платформе его нет.
+        subjects = Subject.objects.filter(id__in=subject_ids, is_visible=True)
         request.user.profile_subjects.set(subjects)
         return Response({'profile_subjects': list(subjects.values_list('id', flat=True))})
 
@@ -193,7 +195,9 @@ class UpdateStudentSubjectsView(APIView):
         subject_ids = request.data.get('profile_subjects', [])
         if not isinstance(subject_ids, list):
             return Response({'error': 'Ожидается список ID предметов'}, status=400)
-        subjects = Subject.objects.filter(id__in=subject_ids)
+        # Тренеру скрытый предмет в списке доступен, но в профиль ученика он лечь
+        # не должен: ответ возвращает только то, что действительно прикрепилось.
+        subjects = Subject.objects.filter(id__in=subject_ids, is_visible=True)
         student.profile_subjects.set(subjects)
         return Response({'profile_subjects': list(subjects.values_list('id', flat=True))})
 
