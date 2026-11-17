@@ -21,6 +21,9 @@ from .serializers import (
     SystemSettingSerializer,
 )
 from .models import StudyGroup, SystemSetting
+from core.choices import TrackChoices
+from core.tracks import (GRADUATION_TRACKS, filter_subjects_by_track, is_valid_track,
+                         normalize_track)
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -133,6 +136,22 @@ class ProfileView(APIView):
                     return Response({'error': 'Класс бывает 5–11'}, status=400)
                 request.user.grade = grade
             update_fields.append('grade')
+        # Трек пересчитывается и при смене класса: 9 → 11 сбрасывает школу, а
+        # 11 → 9 принудительно возвращает её. PATCH одного трека тоже проходит.
+        if 'track' in request.data or 'grade' in request.data:
+            track_sent = 'track' in request.data
+            requested = request.data.get('track') if track_sent else request.user.track
+            if requested in ('', 'null'):
+                requested = None
+            if requested and not is_valid_track(requested):
+                return Response({'error': 'Такого трека нет: school / ent / nuet'}, status=400)
+            if request.user.role != 'student':
+                request.user.track = None
+            else:
+                if track_sent and request.user.grade == 11 and requested not in GRADUATION_TRACKS:
+                    return Response({'error': 'Для 11 класса выберите ЕНТ или NUET'}, status=400)
+                request.user.track = normalize_track(request.user.grade, requested)
+            update_fields.append('track')
         if 'school' in request.data:
             request.user.school = (request.data.get('school') or '').strip()
             update_fields.append('school')
@@ -151,8 +170,9 @@ class UpdateProfileSubjectsView(APIView):
         if not isinstance(subject_ids, list):
             return Response({'error': 'Ожидается список ID предметов'}, status=400)
         # Скрытый предмет в профиль ученика не кладём: иначе он висел бы в его
-        # выборке, хотя на платформе его нет.
-        subjects = Subject.objects.filter(id__in=subject_ids, is_visible=True)
+        # выборке, хотя на платформе его нет. Предмет чужого трека — тоже.
+        subjects = filter_subjects_by_track(
+            Subject.objects.filter(id__in=subject_ids, is_visible=True), request.user.track)
         request.user.profile_subjects.set(subjects)
         return Response({'profile_subjects': list(subjects.values_list('id', flat=True))})
 
@@ -197,7 +217,9 @@ class UpdateStudentSubjectsView(APIView):
             return Response({'error': 'Ожидается список ID предметов'}, status=400)
         # Тренеру скрытый предмет в списке доступен, но в профиль ученика он лечь
         # не должен: ответ возвращает только то, что действительно прикрепилось.
-        subjects = Subject.objects.filter(id__in=subject_ids, is_visible=True)
+        # Трек ученика здесь важнее желания тренера: школа не получает ЕНТ-предмет.
+        subjects = filter_subjects_by_track(
+            Subject.objects.filter(id__in=subject_ids, is_visible=True), student.track)
         student.profile_subjects.set(subjects)
         return Response({'profile_subjects': list(subjects.values_list('id', flat=True))})
 
@@ -340,7 +362,12 @@ class StudentListView(APIView):
             return Response({'error': 'Доступ только для учителей'}, status=403)
         search = request.query_params.get('search', '')
         group_id = request.query_params.get('group_id')
+        track = request.query_params.get('track', '')
         students = User.objects.filter(role='student')
+        if track:
+            if track not in ('school', 'ent', 'nuet'):
+                return Response({'error': 'Такого трека нет: school / ent / nuet'}, status=400)
+            students = students.filter(track=track)
         if group_id:
             from .models import StudyGroup
             try:
@@ -353,7 +380,8 @@ class StudentListView(APIView):
                 Q(full_name__icontains=search) | Q(username__icontains=search)
             )
         return Response([
-            {'id': s.id, 'username': s.username, 'full_name': s.full_name}
+            {'id': s.id, 'username': s.username, 'full_name': s.full_name,
+             'grade': s.grade, 'track': s.track or ''}
             for s in students.order_by('full_name')
         ])
 
@@ -560,7 +588,8 @@ class TelegramAuthView(APIView):
             # подписаны настоящим именем и классом. Экран решает показ, не сервер.
             'need_profile': not student.is_profile_completed,
             'user': {'id': student.pk, 'username': student.username, 'role': student.role,
-                     'full_name': student.full_name, 'grade': student.grade},
+                     'full_name': student.full_name, 'grade': student.grade,
+                     'track': student.track or ''},
         })
 
     @staticmethod

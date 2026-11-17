@@ -1,6 +1,8 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
+from core.choices import TrackChoices
+
 
 class User(AbstractUser):
     ROLE_CHOICES = [
@@ -15,6 +17,11 @@ class User(AbstractUser):
     role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='student')
     grade = models.PositiveSmallIntegerField(null=True, blank=True, choices=GRADE_CHOICES,
                                              verbose_name='Класс')
+    # Трек осмыслен только у ученика: 5–10 — школа, 11 — ЕНТ или NUET. У тренера
+    # и админа он всегда пуст. `None` — профиль ещё не заполнен (или старый ученик
+    # без класса), а не «школьный трек по умолчанию».
+    track = models.CharField(max_length=10, choices=TrackChoices.choices, null=True, blank=True,
+                             default=None, verbose_name='Трек')
     full_name = models.CharField(max_length=150, blank=True)
     school = models.CharField(max_length=200, blank=True)
     # Код ученика в GetCourse: по нему вход из урока находит своего человека, не
@@ -55,7 +62,13 @@ class User(AbstractUser):
         # Telegram отдаёт ник вместо имени: «mr.axmetov» в журнале — не ученик.
         if not name or name.lower() == (self.telegram_username or '').strip().lower():
             return False
-        return bool(self.grade)
+        if not self.grade:
+            return False
+        # 11 класс — выпускной: без ЕНТ/NUET непонятно, какой контент и прогноз
+        # показывать, поэтому трек обязателен так же, как класс и имя.
+        if self.grade == 11 and not self.track:
+            return False
+        return True
 
 
 class StudyGroup(models.Model):

@@ -16,12 +16,12 @@ class TopicInline(admin.TabularInline):
 
 @admin.register(Subject)
 class SubjectAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'icon', 'is_visible', 'topics_count', 'questions_count')
+    list_display = ('name', 'slug', 'track', 'icon', 'is_visible', 'topics_count', 'questions_count')
     list_display_links = ('name',)
     # Галочка прямо в списке: снять предмет с платформы нужно массово, а не входя
     # в карточку каждого из 15 предметов.
-    list_editable = ('is_visible',)
-    list_filter = ('is_visible',)
+    list_editable = ('is_visible', 'track')
+    list_filter = ('is_visible', 'track')
     prepopulated_fields = {'slug': ('name',)}
     search_fields = ('name', 'slug')
     inlines = [TopicInline]

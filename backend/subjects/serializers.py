@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
 from users.models import StudyGroup
+from core.tracks import subject_track, tracks_conflict
 from .models import (Subject, Topic, Question, Answer, Assignment, AssignmentBlock,
                      AssignmentSubmission, AssignmentAnswer, CHOICE_TYPES, plain_from_latex)
 from . import sso
@@ -45,7 +46,7 @@ class SubjectSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Subject
-        fields = ('id', 'name', 'slug', 'icon', 'description',
+        fields = ('id', 'name', 'slug', 'icon', 'description', 'track',
                   'topic_count', 'total_questions', 'question_count', 'time_limit',
                   'is_visible', 'sort_order', 'subject_type', 'show_in_profiles')
 
@@ -61,7 +62,8 @@ class SubjectMinimalSerializer(serializers.ModelSerializer):
     """Для списка выбора профильных предметов — без лишних полей"""
     class Meta:
         model = Subject
-        fields = ('id', 'name', 'slug', 'icon', 'question_count', 'time_limit', 'show_in_profiles')
+        fields = ('id', 'name', 'slug', 'icon', 'question_count', 'time_limit',
+                  'show_in_profiles', 'track')
 
 
 class TopicListSerializer(serializers.ModelSerializer):
@@ -227,7 +229,7 @@ class AssignmentStudentSerializer(serializers.ModelSerializer):
     """Кому ушло назначение — имя ученика экран обязан показывать, а не только id."""
     class Meta:
         model = get_user_model()
-        fields = ('id', 'username', 'full_name')
+        fields = ('id', 'username', 'full_name', 'grade', 'track')
 
 
 class AssignmentBlockSerializer(serializers.ModelSerializer):
@@ -392,6 +394,25 @@ class AssignmentWriteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'group': 'Это не ваша группа'})
         if group and 'students' not in attrs:
             attrs['students_to_add'] = list(group.students.all())
+        # Трек урока задаёт предмет. Ученик без трека (11-классник до выбора)
+        # пропускается: запрещать назначение раньше карточки «Представься» —
+        # значит наказать его за незаполненный профиль.
+        audience = list(attrs.get('students') or []) + list(attrs.get('students_to_add') or [])
+        if not audience and self.instance is not None:
+            audience = list(self.instance.students.all())
+        subject_value = subject_track(subject)
+        conflicts, seen = [], set()
+        for student in audience:
+            if student.pk in seen:
+                continue
+            seen.add(student.pk)
+            if tracks_conflict(getattr(student, 'track', None), subject_value):
+                conflicts.append(student)
+        if conflicts:
+            names = ', '.join((s.full_name or s.username) for s in conflicts[:5])
+            raise serializers.ValidationError({'students': (
+                f'Трек ученика не совпадает с треком урока: {names}. '
+                'Смените трек ученика или выберите предмет другого трека.')})
         return attrs
 
     def create(self, validated_data):

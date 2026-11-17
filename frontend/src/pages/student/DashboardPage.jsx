@@ -4,19 +4,20 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { TrendingUp, Trophy, Wallet, Settings, FileText, BookOpen, Zap, Award, Target, Flame, Star, Swords, TrendingDown, Minus, ClipboardList } from 'lucide-react'
 import { dashboardAPI, gamificationAPI, myAssignmentsAPI } from '../../api'
 import { useAuth } from '../../context/AuthContext'
+import { seesEntTools } from '../../constants/tracks'
 import ProgressRing from '../../components/ProgressRing'
 
 const iconSize = 20
 
-// Плитки главного экрана. Дуэли, гранты и обратный отсчёт до ЕНТ — только 11 классу:
-// восьмикласснику эти плитки не о чем, а «235 дней» он читает как обещание.
-function buildMenuItems(isEntYear) {
+// Плитки главного экрана. Дуэли и калькулятор грантов — инструменты ЕНТ-трека:
+// школе и NUET эти плитки не о чем, а «235 дней до ЕНТ» они читают как обещание.
+function buildMenuItems(entTools) {
   return [
     { icon: <BookOpen size={iconSize} strokeWidth={1.5} />, iconClass: 'green', label: 'Тренажёр по предметам', sub: 'Выбери предмет для теста', to: '/subjects' },
-    isEntYear && { icon: <Swords size={iconSize} strokeWidth={1.5} />, iconClass: 'red', label: 'Дуэли', sub: 'Соревнуйся с одноклассниками', to: '/duels' },
+    entTools && { icon: <Swords size={iconSize} strokeWidth={1.5} />, iconClass: 'red', label: 'Дуэли', sub: 'Соревнуйся с одноклассниками', to: '/duels' },
     { icon: <TrendingUp size={iconSize} strokeWidth={1.5} />, iconClass: 'purple', label: 'Прогресс', sub: 'Последний тест и динамика', to: '/progress' },
     { icon: <Trophy size={iconSize} strokeWidth={1.5} />, iconClass: 'yellow', label: 'Таблица лидеров', sub: 'Соревнуйся со всеми', to: '/leaderboard' },
-    isEntYear && { icon: <Wallet size={iconSize} strokeWidth={1.5} />, iconClass: 'red', label: 'Калькулятор грантов', sub: 'Узнай свои шансы', to: '/grant-calc' },
+    entTools && { icon: <Wallet size={iconSize} strokeWidth={1.5} />, iconClass: 'red', label: 'Калькулятор грантов', sub: 'Узнай свои шансы', to: '/grant-calc' },
     { icon: <Settings size={iconSize} strokeWidth={1.5} />, iconClass: 'gray', label: 'Настройки', sub: 'Аккаунт и уведомления', to: '/settings' },
   ].filter(Boolean)
 }
@@ -100,10 +101,10 @@ export default function StudentDashboardPage() {
 
   const xpPercent = Math.min(Math.floor((testCount % 10) / 10 * 100), 100)
 
-  // ЕНТ в этом году: обратный отсчёт и калькулятор грантов показываем только 11-му
-  // классу — остальным они не о чём.
-  const isEntYear = Number(user?.grade) === 11
-  const menuItems = buildMenuItems(isEntYear)
+  // ЕНТ-инструменты: отсчёт до ЕНТ, прогноз балла, гранты и дуэли — только
+  // треку ЕНТ. Учитель в режиме ученика видит всё, ему это витрина.
+  const entTools = seesEntTools(user)
+  const menuItems = buildMenuItems(entTools)
 
   const achievements = (achievementsData?.achievements || []).slice(0, 6).map(a => ({
     icon: a.icon,
@@ -180,7 +181,7 @@ export default function StudentDashboardPage() {
           </ProgressRing>
         </div>
 
-        {isEntYear && (
+        {entTools && (
           <div className="d-ent-countdown d-card" onClick={() => navigate('/subjects')}>
             <span className="d-countdown-icon">📅</span>
             <div>
@@ -243,14 +244,14 @@ export default function StudentDashboardPage() {
               <div className="d-achievement-label">{ach.label.split('\n').map((l, j) => <span key={j}>{l}<br /></span>)}</div>
             </div>
           )) : (
-            <div className="d-card d-achievement unlocked" onClick={() => navigate('/test/rush')}>
+            <div className="d-card d-achievement unlocked" onClick={() => navigate(entTools ? '/test/rush' : '/subjects')}>
               <div className="d-achievement-icon">⚡</div>
               <div className="d-achievement-label">Пройди первый<br />тест — получи 🎯</div>
             </div>
           )}
         </div>
 
-        {forecast?.score != null && (
+        {entTools && forecast?.score != null && (
           <div className="d-card" style={{ padding: 20, cursor: 'pointer' }} onClick={() => navigate('/test/ent')}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { dashboardAPI, groupsAPI, subjectsAPI, authAPI } from '../../api'
+import { TRACK_LABELS } from '../../constants/tracks'
 import { X, Users, Plus, Check, BookOpen, Search, Filter, GraduationCap, School, BarChart3, Trophy, FileDown, KeyRound } from 'lucide-react'
 
 export default function StudentsPage() {
@@ -10,6 +11,7 @@ export default function StudentsPage() {
 
   const [filterGroupId, setFilterGroupId] = useState('')
   const [filterGrade, setFilterGrade] = useState('')
+  const [filterTrack, setFilterTrack] = useState('')
   const [filterSubjectId, setFilterSubjectId] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -29,6 +31,7 @@ export default function StudentsPage() {
     const params = {}
     if (filterGroupId) params.group_id = filterGroupId
     if (filterGrade) params.grade = filterGrade
+    if (filterTrack) params.track = filterTrack
     if (filterSubjectId) params.subject_id = filterSubjectId
     if (dateFrom) params.date_from = dateFrom
     if (dateTo) params.date_to = dateTo
@@ -46,7 +49,7 @@ export default function StudentsPage() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { loadData() }, [filterGroupId, filterGrade, filterSubjectId, dateFrom, dateTo])
+  useEffect(() => { loadData() }, [filterGroupId, filterGrade, filterTrack, filterSubjectId, dateFrom, dateTo])
 
   const handleAssign = async () => {
     if (!assignStudent || !selectedGroup) return
@@ -84,7 +87,7 @@ export default function StudentsPage() {
   }
 
   const clearFilters = () => {
-    setFilterGroupId(''); setFilterGrade(''); setFilterSubjectId(''); setDateFrom(''); setDateTo('')
+    setFilterGroupId(''); setFilterGrade(''); setFilterTrack(''); setFilterSubjectId(''); setDateFrom(''); setDateTo('')
   }
 
   const downloadReport = async (student) => {
@@ -128,7 +131,7 @@ export default function StudentsPage() {
       return (a.full_name || a.username).localeCompare(b.full_name || b.username)
     })
 
-  const hasFilters = filterGroupId || filterGrade || filterSubjectId || dateFrom || dateTo
+  const hasFilters = filterGroupId || filterGrade || filterTrack || filterSubjectId || dateFrom || dateTo
 
   return (
     <div>
@@ -148,6 +151,19 @@ export default function StudentsPage() {
               style={{ height: 38, borderRadius: 10, border: '1px solid var(--border)', padding: '0 12px', fontSize: 13, background: '#fff', cursor: 'pointer', minWidth: 130 }}>
               <option value="">Все классы</option>
               {[5, 6, 7, 8, 9, 10, 11].map(g => <option key={g} value={g}>{g} класс</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <Filter size={12} strokeWidth={1.5} style={{ display: 'inline', marginRight: 4, verticalAlign: -1 }} />
+              Трек
+            </div>
+            <select value={filterTrack} onChange={e => setFilterTrack(e.target.value)}
+              style={{ height: 38, borderRadius: 10, border: '1px solid var(--border)', padding: '0 12px', fontSize: 13, background: '#fff', cursor: 'pointer', minWidth: 130 }}>
+              <option value="">Все треки</option>
+              <option value="school">Школа</option>
+              <option value="ent">ЕНТ</option>
+              <option value="nuet">NUET</option>
             </select>
           </div>
           <div>
@@ -235,6 +251,13 @@ export default function StudentsPage() {
                     {s.grade
                       ? <span style={{ padding: '2px 8px', borderRadius: 100, fontSize: 12, fontWeight: 600, background: 'rgba(99,102,241,0.08)', color: 'var(--primary)' }}>{s.grade} класс</span>
                       : <span style={{ color: 'var(--text-secondary)' }}>не указан</span>}
+                    {s.track && (
+                      <span style={{
+                        marginLeft: 6, padding: '2px 8px', borderRadius: 100, fontSize: 12, fontWeight: 600,
+                        background: s.track === 'ent' ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.1)',
+                        color: s.track === 'ent' ? '#92400E' : '#047857',
+                      }}>{TRACK_LABELS[s.track] || s.track}</span>
+                    )}
                   </td>
                   <td style={{ padding: '14px 8px', color: 'var(--text-secondary)', fontSize: 13 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>

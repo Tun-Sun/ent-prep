@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { subjectsAPI } from '../../api'
+import { GRADUATION_TRACKS } from '../../constants/tracks'
 
 // Экран регистрации (Блок 2.2): до этого платформа была тренажёром ЕНТ для
 // одиннадцатиклассников, теперь в неё входят ученики 5–11 классов и преподаватели —
@@ -19,7 +20,7 @@ export default function RegisterPage() {
   const [kind, setKind] = useState('student')
   const [form, setForm] = useState({
     username: '', email: '', password: '', full_name: '', school: '',
-    grade: null, subject: '', invite_code: '',
+    grade: null, track: '', subject: '', invite_code: '',
   })
   const [showPassword, setShowPassword] = useState(false)
   const [errors, setErrors] = useState({})
@@ -47,6 +48,21 @@ export default function RegisterPage() {
 
   const set = (name, value) => setForm(prev => ({ ...prev, [name]: value }))
 
+  // 5–10 — только школа, 11 — развилка ЕНТ/NUET. При смене класса старый трек
+  // не тащим: иначе школьник унёс бы в payload ЕНТ-трек, а сервер молча сбросил.
+  const chooseGrade = (grade) => {
+    setForm(prev => ({
+      ...prev,
+      grade,
+      track: grade === 11 ? (prev.track === 'ent' || prev.track === 'nuet' ? prev.track : '') : 'school',
+    }))
+  }
+
+  const visibleSubjects = subjects.filter(
+    s => !s.track || !form.track || s.track === form.track
+  )
+  const showProfileSubjects = kind === 'student' && form.grade === 11 && form.track === 'ent'
+
   const toggleSubject = (id) => {
     setProfileSubjects(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
@@ -60,12 +76,20 @@ export default function RegisterPage() {
       setErrors({ grade: 'Выберите класс' })
       return
     }
+    if (kind === 'student' && form.grade === 11 && !['ent', 'nuet'].includes(form.track)) {
+      setErrors({ track: 'Выберите ЕНТ или NUET' })
+      return
+    }
     setLoading(true)
     const payload = kind === 'student'
       ? {
           account_type: 'student', username: form.username, password: form.password,
           full_name: form.full_name, school: form.school, grade: form.grade,
-          email: form.email, profile_subjects: profileSubjects,
+          track: form.track || undefined,
+          email: form.email,
+          // Профильные предметы — только у ЕНТ: у школы и NUET своего каталога
+          // пока нет, и список ЕНТ-предметов им не принадлежит.
+          profile_subjects: showProfileSubjects ? profileSubjects : [],
         }
       : {
           account_type: 'teacher', username: form.username, password: form.password,
@@ -147,10 +171,27 @@ export default function RegisterPage() {
                 {GRADES.map(g => (
                   <button type="button" key={g}
                           className={'grade-chip' + (form.grade === g ? ' active' : '')}
-                          onClick={() => set('grade', g)}>{g}</button>
+                          onClick={() => chooseGrade(g)}>{g}</button>
                 ))}
               </div>
               {errors.grade && <div className="form-error">{errors.grade}</div>}
+            </div>
+          )}
+
+          {kind === 'student' && form.grade === 11 && (
+            <div className="form-group">
+              <label className="form-label">Трек подготовки</label>
+              <div className="grade-chips">
+                {GRADUATION_TRACKS.map(option => (
+                  <button type="button" key={option.value}
+                          className={'grade-chip' + (form.track === option.value ? ' active' : '')}
+                          onClick={() => set('track', option.value)}>
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <p className="form-hint">ЕНТ или NUET — от этого зависит каталог предметов.</p>
+              {errors.track && <div className="form-error">{errors.track}</div>}
             </div>
           )}
 
@@ -197,12 +238,12 @@ export default function RegisterPage() {
             </div>
           )}
 
-          {kind === 'student' && subjects.length > 0 && (
+          {showProfileSubjects && visibleSubjects.length > 0 && (
             <div className="form-group">
               <label className="form-label">Профильные предметы</label>
               <p className="form-hint">Физику и математику оставим по умолчанию, лишнее можно убрать.</p>
               <div className="subject-chips">
-                {subjects.map(s => (
+                {visibleSubjects.map(s => (
                   <button type="button" key={s.id}
                           className={'grade-chip' + (profileSubjects.includes(s.id) ? ' active' : '')}
                           onClick={() => toggleSubject(s.id)}>

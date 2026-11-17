@@ -5,6 +5,10 @@ from django.contrib.auth.password_validation import validate_password
 
 User = get_user_model()
 
+from core.choices import TrackChoices
+from core.tracks import (GRADUATION_TRACKS, filter_subjects_by_track, is_valid_track,
+                         normalize_track, student_track, subject_track, tracks_conflict)
+
 from .models import StudyGroup, SystemSetting
 
 # Ученик без выбранного предмета приходит готовиться к физике и математике — так
@@ -37,13 +41,15 @@ class RegisterSerializer(serializers.ModelSerializer):
     # role принимаем для совместимости со старым фронтом, но всегда игнорируем
     role = serializers.CharField(required=False, write_only=True)
     grade = serializers.IntegerField(required=False, allow_null=True, write_only=True)
+    track = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)
     subject = serializers.IntegerField(required=False, allow_null=True, write_only=True)
     invite_code = serializers.CharField(required=False, allow_blank=True, write_only=True)
 
     class Meta:
         model = User
         fields = ('username', 'email', 'password', 'password_confirm', 'role', 'account_type',
-                  'full_name', 'school', 'grade', 'subject', 'invite_code', 'profile_subjects')
+                  'full_name', 'school', 'grade', 'track', 'subject', 'invite_code',
+                  'profile_subjects')
 
     def validate_grade(self, value):
         if value is not None and value not in dict(User.GRADE_CHOICES):
@@ -59,6 +65,9 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'full_name': 'Напишите фамилию и имя'})
 
         account_type = attrs.get('account_type') or 'student'
+        requested_track = attrs.get('track') or None
+        if requested_track and not is_valid_track(requested_track):
+            raise serializers.ValidationError({'track': 'Такого трека нет: school / ent / nuet'})
         if account_type == 'teacher':
             code = (settings.TEACHER_INVITE_CODE or '').strip()
             if not code:
@@ -70,10 +79,16 @@ class RegisterSerializer(serializers.ModelSerializer):
             if not (attrs.get('email') or '').strip():
                 raise serializers.ValidationError({'email': 'Преподавателю нужна почта'})
             attrs['role'] = 'teacher'
+            attrs['track'] = None
         else:
             attrs['role'] = 'student'
             if not attrs.get('grade'):
                 raise serializers.ValidationError({'grade': 'Выберите класс'})
+            # 11 класс — развилка ЕНТ/NUET, и без ответа профиль не считается
+            # заполненным. Младшие классы принудительно школа.
+            if attrs['grade'] == 11 and requested_track not in GRADUATION_TRACKS:
+                raise serializers.ValidationError({'track': 'Для 11 класса выберите ЕНТ или NUET'})
+            attrs['track'] = normalize_track(attrs['grade'], requested_track)
         attrs['account_type'] = account_type
         return attrs
 
@@ -94,8 +109,10 @@ class RegisterSerializer(serializers.ModelSerializer):
         if user.role == 'student':
             # Скрытый предмет не должен оседать в профиле ученика: id приходят из
             # запроса, а экран регистрации показывает только видимые предметы.
-            chosen = Subject.objects.filter(id__in=subjects_ids, is_visible=True)
-            if not chosen.exists():
+            # Предмет чужого трека тоже не прикрепляем — школа не получает ЕНТ.
+            chosen = filter_subjects_by_track(
+                Subject.objects.filter(id__in=subjects_ids, is_visible=True), user.track)
+            if not chosen.exists() and user.track == TrackChoices.ENT:
                 chosen = Subject.objects.filter(slug__in=DEFAULT_STUDENT_SLUGS)
             user.profile_subjects.set(chosen)
         elif subject_id:
@@ -111,9 +128,9 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('id', 'username', 'email', 'role', 'full_name', 'first_name', 'last_name',
-                  'grade', 'school', 'profile_subjects', 'avatar', 'is_staff', 'is_superuser',
+                  'grade', 'track', 'school', 'profile_subjects', 'avatar', 'is_staff', 'is_superuser',
                   'telegram_username', 'profile_completed')
-        read_only_fields = ('id', 'username', 'role', 'is_staff', 'is_superuser',
+        read_only_fields = ('id', 'username', 'role', 'track', 'is_staff', 'is_superuser',
                             'telegram_username')
 
     def get_avatar(self, obj):
@@ -125,7 +142,11 @@ class UserSerializer(serializers.ModelSerializer):
         return None
 
     def get_profile_subjects(self, obj):
-        return list(obj.profile_subjects.values_list('id', flat=True))
+        """Только предметы своего трека: ЕНТ-предмет в профиле школьника — это
+        каталог, из которого он всё равно не сможет начать тест."""
+        track = student_track(obj)
+        subjects = obj.profile_subjects.all()
+        return [s.id for s in subjects if not tracks_conflict(track, subject_track(s))]
 
     def get_profile_completed(self, obj):
         return obj.is_profile_completed
@@ -134,7 +155,7 @@ class UserSerializer(serializers.ModelSerializer):
 class AdminUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'role', 'full_name', 'school',
+        fields = ('id', 'username', 'email', 'role', 'full_name', 'school', 'grade', 'track',
                   'is_active', 'date_joined', 'last_login')
         read_only_fields = ('id', 'date_joined', 'last_login')
 
@@ -142,7 +163,24 @@ class AdminUserSerializer(serializers.ModelSerializer):
 class AdminUserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('role', 'is_active')
+        fields = ('role', 'is_active', 'grade', 'track')
+
+    def validate(self, attrs):
+        """Админ меняет класс и трек теми же правилами, что и ученик в профиле."""
+        if not ({'role', 'grade', 'track'} & set(attrs)):
+            # PATCH только `is_active` не должен пересчитывать трек: иначе снятие
+            # блокировки молча меняло бы профиль ученика.
+            return attrs
+        role = attrs.get('role', self.instance.role if self.instance else 'student')
+        grade = attrs.get('grade', self.instance.grade if self.instance else None)
+        track = attrs.get('track', self.instance.track if self.instance else None)
+        if role != 'student':
+            attrs['track'] = None
+        else:
+            if track and not is_valid_track(track):
+                raise serializers.ValidationError({'track': 'Такого трека нет: school / ent / nuet'})
+            attrs['track'] = normalize_track(grade, track)
+        return attrs
 
 
 class StudyGroupSerializer(serializers.ModelSerializer):

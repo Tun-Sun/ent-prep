@@ -214,6 +214,8 @@ class Command(BaseCommand):
                 'ent_question_count': s.get('ent_question_count', 40),
                 'ent_max_score': s.get('ent_max_score', 50),
                 'ent_threshold': s.get('ent_threshold', 5),
+                # демо-набор повторяет старый банк ЕНТ
+                'track': 'ent',
             }
             if 'is_visible' in s:
                 defaults['is_visible'] = s['is_visible']

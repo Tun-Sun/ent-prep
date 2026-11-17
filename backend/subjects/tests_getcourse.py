@@ -271,8 +271,9 @@ class LessonTokenJoinTest(TestCase):
         self._join()
         student = self._students().order_by('-id').first()
         student.grade = 11
+        student.track = 'ent'
         student.full_name = 'Сатов Айдар'
-        student.save(update_fields=['grade', 'full_name'])
+        student.save(update_fields=['grade', 'track', 'full_name'])
         again = self._join(gc_uid='48123')
         frag = parse_qs(again['Location'].split('#', 1)[1])
         self.assertNotIn('need_profile', frag)

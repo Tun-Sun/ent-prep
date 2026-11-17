@@ -36,6 +36,14 @@ export function AuthProvider({ children }) {
     return login(data.username, data.password)
   }
 
+  // Перечитать профиль после смены трека/класса: без этого Layout и каталог
+  // продолжали бы жить со старым `user` до перезагрузки страницы.
+  const refreshUser = async () => {
+    const res = await authAPI.profile()
+    setUser(res.data)
+    return res.data
+  }
+
   const logout = () => {
     localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
@@ -43,7 +51,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, refreshUser, logout }}>
       {children}
     </AuthContext.Provider>
   )

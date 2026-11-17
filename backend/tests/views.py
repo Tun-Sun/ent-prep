@@ -15,6 +15,9 @@ from django.db.models import Q
 from subjects.models import Question, Answer, Subject, Topic
 from subjects.serializers import QuestionDetailSerializer
 from subjects.permissions import IsTeacherOrAdmin
+from core.choices import TrackChoices
+from core.tracks import (can_use_subject, filter_subjects_by_track, requires_track,
+                         student_track)
 from .models import TestSession, TestSessionQuestion, TestSectionResult, AnswerRecord
 from .serializers import (
     StartTestSerializer, StartEntSerializer, AnswerBulkSerializer,
@@ -144,6 +147,21 @@ class StartTestView(APIView):
         subject_id = serializer.validated_data.get('subject_id')
         subject = get_object_or_404(Subject, id=subject_id)
 
+        # 11-классник без трека: новые тесты не стартуют, пока не выбран ЕНТ/NUET.
+        # Старые уроки и результаты это не трогает — блокируется только каталог.
+        if requires_track(request.user):
+            return Response(
+                {'error': 'Выберите трек: ЕНТ или NUET', 'code': 'track_required'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        # Предмет чужого трека — не «невидимый», а именно недоступный: id приходит
+        # из запроса, и обойти каталог прямым вызовом нельзя.
+        if not can_use_subject(request.user, subject):
+            return Response(
+                {'error': 'Этот предмет относится к другому треку'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         # Ученики не стартуют скрытые предметы (учителя/админы — могут для проверки)
         if getattr(request.user, 'role', '') == 'student' and not subject.is_visible:
             return Response(
@@ -193,8 +211,21 @@ class StartTestView(APIView):
         """Question Rush: 30 быстрых вопросов за 5 минут, без matching."""
         user = request.user
         if getattr(user, 'role', '') == 'student':
+            if requires_track(user):
+                return Response(
+                    {'error': 'Выберите трек: ЕНТ или NUET', 'code': 'track_required'},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            # Rush — игра ЕНТ-подготовки. Школе и NUET её не показывают и не
+            # запускают: тратить 5 минут на чужие вопросы ученику незачем.
+            if student_track(user) in (TrackChoices.SCHOOL, TrackChoices.NUET):
+                return Response(
+                    {'error': 'Question Rush доступен только в треке ЕНТ'},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
             profile_ids = list(user.profile_subjects.values_list('id', flat=True))
-            subjects = Subject.objects.filter(is_visible=True)
+            subjects = filter_subjects_by_track(
+                Subject.objects.filter(is_visible=True), student_track(user))
             if profile_ids:
                 subjects = subjects.filter(
                     Q(subject_type='mandatory') | Q(id__in=profile_ids)
@@ -255,10 +286,25 @@ class StartEntView(APIView):
         # Тот же запрет, что в StartTestView: id предмета приходит из запроса, а не
         # из меню ученика, поэтому скрытый предмет нельзя протащить в симуляцию ЕНТ.
         if getattr(request.user, 'role', '') == 'student':
+            if requires_track(request.user):
+                return Response(
+                    {'error': 'Выберите трек: ЕНТ или NUET', 'code': 'track_required'},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            if student_track(request.user) in (TrackChoices.SCHOOL, TrackChoices.NUET):
+                return Response(
+                    {'error': 'Полная симуляция ЕНТ доступна только в треке ЕНТ'},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
             for subj in (profile1_subj, profile2_subj):
                 if not subj.is_visible:
                     return Response(
                         {'error': 'Этот предмет сейчас недоступен'},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+                if not can_use_subject(request.user, subj):
+                    return Response(
+                        {'error': 'Этот предмет относится к другому треку'},
                         status=status.HTTP_403_FORBIDDEN,
                     )
 

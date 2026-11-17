@@ -239,6 +239,7 @@ class TeacherStudentsView(APIView):
         date_from = request.query_params.get('date_from')
         date_to = request.query_params.get('date_to')
         grade = request.query_params.get('grade')
+        track = request.query_params.get('track')
 
         # Base student query
         students = User.objects.filter(role='student')
@@ -249,6 +250,12 @@ class TeacherStudentsView(APIView):
                 students = students.filter(grade=int(grade))
             except (TypeError, ValueError):
                 return Response({'error': 'Класс — число от 5 до 11'}, status=400)
+
+        # Трек: тренеру нужен срез «школа / ЕНТ / NUET», а не все ученики сразу
+        if track:
+            if track not in ('school', 'ent', 'nuet'):
+                return Response({'error': 'Такого трека нет: school / ent / nuet'}, status=400)
+            students = students.filter(track=track)
 
         # Filter by group membership
         if group_id:
@@ -305,6 +312,7 @@ class TeacherStudentsView(APIView):
                 'full_name': s.full_name,
                 'school': s.school,
                 'grade': s.grade,
+                'track': s.track or '',
                 'total_tests': s.total_tests,
                 'avg_score': round(s.avg_score or 0, 1),
                 'subject_progress': subject_progress,

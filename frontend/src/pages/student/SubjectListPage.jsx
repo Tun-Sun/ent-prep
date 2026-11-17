@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { subjectsAPI, dashboardAPI, authAPI } from '../../api'
 import { useAuth } from '../../context/AuthContext'
+import { seesEntTools, trackLabel } from '../../constants/tracks'
 import { Target, ArrowLeft, ChevronRight, Clock, BookOpen } from 'lucide-react'
 
 export default function SubjectListPage() {
@@ -16,6 +17,9 @@ export default function SubjectListPage() {
   const [profileSubjectIds, setProfileSubjectIds] = useState([])
   const navigate = useNavigate()
   const isTeacher = user?.role === 'teacher' || user?.role === 'admin'
+  // ЕНТ-симуляция, Rush и дуэли — инструменты трека ЕНТ. Школе и NUET их не
+  // показываем; тренеру показываем всегда, ему нужен весь каталог.
+  const entTools = seesEntTools(user)
 
   useEffect(() => {
     subjectsAPI.list()
@@ -123,7 +127,9 @@ export default function SubjectListPage() {
         </div>
         <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', margin: 0 }}>Предметы</h1>
         <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>
-          Выберите предмет для тренировки или начните полную симуляцию ЕНТ
+          {entTools
+            ? 'Выберите предмет для тренировки или начните полную симуляцию ЕНТ'
+            : `Предметы трека «${trackLabel(user?.track)}»`}
         </p>
       </div>
 
@@ -142,34 +148,52 @@ export default function SubjectListPage() {
         </div>
       )}
 
-      <div className="d-card d-ent-countdown" style={{ marginBottom: 24 }} onClick={() => setShowEntModal(true)}>
-        <Target size={28} strokeWidth={1.5} style={{ color: 'var(--primary)', flexShrink: 0 }} />
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Полная симуляция ЕНТ</div>
-          <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>120 вопросов · 5 предметов · 240 мин</div>
-        </div>
-        <span style={{
-          padding: '6px 16px', borderRadius: 100, fontSize: 13, fontWeight: 700,
-          background: 'var(--primary)', color: '#fff',
-        }}>Начать</span>
-      </div>
+      {entTools && (
+        <>
+          <div className="d-card d-ent-countdown" style={{ marginBottom: 24 }} onClick={() => setShowEntModal(true)}>
+            <Target size={28} strokeWidth={1.5} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Полная симуляция ЕНТ</div>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>120 вопросов · 5 предметов · 240 мин</div>
+            </div>
+            <span style={{
+              padding: '6px 16px', borderRadius: 100, fontSize: 13, fontWeight: 700,
+              background: 'var(--primary)', color: '#fff',
+            }}>Начать</span>
+          </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 28 }}>
-        <div className="card" style={{ padding: '16px 18px', cursor: 'pointer' }} onClick={() => navigate('/test/rush')}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-            <span style={{ fontSize: 22 }}>⚡</span>
-            <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Question Rush</span>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 28 }}>
+            <div className="card" style={{ padding: '16px 18px', cursor: 'pointer' }} onClick={() => navigate('/test/rush')}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                <span style={{ fontSize: 22 }}>⚡</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Question Rush</span>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>30 вопросов за 5 минут. Успеешь?</div>
+            </div>
+            <div className="card" style={{ padding: '16px 18px', cursor: 'pointer' }} onClick={() => navigate('/duels')}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                <span style={{ fontSize: 22 }}>⚔️</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Дуэли</span>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Вызови одноклассника на битву</div>
+            </div>
           </div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>30 вопросов за 5 минут. Успеешь?</div>
-        </div>
-        <div className="card" style={{ padding: '16px 18px', cursor: 'pointer' }} onClick={() => navigate('/duels')}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-            <span style={{ fontSize: 22 }}>⚔️</span>
-            <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Дуэли</span>
+        </>
+      )}
+
+      {!isTeacher && filtered.length === 0 && (
+        <div className="card" style={{ padding: 28, textAlign: 'center', marginBottom: 24 }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>📚</div>
+          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>
+            {user?.track ? `Программа трека «${trackLabel(user.track)}» готовится` : 'Предметы скоро появятся'}
           </div>
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Вызови одноклассника на битву</div>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
+            {user?.track
+              ? 'Мы уже собираем задачи. Уроки от преподавателя приходят в раздел «Мои уроки» уже сейчас.'
+              : 'Выберите трек в профиле — и каталог подстроится под вашу программу.'}
+          </p>
         </div>
-      </div>
+      )}
 
       {mandatory.length > 0 && (
         <div style={{ marginBottom: 28 }}>
@@ -195,7 +219,7 @@ export default function SubjectListPage() {
         </div>
       )}
 
-      {showEntModal && (
+      {entTools && showEntModal && (
         <div className="modal-overlay" onClick={() => setShowEntModal(false)}>
           <div className="modal modal-ent" onClick={e => e.stopPropagation()}
             style={{ borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)' }}>

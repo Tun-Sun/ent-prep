@@ -194,7 +194,7 @@ class Command(BaseCommand):
             subject, _ = Subject.objects.update_or_create(
                 slug=our_slug,
                 defaults={
-                    'name': our_name, 'icon': our_icon,
+                    'name': our_name, 'icon': our_icon, 'track': 'ent',
                     'question_count': q_count, 'time_limit': t_limit,
                     'ent_question_count': ent_q, 'ent_max_score': ent_max,
                     'ent_threshold': ent_thresh,

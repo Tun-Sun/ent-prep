@@ -4,6 +4,8 @@ from django.db.models import Q
 from django.utils import timezone
 import re
 
+from core.choices import TrackChoices
+
 FIGURE_LINE = re.compile(r"^!\[[^\]]*\]\(([^)]+)\)\s*$")
 MATH_NOISE = re.compile(r"\*\*|\\tag\{[^}]*\}")
 
@@ -53,6 +55,10 @@ class Subject(models.Model):
 
     name = models.CharField(max_length=100, verbose_name='Название')
     slug = models.SlugField(max_length=50, unique=True)
+    # Пустая строка — общий предмет: он доступен школе, ЕНТ и NUET. Так новые
+    # предметы, заведённые без решения о треке, не исчезают у учеников.
+    track = models.CharField(max_length=10, choices=TrackChoices.choices, blank=True,
+                             default='', db_index=True, verbose_name='Трек')
     icon = models.CharField(max_length=50, default='📚')
     description = models.TextField(blank=True)
     is_visible = models.BooleanField(default=True, verbose_name='Виден ученикам')

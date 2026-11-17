@@ -23,6 +23,7 @@ import TelegramLoginButton, {
 const fields = (u) => ({
   fullName: u ? ([u.first_name, u.last_name].filter(Boolean).join(' ') || u.full_name || '') : '',
   grade: u ? u.grade : null,
+  track: u ? u.track || '' : '',
 })
 
 export default function SsoLandingPage() {

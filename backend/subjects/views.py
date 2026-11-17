@@ -19,6 +19,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import (Subject, Topic, Question, Answer, Assignment, AssignmentBlock,
                      AssignmentSubmission, AssignmentAnswer)
+from core.tracks import filter_subjects_by_track, is_valid_track
 from .permissions import IsTeacherOrAdmin
 from .serializers import (
     SubjectSerializer, SubjectMinimalSerializer,
@@ -53,10 +54,13 @@ class SubjectViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = Subject.objects.all()
-        # Анонимы и ученики — только видимые предметы
+        # Анонимы и ученики — только видимые предметы. Ученику ещё и только
+        # предметы своего трека: школа не видит ЕНТ-каталог, NUET — тоже.
         user = self.request.user
         if not user.is_authenticated or getattr(user, 'role', '') == 'student':
             qs = qs.filter(is_visible=True)
+        if getattr(user, 'role', '') == 'student':
+            qs = filter_subjects_by_track(qs, user.track)
         search = self.request.query_params.get('search', '')
         if search:
             qs = qs.filter(name__icontains=search)
@@ -64,8 +68,17 @@ class SubjectViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='for-registration')
     def for_registration(self, request):
-        """Публичный список предметов для регистрации ученика (без JWT)."""
+        """Публичный список предметов для регистрации ученика (без JWT).
+
+        `?track=ent|nuet|school` отдаёт только предметы этого трека и общие:
+        экран регистрации не должен предлагать школьнику ЕНТ-профиль.
+        """
         qs = Subject.objects.filter(is_visible=True).order_by('sort_order', 'name')
+        track = request.query_params.get('track')
+        if track:
+            if not is_valid_track(track):
+                return Response({'error': 'Такого трека нет: school / ent / nuet'}, status=400)
+            qs = filter_subjects_by_track(qs, track)
         return Response(SubjectSerializer(qs, many=True).data)
 
     @action(detail=False, methods=['get'])

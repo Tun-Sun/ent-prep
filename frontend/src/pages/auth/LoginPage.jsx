@@ -69,6 +69,7 @@ export default function LoginPage() {
       <ProfileIntroCard
         fullName={tg.profile.user.full_name}
         grade={tg.profile.user.grade}
+        track={tg.profile.user.track}
         next={tg.profile.next} />
     )
   }

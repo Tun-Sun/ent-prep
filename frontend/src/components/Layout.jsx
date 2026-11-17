@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useViewMode } from '../context/ViewModeContext'
+import { seesEntTools } from '../constants/tracks'
+import TrackGate from './TrackGate'
 import { User, TrendingUp, BookOpen, Library, ScanText, Wallet, Clock, LayoutDashboard, HelpCircle, FileEdit, Download, Users, BarChart3, Settings, Layers, Swords, ClipboardList } from 'lucide-react'
 
 const iconMap = {
@@ -32,7 +34,7 @@ const iconStyle = { width: 20, height: 20, strokeWidth: 1.5 }
 // ребёнок пришёл, поэтому он первым. Гранты и дуэли — игры одиннадцатиклассников:
 // пятикласснику их не показывают.
 // `short` — подпись на телефоне: полная строка в панель не влезает.
-const studentSections = (grade) => {
+const studentSections = (user) => {
   const main = [
     { to: '/assignments', label: 'Мои уроки', short: 'Уроки', icon: 'assign' },
     { to: '/subjects', label: 'Тренажёр', short: 'Тренажёр', icon: 'subjects' },
@@ -43,7 +45,9 @@ const studentSections = (grade) => {
   const extra = [
     { to: '/history', label: 'История', short: 'История', icon: 'history' },
   ]
-  if (grade === 11) {
+  // Гранты и дуэли — инструменты ЕНТ-подготовки. Школе и NUET их не показываем,
+  // даже если ученик 11 класса: «235 дней до ЕНТ» для него — чужая дата.
+  if (seesEntTools(user)) {
     extra.unshift(
       { to: '/grant-calc', label: 'Гранты ЕНТ', short: 'Гранты', icon: 'grant-calc' },
       { to: '/duels', label: 'Дуэли', short: 'Дуэли', icon: 'duels' },
@@ -114,7 +118,7 @@ export default function Layout() {
   }
 
   const isTeacherMode = mode === 'teacher'
-  const sections = isTeacherMode ? teacherSections : studentSections(user?.grade)
+  const sections = isTeacherMode ? teacherSections : studentSections(user)
   const links = flatLinks(sections)
 
   // Переключатель ведёт не только меню, но и экран: один клик — и владелец
@@ -193,6 +197,7 @@ export default function Layout() {
       <main className="main-content">
         <Outlet />
       </main>
+      <TrackGate />
       {/* Нижняя панель вкладок и пилюля режима — один контейнер: раньше пилюля
           висела поверх панели и перекрывала подписи пунктов. */}
       <div className="mobile-dock">

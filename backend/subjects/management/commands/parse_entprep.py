@@ -363,7 +363,9 @@ class Command(BaseCommand):
             visible = {'is_visible': False} if our_slug in ('literature_kazakh',) else {}
             subject, created = Subject.objects.get_or_create(
                 slug=our_slug,
-                defaults={'name': our_name, 'icon': our_icon, **visible},
+                # Банк entprep — ЕНТ: новый предмет без трека не должен всплыть
+                # в школьном каталоге.
+                defaults={'name': our_name, 'icon': our_icon, 'track': 'ent', **visible},
             )
             if created:
                 self.stdout.write(f'  📌 Создан предмет: {subject.name}')
