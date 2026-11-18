@@ -296,6 +296,20 @@ class StartEntView(APIView):
                     {'error': 'Полная симуляция ЕНТ доступна только в треке ЕНТ'},
                     status=status.HTTP_403_FORBIDDEN,
                 )
+            # Фиксированные секции ищутся по слагу и на видимость не смотрят:
+            # пока старый банк скрыт, симуляция выдала бы ровно его, в обход
+            # каталога. Проверяем те же слаги, что и выборка ниже.
+            hidden_sections = [
+                cfg['section_label'] for cfg in ENT_SECTION_CONFIG.values()
+                if not Subject.objects.filter(
+                    slug=cfg['subject_slug'], is_visible=True).exists()
+            ]
+            if hidden_sections:
+                return Response(
+                    {'error': 'Полная симуляция ЕНТ временно недоступна: '
+                              'база обязательных предметов скрыта'},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
             for subj in (profile1_subj, profile2_subj):
                 if not subj.is_visible:
                     return Response(

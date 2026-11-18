@@ -560,7 +560,11 @@ class MyAssignmentViewSet(viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Assignment.objects.filter(students=self.request.user, status='active') \
+        # Скрытый предмет уносит с собой и старые уроки: иначе мягкое скрытие
+        # банка обходилось бы через раздел «Мои уроки» — задачи там те же.
+        # Сдачи и ответы остаются в БД и вернутся вместе с предметом.
+        return Assignment.objects.filter(students=self.request.user, status='active',
+                                         subject__is_visible=True) \
             .select_related('subject').prefetch_related('blocks')
 
     def get_assignment(self):

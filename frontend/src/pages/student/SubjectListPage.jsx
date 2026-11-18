@@ -150,6 +150,9 @@ export default function SubjectListPage() {
 
       {entTools && (
         <>
+          {/* Симуляция собирается из старых обязательных предметов: пока их
+              банк скрыт, карточка ведёт в никуда. Возвращается вместе с ними. */}
+          {profileSubjects.length > 0 && (
           <div className="d-card d-ent-countdown" style={{ marginBottom: 24 }} onClick={() => setShowEntModal(true)}>
             <Target size={28} strokeWidth={1.5} style={{ color: 'var(--primary)', flexShrink: 0 }} />
             <div style={{ flex: 1 }}>
@@ -161,6 +164,7 @@ export default function SubjectListPage() {
               background: 'var(--primary)', color: '#fff',
             }}>Начать</span>
           </div>
+          )}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 28 }}>
             <div className="card" style={{ padding: '16px 18px', cursor: 'pointer' }} onClick={() => navigate('/test/rush')}>
