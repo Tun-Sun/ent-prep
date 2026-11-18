@@ -58,6 +58,11 @@ export default function SubjectListPage() {
 
   const mandatory = useMemo(() => filtered.filter(s => s.subject_type === 'mandatory'), [filtered])
   const profile = useMemo(() => filtered.filter(s => s.subject_type === 'profile'), [filtered])
+  // Пробные варианты сделаны mandatory только затем, чтобы каталог их не
+  // отфильтровал. По смыслу это не обязательные предметы, а отдельные пробники.
+  const isTrial = (s) => /^(ent|nuet)-0[1-3]$/.test(s.slug || '')
+  const trials = mandatory.filter(isTrial)
+  const regularMandatory = mandatory.filter(s => !isTrial(s))
 
   const startEnt = () => {
     if (!profile1 || !profile2) return
@@ -97,7 +102,7 @@ export default function SubjectListPage() {
           <div className="d-subj-name">{subj.name}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 4 }}>
             <span style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
-              <BookOpen size={12} strokeWidth={1.5} /> {subj.total_questions} вопросов
+              <BookOpen size={12} strokeWidth={1.5} /> {subj.question_count ?? subj.total_questions} вопросов
             </span>
             <span style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4 }}>
               <Clock size={12} strokeWidth={1.5} /> {Math.round(subj.time_limit / 60)} мин
@@ -201,7 +206,19 @@ export default function SubjectListPage() {
         </div>
       )}
 
-      {mandatory.length > 0 && (
+      {trials.length > 0 && (
+        <div style={{ marginBottom: 28 }}>
+          <div style={{
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase',
+            color: 'var(--text-secondary)', marginBottom: 10, paddingLeft: 4,
+          }}>
+            Пробные варианты
+          </div>
+          {trials.map(s => <SubjectRow key={s.id} subj={s} />)}
+        </div>
+      )}
+
+      {regularMandatory.length > 0 && (
         <div style={{ marginBottom: 28 }}>
           <div style={{
             fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase',
@@ -209,7 +226,7 @@ export default function SubjectListPage() {
           }}>
             Обязательные предметы
           </div>
-          {mandatory.map(s => <SubjectRow key={s.id} subj={s} />)}
+          {regularMandatory.map(s => <SubjectRow key={s.id} subj={s} />)}
         </div>
       )}
 
