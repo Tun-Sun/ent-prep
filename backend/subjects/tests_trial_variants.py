@@ -9,6 +9,7 @@ import json
 import tempfile
 from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 from django.core.management import CommandError, call_command
 from django.test import TestCase, override_settings
@@ -195,6 +196,71 @@ class LegacyContentCommandTest(TestCase):
     def test_restore_without_snapshot_fails(self):
         with self.assertRaises(CommandError):
             run('legacy_content', '--restore')
+
+
+class TrialImportCommandTest(TestCase):
+    """Заливка форм: пара «вариант=ссылка» и синхронизация счётчиков."""
+
+    def setUp(self):
+        run('trial_variants')
+
+    @staticmethod
+    def fake_import(count, fail=False):
+        def _import(*, form_id, subject_slug, topic_name, dry_run=False):
+            if fail:
+                return {'ok': False, 'error': 'форма не расшарена'}
+            subject = Subject.objects.get(slug=subject_slug)
+            add_questions(subject, count, subject_slug)
+            return {
+                'ok': True,
+                'result': {'created': count, 'skipped_duplicates': 0,
+                           'drafted_no_correct': 0, 'errors': []},
+                'meta': {'questions_in_form': count,
+                         'with_correct_answers': count},
+            }
+        return _import
+
+    def test_import_fills_variant_and_syncs_counts(self):
+        with patch('subjects.import_views.import_from_google_form',
+                   self.fake_import(20)):
+            out = run('trial_import', '--form', 'ent-01=https://forms/d/abc/edit')
+
+        subject = Subject.objects.get(slug='ent-01')
+        self.assertEqual(subject.question_count, 20)
+        self.assertEqual(subject.time_limit, 20 * 60)
+        self.assertIn('ent-01', out)
+        # Соседний вариант не тронут: формы заливаются по одной.
+        self.assertEqual(Subject.objects.get(slug='ent-02').question_count, 10)
+
+    def test_unknown_slug_is_rejected_before_import(self):
+        with self.assertRaises(CommandError):
+            run('trial_import', '--form', 'ent-99=https://forms/d/abc/edit')
+
+    def test_missing_variant_asks_to_create_it_first(self):
+        Subject.objects.filter(slug='nuet-02').delete()
+
+        with self.assertRaises(CommandError):
+            run('trial_import', '--form', 'nuet-02=https://forms/d/abc/edit')
+
+    def test_failed_import_does_not_touch_counters(self):
+        with patch('subjects.import_views.import_from_google_form',
+                   self.fake_import(0, fail=True)):
+            with self.assertRaises(CommandError):
+                run('trial_import', '--form', 'ent-03=https://forms/d/abc/edit')
+
+        self.assertEqual(Subject.objects.get(slug='ent-03').question_count, 10)
+
+    def test_links_can_come_from_json_file(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / 'links.json'
+        path.write_text('{"ent-02": "https://forms/d/xyz/edit"}', encoding='utf-8')
+
+        with patch('subjects.import_views.import_from_google_form',
+                   self.fake_import(3)):
+            run('trial_import', '--from-file', str(path))
+
+        self.assertEqual(Subject.objects.get(slug='ent-02').question_count, 3)
 
 
 class TrialStartIsolationTest(TestCase):
