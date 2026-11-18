@@ -14,6 +14,33 @@ const SECTION_LABELS = {
   profile2: 'Профильный предмет 2',
 }
 
+// Пробные варианты NUET/ЕНТ состоят из двух предметов по 30 вопросов. Сервер
+// выдаёт их перемешанными — раскладываем по темам, чтобы в тесте были два
+// последовательных блока с подписью предмета (как секции полной симуляции ЕНТ).
+function splitIntoTopicBlocks(questions) {
+  const groups = new Map()
+  questions.forEach(q => {
+    const key = q.topic || 'Предмет'
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(q)
+  })
+  // Группируем только когда это явно пробник: ровно две темы по 20+ вопросов.
+  // Обычные тренировки по темам оставляем как есть.
+  const sizes = [...groups.values()].map(g => g.length)
+  if (groups.size !== 2 || sizes.some(n => n < 20)) {
+    return { questions, sections: [] }
+  }
+  let start = 1
+  const sections = []
+  const ordered = []
+  for (const [topic, qs] of groups) {
+    sections.push({ id: topic, label: topic, start, end: start + qs.length - 1 })
+    ordered.push(...qs)
+    start += qs.length
+  }
+  return { questions: ordered, sections }
+}
+
 export default function TestPage() {
   const { subjectId, duelId } = useParams()
   const location = useLocation()
@@ -62,9 +89,15 @@ export default function TestPage() {
           res = await testsAPI.start(payload)
         }
         const data = res.data
+        const incoming = data.questions || []
+        // У полной симуляции ЕНТ секции приходят с сервера и задают позиции —
+        // их нельзя переставлять. У пробных вариантов строим два блока сами.
+        const grouped = data.sections?.length
+          ? { questions: incoming, sections: data.sections }
+          : splitIntoTopicBlocks(incoming)
         setSessionId(data.session_id)
-        setQuestions(data.questions)
-        setSections(data.sections || [])
+        setQuestions(grouped.questions)
+        setSections(grouped.sections)
         setTimeLimit(data.time_limit || 600)
         setTotalPoints(data.total_points || 0)
       } catch (err) {
