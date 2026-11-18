@@ -164,6 +164,32 @@ a:hover { color: var(--primary-dark); }
   width: calc(100% - 240px);
 }
 
+/* Каталог предметов: заглушка трека центрируется в оставшемся пространстве,
+   а не висит сразу под заголовком. Высота берётся за вычетом собственных
+   отступов main-content (32px сверху и снизу). */
+.subjects-page {
+  max-width: 600px;
+  margin: 0 auto;
+  min-height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+}
+
+.subjects-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 0;
+}
+
+@media (max-width: 768px) {
+  /* Нижний док занимает 96px (142px с пилюлей режима) — вычитаем его,
+     чтобы карточка не уезжала под панель и не растягивала страницу. */
+  .subjects-page { min-height: calc(100dvh - 116px); }
+  .layout:has(.mobile-mode-switch) .subjects-page { min-height: calc(100dvh - 162px); }
+}
+
 /* Cards */
 .card {
   background: var(--card);

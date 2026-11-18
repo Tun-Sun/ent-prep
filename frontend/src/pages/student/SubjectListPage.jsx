@@ -112,7 +112,7 @@ export default function SubjectListPage() {
   if (loading) return <div className="text-center mt-8"><div className="spinner"></div></div>
 
   return (
-    <div style={{ maxWidth: 600, margin: '0 auto' }}>
+    <div className="subjects-page">
       <div className="card" style={{
         display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 16px', marginBottom: 20,
         cursor: 'pointer',
@@ -186,16 +186,18 @@ export default function SubjectListPage() {
       )}
 
       {!isTeacher && filtered.length === 0 && (
-        <div className="card" style={{ padding: 28, textAlign: 'center', marginBottom: 24 }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>📚</div>
-          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>
-            {user?.track ? `Программа трека «${trackLabel(user.track)}» готовится` : 'Предметы скоро появятся'}
+        <div className="subjects-empty">
+          <div className="card" style={{ width: '100%', maxWidth: 480, padding: 28, textAlign: 'center' }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>📚</div>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>
+              {user?.track ? `Программа трека «${trackLabel(user.track)}» готовится` : 'Предметы скоро появятся'}
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
+              {user?.track
+                ? 'Мы уже собираем задачи. Уроки от преподавателя приходят в раздел «Мои уроки» уже сейчас.'
+                : 'Выберите трек в профиле — и каталог подстроится под вашу программу.'}
+            </p>
           </div>
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
-            {user?.track
-              ? 'Мы уже собираем задачи. Уроки от преподавателя приходят в раздел «Мои уроки» уже сейчас.'
-              : 'Выберите трек в профиле — и каталог подстроится под вашу программу.'}
-          </p>
         </div>
       )}
 
