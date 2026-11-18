@@ -131,10 +131,30 @@ class ShortAnswerAnswerableTest(TestCase):
         self.assertTrue(
             Question.objects.filter(pk=question.pk).answerable().exists())
 
-    def test_keyless_short_answer_is_not_answerable(self):
+    def test_keyless_short_answer_is_answerable_so_teacher_can_add_key_later(self):
+        """Вопрос без ключа всё равно должен попасть в тест — ключ добавит учитель."""
         question = self._question('short_answer', with_key=False)
-        self.assertFalse(
+        self.assertTrue(
             Question.objects.filter(pk=question.pk).answerable().exists())
+
+    def test_keyless_short_answer_is_issued_when_verified(self):
+        from rest_framework.test import APIClient
+        from tests.models import TestSession
+        from users.models import User
+
+        question = self._question('short_answer', with_key=False)
+        student = User.objects.create_user(
+            username='keyless-student', password='password', role='student',
+            track='nuet')
+        client = APIClient()
+        client.force_authenticate(student)
+        response = client.post(
+            '/api/tests/start/', {'subject_id': self.subject.id}, format='json')
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertIn(question.id,
+                      [q['id'] for q in response.data['questions']])
+        self.assertTrue(TestSession.objects.filter(student=student).exists())
 
     def test_open_answer_is_still_not_answerable(self):
         question = self._question('open_answer')
