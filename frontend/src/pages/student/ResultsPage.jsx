@@ -187,6 +187,22 @@ export default function ResultsPage() {
                   </div>
                 </div>
               )}
+              {ans.question_type === 'short_answer' && (
+                <div style={{ marginLeft: 28, fontSize: 14 }}>
+                  <div style={{ color: 'var(--text-secondary)', marginBottom: 4 }}>
+                    <HelpCircle size={14} strokeWidth={1.5} style={{ display: 'inline', marginRight: 6 }} />
+                    Ваш ответ: <FormattedText text={ans.selected_answer_text} />
+                  </div>
+                  <div style={{ color: '#16a34a', fontWeight: 600, marginBottom: 4 }}>
+                    <CheckCircle2 size={14} strokeWidth={2} style={{ display: 'inline', marginRight: 6 }} />
+                    Правильный: <FormattedText text={ans.correct_answer_text} />
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                    Баллы: {ans.points_earned}/{ans.points_max}
+                  </div>
+                </div>
+              )}
+
               {ans.question_type === 'matching' && (
                 <div style={{ marginLeft: 28, fontSize: 14 }}>
                   <div style={{ color: 'var(--text-secondary)', marginBottom: 4 }}>

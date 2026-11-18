@@ -17,6 +17,8 @@ from .google_forms.fetcher import FetcherError, fetch_form
 from .google_forms.answers import (
     is_available as forms_api_available,
     get_form_quiz_data,
+    get_questions_via_api,
+    download_images_by_uri,
     get_service_account_email,
     merge_into_questions,
     resolve_form_id,
@@ -337,8 +339,29 @@ def import_from_google_form(
         if internal_id != api_form_id:
             api_form_id = internal_id
 
-    # 1. Скрапинг (только если есть form_url)
-    if form_url:
+    # 1. Скрапинг (только если есть form_url и API не дал форму целиком)
+    from .google_forms.fetcher import FetchResult
+
+    fetch_result = FetchResult()
+    sa_available = forms_api_available()
+    api_form_data = None
+    if api_form_id and sa_available and not api_form_id.startswith('1FAIpQLS'):
+        api_form_data = get_questions_via_api(api_form_id)
+
+    if api_form_data:
+        # Форма целиком из API: и варианты, и короткие ответы с эталонами,
+        # и баллы. Скрапинг не нужен — он всё равно не видит textQuestion.
+        fetch_result.form_title = api_form_data['form_title']
+        fetch_result.questions = api_form_data['questions']
+        fetch_result.form_id = api_form_id
+        fetch_result.used_api = True
+        source = f'api:{api_form_id}'
+        if api_form_data.get('image_uris'):
+            fetch_result.images.update(
+                download_images_by_uri(api_form_data['image_uris']))
+            fetch_result.warnings.append(
+                f"Скачано {len(fetch_result.images)} картинок через Forms API")
+    elif form_url:
         try:
             fetch_result = fetch_form(form_url)
         except FetcherError as e:
@@ -356,13 +379,10 @@ def import_from_google_form(
                     q['external_id'] = api_form_id + '/' + eid[len(old_prefix):]
             fetch_result.form_id = api_form_id
     else:
-        from .google_forms.fetcher import FetchResult
-        fetch_result = FetchResult()
         fetch_result.form_id = api_form_id
 
-    # 2. Правильные ответы и баллы через Forms API
-    sa_available = forms_api_available()
-    if api_form_id and sa_available:
+    # 2. Правильные ответы и баллы через Forms API (путь без API-фетча)
+    if api_form_id and sa_available and not api_form_data:
         if api_form_id.startswith('1FAIpQLS'):
             # Резолвинг не удался — форма не расшарена на сервисный аккаунт.
             sa_email = get_service_account_email() or 'сервисного аккаунта'
@@ -402,7 +422,7 @@ def import_from_google_form(
     from .google_forms.answers import get_form_images_via_api
     from .google_forms.images import download_batch
 
-    if api_form_id:
+    if api_form_id and not api_form_data:
         try:
             api_images = get_form_images_via_api(api_form_id)
             if api_images:
@@ -451,7 +471,9 @@ def import_from_google_form(
             },
             subject_slug=subject_slug,
             subject_name=subject_name,
-            topic_name=topic_name,
+            # Без явной темы форма (Math, Thinking Skills) становится
+            # отдельной темой: в одном варианте их две, смешивать не нужно.
+            topic_name=topic_name or fetch_result.form_title or f'Form {api_form_id}',
             language=language,
             year=year,
         )

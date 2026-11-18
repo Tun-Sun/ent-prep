@@ -94,6 +94,7 @@ export default function TestPage() {
       if (!a) continue
       if (q.question_type === 'single_choice' && a) count++
       else if (q.question_type === 'multiple_choice' && a.length > 0) count++
+      else if (q.question_type === 'short_answer' && typeof a === 'string' && a.trim()) count++
       else if (q.question_type === 'matching') {
         const pairs = a
         if (pairs && typeof pairs === 'object' && Object.keys(pairs).length > 0) count++
@@ -121,6 +122,8 @@ export default function TestPage() {
         payload.selected_answers = [a]
       } else if (q.question_type === 'multiple_choice') {
         payload.selected_answers = a
+      } else if (q.question_type === 'short_answer') {
+        payload.text_answer = a
       } else if (q.question_type === 'matching') {
         payload.matching_pairs = a
       }
@@ -163,6 +166,11 @@ export default function TestPage() {
         : [...current, answerId]
       return { ...prev, [questionId]: next }
     })
+    markDirty(questionId)
+  }
+
+  const setShortAnswer = (questionId, value) => {
+    setAnswers(prev => ({ ...prev, [questionId]: value }))
     markDirty(questionId)
   }
 
@@ -469,6 +477,27 @@ export default function TestPage() {
                     )
                   })}
                 </div>
+              </div>
+            )}
+
+            {current.question_type === 'short_answer' && (
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <AlertTriangle size={12} strokeWidth={1.5} />
+                  Впишите ответ: числа, дробь или выражение — как в задании
+                </div>
+                <input
+                  type="text"
+                  value={answers[current.id] || ''}
+                  onChange={e => setShortAnswer(current.id, e.target.value)}
+                  placeholder="Ваш ответ"
+                  autoComplete="off"
+                  style={{
+                    width: '100%', padding: '14px 18px', borderRadius: 12,
+                    border: '1.5px solid var(--border)', fontSize: 16,
+                    background: '#fff', outline: 'none',
+                  }}
+                />
               </div>
             )}
 

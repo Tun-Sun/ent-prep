@@ -262,6 +262,47 @@ class TrialImportCommandTest(TestCase):
 
         self.assertEqual(Subject.objects.get(slug='ent-02').question_count, 3)
 
+    def test_variant_can_be_filled_from_several_forms(self):
+        """NUET — это Math + Thinking Skills: два файла в один вариант."""
+        calls = []
+
+        def _import(*, form_id, subject_slug, topic_name, dry_run=False):
+            calls.append(form_id)
+            subject = Subject.objects.get(slug=subject_slug)
+            add_questions(subject, 15, f'{subject_slug}-{len(calls)}')
+            return {
+                'ok': True,
+                'result': {'created': 15, 'skipped_duplicates': 0,
+                           'drafted_no_correct': 0, 'errors': []},
+                'meta': {'questions_in_form': 15, 'with_correct_answers': 15},
+            }
+
+        with patch('subjects.import_views.import_from_google_form', _import):
+            run('trial_import',
+                '--form', 'nuet-01=https://forms/d/math/edit',
+                '--form', 'nuet-01=https://forms/d/thinking/edit')
+
+        self.assertEqual(calls, ['https://forms/d/math/edit',
+                                 'https://forms/d/thinking/edit'])
+        subject = Subject.objects.get(slug='nuet-01')
+        self.assertEqual(subject.question_count, 30)
+        self.assertEqual(subject.topics.count(), 2)
+
+    def test_json_file_accepts_list_of_links(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = Path(tmp.name) / 'links.json'
+        path.write_text(
+            json.dumps({'nuet-02': ['https://forms/d/a/edit',
+                                    'https://forms/d/b/edit']}),
+            encoding='utf-8')
+
+        with patch('subjects.import_views.import_from_google_form',
+                   self.fake_import(12)):
+            run('trial_import', '--from-file', str(path))
+
+        self.assertEqual(Subject.objects.get(slug='nuet-02').question_count, 24)
+
 
 class TrialStartIsolationTest(TestCase):
     """Ученик получает вопросы только своего варианта и своего трека."""

@@ -8,7 +8,7 @@ from subjects.models import Answer, Question, Subject, Topic
 from users.models import User
 
 from .models import AnswerRecord, TestSectionResult, TestSession, TestSessionQuestion
-from .views import _recalc_session, _score_matching
+from .views import _normalize_short_answer, _recalc_session, _score_matching, _score_short_answer
 
 
 class TestSessionApiTest(TestCase):
@@ -283,3 +283,163 @@ class EntSectionScoreTest(TestCase):
 
         result = session.section_results.get(section='history')
         self.assertEqual((result.answered, result.correct_answers, result.points_earned), (1, 1, 1))
+
+
+class ShortAnswerScoreTest(TestCase):
+    """Сверка строки с эталоном: пробелы, регистр, запятая и пунктуация."""
+
+    def setUp(self):
+        subject = Subject.objects.create(name='NUET 01', slug='nuet-01')
+        topic = Topic.objects.create(name='Math', subject=subject)
+        self.question = Question.objects.create(
+            text='Найдите x, если 2x = 3', topic=topic,
+            question_type='short_answer', points=1,
+        )
+        Answer.objects.create(question=self.question, text='3/2', is_correct=True)
+        Answer.objects.create(question=self.question, text='1.5', is_correct=True)
+
+    def test_exact_value_is_accepted(self):
+        self.assertEqual(_score_short_answer(self.question, '3/2'), (1, 1))
+
+    def test_alternative_key_is_accepted(self):
+        self.assertEqual(_score_short_answer(self.question, '1.5'), (1, 1))
+
+    def test_spaces_case_and_comma_are_ignored(self):
+        for typed in (' 1,5 ', '1.5', '1,50', '3 / 2'):
+            self.assertEqual(
+                _score_short_answer(self.question, typed), (1, 1), typed)
+
+    def test_wrong_value_scores_zero(self):
+        self.assertEqual(_score_short_answer(self.question, '2'), (0, 1))
+
+    def test_empty_value_scores_zero(self):
+        self.assertEqual(_score_short_answer(self.question, '   '), (0, 1))
+
+    def test_labels_are_compared_case_insensitively(self):
+        question = Question.objects.create(
+            text='Найдите B', topic=self.question.topic,
+            question_type='short_answer', points=1,
+        )
+        Answer.objects.create(question=question, text='B=76', is_correct=True)
+        self.assertEqual(_score_short_answer(question, 'b = 76'), (1, 1))
+
+    def test_normalizer_keeps_significant_characters(self):
+        self.assertEqual(_normalize_short_answer(' B = 76 '), 'b=76')
+        self.assertNotEqual(_normalize_short_answer('B=76'),
+                            _normalize_short_answer('B=77'))
+
+
+class ShortAnswerApiTest(TestCase):
+    """Короткий ответ в живом тесте: ключ не утекает, ответ проверяется."""
+
+    def setUp(self):
+        self.student = User.objects.create_user(
+            username='short-student', password='password', role='student')
+        self.client = APIClient()
+        self.client.force_authenticate(self.student)
+        self.subject = Subject.objects.create(
+            name='NUET 01', slug='nuet-01', question_count=1, time_limit=600)
+        self.topic = Topic.objects.create(name='Math', subject=self.subject)
+        self.question = Question.objects.create(
+            text='Найдите x, если 2x = 3', topic=self.topic,
+            question_type='short_answer', verification_status='verified',
+            points=1,
+        )
+        Answer.objects.create(question=self.question, text='3/2', is_correct=True)
+        Answer.objects.create(question=self.question, text='1.5', is_correct=True)
+
+    def _start(self):
+        response = self.client.post(
+            '/api/tests/start/', {'subject_id': self.subject.id}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        return response.json()
+
+    def _answer(self, session_id, text_answer):
+        return self.client.post(
+            f'/api/tests/{session_id}/answer/',
+            {'question': self.question.id, 'text_answer': text_answer},
+            format='json',
+        )
+
+    def test_start_does_not_leak_the_accepted_values(self):
+        data = self._start()
+        self.assertEqual(data['total_questions'], 1)
+        question = data['questions'][0]
+        self.assertEqual(question['question_type'], 'short_answer')
+        self.assertEqual(question['answers'], [])
+
+    def test_correct_typed_answer_is_scored(self):
+        session_id = self._start()['session_id']
+        response = self._answer(session_id, '1,5')
+
+        self.assertEqual(response.status_code, 200, response.data)
+        record = AnswerRecord.objects.get(session_id=session_id)
+        self.assertEqual(record.text_answer, '1,5')
+        self.assertTrue(record.is_correct)
+        self.assertEqual(record.points_earned, 1)
+
+    def test_wrong_typed_answer_is_saved_and_marked_wrong(self):
+        session_id = self._start()['session_id']
+        response = self._answer(session_id, '2')
+
+        self.assertEqual(response.status_code, 200, response.data)
+        record = AnswerRecord.objects.get(session_id=session_id)
+        self.assertEqual(record.text_answer, '2')
+        self.assertFalse(record.is_correct)
+        self.assertEqual(record.points_earned, 0)
+
+    def test_blank_answer_is_rejected(self):
+        session_id = self._start()['session_id']
+        response = self._answer(session_id, '   ')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(AnswerRecord.objects.count(), 0)
+
+    def test_bulk_submit_accepts_text_answer(self):
+        session_id = self._start()['session_id']
+        response = self.client.post(
+            f'/api/tests/{session_id}/answers/bulk/',
+            {'answers': [{'question': self.question.id, 'text_answer': '3/2'}]},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        record = AnswerRecord.objects.get(session_id=session_id)
+        self.assertTrue(record.is_correct)
+
+    def test_state_returns_typed_answer_after_reload(self):
+        session_id = self._start()['session_id']
+        self._answer(session_id, '3/2')
+
+        response = self.client.get(f'/api/tests/{session_id}/state/')
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(
+            response.data['answer_map'][self.question.id]['text_answer'],
+            '3/2',
+        )
+
+    def test_finish_counts_short_answer_in_score(self):
+        session_id = self._start()['session_id']
+        self._answer(session_id, '1.5')
+
+        response = self.client.post(f'/api/tests/{session_id}/finish/',
+                                    format='json')
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data['correct_answers'], 1)
+        self.assertEqual(response.data['score_percent'], 100.0)
+
+    def test_results_show_typed_and_expected_values(self):
+        session_id = self._start()['session_id']
+        self._answer(session_id, '2')
+        self.client.post(f'/api/tests/{session_id}/finish/', format='json')
+
+        response = self.client.get(f'/api/tests/{session_id}/result/')
+
+        self.assertEqual(response.status_code, 200, response.data)
+        record = response.data['answers'][0]
+        self.assertEqual(record['text_answer'], '2')
+        self.assertEqual(record['selected_answer_text'], '2')
+        self.assertIn('3/2', record['correct_answer_text'])
+        self.assertIn('1.5', record['correct_answer_text'])

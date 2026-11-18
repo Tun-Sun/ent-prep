@@ -93,6 +93,10 @@ class AnswerRecord(models.Model):
     selected_answer = models.ForeignKey('subjects.Answer', on_delete=models.CASCADE, null=True, blank=True)
     selected_answers = models.JSONField(default=list, blank=True, verbose_name='Выбранные ответы (ID)')
     matching_pairs = models.JSONField(default=dict, blank=True, verbose_name='Пары соответствия')
+    # Короткий ответ: то, что ученик напечатал. Храним как есть, а сверяем
+    # нормализованно — иначе «B = 76» и «b=76» считались бы разными ответами.
+    text_answer = models.CharField(max_length=500, blank=True, default='',
+                                   verbose_name='Ответ текстом')
     is_correct = models.BooleanField(default=False)
     points_earned = models.FloatField(default=0, verbose_name='Получено баллов')
     points_max = models.FloatField(default=0, verbose_name='Макс. баллов')

@@ -1,6 +1,8 @@
 import json
+import re
 import urllib.request
 import urllib.error
+from decimal import Decimal, InvalidOperation
 from django.conf import settings
 
 from rest_framework.views import APIView
@@ -46,6 +48,12 @@ def _build_question_data(questions, request):
     result = []
     for q in questions:
         answers = q.answers.all()
+        # У короткого ответа `answers` — это эталон, а не варианты: отдать его
+        # вместе с вопросом значит показать ученику ключ до ответа.
+        visible_answers = [] if q.question_type == 'short_answer' else [
+            {'id': a.id, 'text': a.text, 'image': build_url(a.image) if a.image else None}
+            for a in answers
+        ]
         result.append({
             'id': q.id,
             'text': q.text,
@@ -55,10 +63,7 @@ def _build_question_data(questions, request):
             'topic': q.topic.name,
             'difficulty': q.difficulty,
             'image': build_url(q.image) if q.image else (q.image_ref if q.image_ref and '/' in q.image_ref else None),
-            'answers': [
-                {'id': a.id, 'text': a.text, 'image': build_url(a.image) if a.image else None}
-                for a in answers
-            ],
+            'answers': visible_answers,
             'matching_options': list(dict.fromkeys(
                 a.text.rsplit(' → ', 1)[1]
                 for a in answers if ' → ' in a.text
@@ -102,13 +107,57 @@ def _score_matching(question, pairs):
     return round(earned, 1), question.points
 
 
-def _score_question(question, selected_answer=None, selected_answers=None, matching_pairs=None):
+def _normalize_short_answer(value):
+    """Приводит ответ к сравнимому виду.
+
+    В формах NUET эталоны записаны по-разному: «B=76», «x=2.3», «3/2» и «1.5»
+    как два допустимых варианта, «(7, 10)». Ученик печатает с пробелами,
+    запятой вместо точки и в другом регистре — это тот же ответ. Дроби
+    специально не вычисляем: если нужен эквивалент, его добавляют вторым
+    эталоном в форме.
+    """
+    text = (value or '').strip().casefold()
+    text = (text.replace('ё', 'е')
+                .replace('−', '-').replace('–', '-').replace('—', '-'))
+    text = text.replace(',', '.')
+    text = re.sub(r'\s+', '', text)
+    return text.rstrip('.')
+
+
+def _score_short_answer(question, text_answer):
+    expected = [a.text for a in question.answers.filter(is_correct=True)]
+    given = _normalize_short_answer(text_answer)
+    if not expected or not given:
+        return 0, question.points
+    accepted = {_normalize_short_answer(value) for value in expected}
+    if given in accepted:
+        return question.points, question.points
+    # «1,50» и «1,5» — одна и та же величина, но строки разные. Сравниваем
+    # числами то, что числами и является; дроби вроде «3/2» остаются строками
+    # (их эквивалент добавляют вторым эталоном в форме).
+    try:
+        given_number = Decimal(given)
+    except InvalidOperation:
+        return 0, question.points
+    for value in accepted:
+        try:
+            if Decimal(value) == given_number:
+                return question.points, question.points
+        except InvalidOperation:
+            continue
+    return 0, question.points
+
+
+def _score_question(question, selected_answer=None, selected_answers=None, matching_pairs=None,
+                    text_answer=''):
     if question.question_type == 'single_choice':
         return _score_single_choice(question, selected_answer)
     if question.question_type == 'multiple_choice':
         return _score_multiple_choice(question, selected_answers or [])
     if question.question_type == 'matching':
         return _score_matching(question, matching_pairs or {})
+    if question.question_type == 'short_answer':
+        return _score_short_answer(question, text_answer)
     return 0, question.points
 
 
@@ -434,8 +483,10 @@ class StartEntView(APIView):
         })
 
 
-def _save_answer_record(session, question, selected_answer=None, selected_answers=None, matching_pairs=None):
-    earned, max_pts = _score_question(question, selected_answer, selected_answers, matching_pairs)
+def _save_answer_record(session, question, selected_answer=None, selected_answers=None,
+                        matching_pairs=None, text_answer=''):
+    earned, max_pts = _score_question(question, selected_answer, selected_answers,
+                                      matching_pairs, text_answer)
     is_correct = earned >= max_pts and max_pts > 0
 
     record, created = AnswerRecord.objects.update_or_create(
@@ -445,6 +496,7 @@ def _save_answer_record(session, question, selected_answer=None, selected_answer
             'selected_answer_id': selected_answer,
             'selected_answers': selected_answers or [],
             'matching_pairs': matching_pairs or {},
+            'text_answer': (text_answer or '')[:500],
             'is_correct': is_correct,
             'points_earned': earned,
             'points_max': max_pts,
@@ -522,7 +574,12 @@ def _on_session_completed(session):
         logging.getLogger(__name__).exception('gamification post-processing failed')
 
 
-def _validate_answer_payload(question, selected_answer, selected_answers, matching_pairs):
+def _validate_answer_payload(question, selected_answer, selected_answers, matching_pairs,
+                             text_answer=''):
+    if question.question_type == 'short_answer':
+        if not (text_answer or '').strip():
+            return 'Введите ответ'
+        return None
     answer_ids = set(question.answers.values_list('id', flat=True))
     if selected_answer is not None and selected_answer not in answer_ids:
         return 'Выбранный вариант не относится к вопросу'
@@ -565,6 +622,7 @@ class SubmitAnswerView(APIView):
         selected_answer = serializer.validated_data.get('selected_answer')
         selected_answers = serializer.validated_data.get('selected_answers', [])
         matching_pairs = serializer.validated_data.get('matching_pairs', {})
+        text_answer = serializer.validated_data.get('text_answer', '')
 
         if not session.session_questions.filter(question=question).exists():
             return Response({'error': 'Вопрос не относится к этой попытке'}, status=status.HTTP_400_BAD_REQUEST)
@@ -573,12 +631,13 @@ class SubmitAnswerView(APIView):
             selected_answers = [selected_answer]
 
         validation_error = _validate_answer_payload(
-            question, selected_answer, selected_answers, matching_pairs
+            question, selected_answer, selected_answers, matching_pairs, text_answer
         )
         if validation_error:
             return Response({'error': validation_error}, status=status.HTTP_400_BAD_REQUEST)
 
-        _save_answer_record(session, question, selected_answer, selected_answers, matching_pairs)
+        _save_answer_record(session, question, selected_answer, selected_answers,
+                            matching_pairs, text_answer)
         _recalc_session(session)
 
         return Response({
@@ -613,20 +672,22 @@ class SubmitBulkAnswersView(APIView):
             selected_answer = ans_data.get('selected_answer')
             selected_answers = ans_data.get('selected_answers', [])
             matching_pairs = ans_data.get('matching_pairs', {})
+            text_answer = ans_data.get('text_answer', '')
             if question.question_type == 'single_choice' and selected_answer:
                 selected_answers = [selected_answer]
             if not session.session_questions.filter(question=question).exists():
                 return Response({'error': 'Вопрос не относится к этой попытке'}, status=status.HTTP_400_BAD_REQUEST)
             validation_error = _validate_answer_payload(
-                question, selected_answer, selected_answers, matching_pairs
+                question, selected_answer, selected_answers, matching_pairs, text_answer
             )
             if validation_error:
                 return Response({'error': validation_error}, status=status.HTTP_400_BAD_REQUEST)
-            prepared_answers.append((question, selected_answer, selected_answers, matching_pairs))
+            prepared_answers.append((question, selected_answer, selected_answers,
+                                     matching_pairs, text_answer))
 
         with transaction.atomic():
-            for question, selected_answer, selected_answers, matching_pairs in prepared_answers:
-                _save_answer_record(session, question, selected_answer, selected_answers, matching_pairs)
+            for prepared in prepared_answers:
+                _save_answer_record(session, *prepared)
 
         _recalc_session(session)
 
@@ -692,6 +753,7 @@ class TestStateView(APIView):
                 'selected_answer': a.selected_answer_id,
                 'selected_answers': a.selected_answers,
                 'matching_pairs': a.matching_pairs,
+                'text_answer': a.text_answer,
             }
 
         return Response({
@@ -893,7 +955,9 @@ class AIExplainView(APIView):
         question = record.question
 
         # Формируем текст ответа ученика
-        if record.selected_answer:
+        if record.text_answer:
+            selected_text = record.text_answer
+        elif record.selected_answer:
             selected_text = record.selected_answer.text
         elif record.selected_answers:
             selected_text = ', '.join(
@@ -914,6 +978,10 @@ class AIExplainView(APIView):
             )
         elif question.question_type == 'matching':
             correct_text = ', '.join(
+                question.answers.filter(is_correct=True).values_list('text', flat=True)
+            )
+        elif question.question_type == 'short_answer':
+            correct_text = ' или '.join(
                 question.answers.filter(is_correct=True).values_list('text', flat=True)
             )
         else:

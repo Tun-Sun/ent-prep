@@ -17,7 +17,7 @@ class AnswerRecordSerializer(serializers.ModelSerializer):
         model = AnswerRecord
         fields = ('id', 'question_text', 'question_type', 'question_image',
                   'selected_answer_text', 'correct_answer_text',
-                  'selected_answers', 'matching_pairs',
+                  'selected_answers', 'matching_pairs', 'text_answer',
                   'is_correct', 'points_earned', 'points_max')
 
     def get_selected_answer_text(self, obj):
@@ -28,6 +28,8 @@ class AnswerRecordSerializer(serializers.ModelSerializer):
             return ', '.join(a.text for a in correct) if correct else '—'
         if obj.question.question_type == 'matching':
             return '; '.join(f'{k}→{v}' for k, v in obj.matching_pairs.items()) if obj.matching_pairs else '—'
+        if obj.question.question_type == 'short_answer':
+            return obj.text_answer or '—'
         return '—'
 
     def get_question_image(self, obj):
@@ -52,6 +54,9 @@ class AnswerRecordSerializer(serializers.ModelSerializer):
         if q.question_type == 'matching':
             pairs = getattr(q, '_matching_pairs', None)
             return str(pairs) if pairs else '—'
+        if q.question_type == 'short_answer':
+            values = list(correct.values_list('text', flat=True))
+            return ' или '.join(values) if values else '—'
         return '—'
 
 
@@ -62,11 +67,14 @@ class AnswerRecordCreateSerializer(serializers.ModelSerializer):
         max_length=2, label='Выбранные ответы',
     )
     matching_pairs = serializers.JSONField(required=False, default=dict, label='Пары соответствия')
+    text_answer = serializers.CharField(required=False, allow_blank=True, default='',
+                                        max_length=500, label='Ответ текстом')
     question = serializers.IntegerField()
 
     class Meta:
         model = AnswerRecord
-        fields = ('question', 'selected_answer', 'selected_answers', 'matching_pairs')
+        fields = ('question', 'selected_answer', 'selected_answers', 'matching_pairs',
+                  'text_answer')
 
     def validate_question(self, value):
         if isinstance(value, int):

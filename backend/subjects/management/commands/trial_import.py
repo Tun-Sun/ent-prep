@@ -65,50 +65,53 @@ class Command(BaseCommand):
         from subjects.import_views import import_from_google_form
 
         failed = []
-        for slug, url in links.items():
+        for slug, urls in links.items():
             subject = subjects[slug]
-            topic_name = options['topic'] or subject.name
-            self.stdout.write(self.style.MIGRATE_HEADING(
-                f'\n== {slug}: {subject.name}'))
-            self.stdout.write(f'   форма: {url}')
-            self.stdout.write(f'   тема:  {topic_name}')
+            # Один вариант может состоять из нескольких форм (NUET: Math +
+            # Thinking Skills). Без --topic каждая форма становится своей
+            # темой по своему названию.
+            for url in urls:
+                self.stdout.write(self.style.MIGRATE_HEADING(
+                    f'\n== {slug}: {subject.name}'))
+                self.stdout.write(f'   форма: {url}')
+                if options['topic']:
+                    self.stdout.write(f"   тема:  {options['topic']}")
 
-            result = import_from_google_form(
-                form_id=url,
-                subject_slug=slug,
-                topic_name=topic_name,
-                dry_run=options['dry_run'],
-            )
+                result = import_from_google_form(
+                    form_id=url,
+                    subject_slug=slug,
+                    topic_name=options['topic'],
+                    dry_run=options['dry_run'],
+                )
+                meta = result.get('meta') or {}
+                for warning in meta.get('warnings') or []:
+                    self.stdout.write(self.style.WARNING(f'   ! {warning}'))
 
-            meta = result.get('meta') or {}
-            for warning in meta.get('warnings') or []:
-                self.stdout.write(self.style.WARNING(f'   ! {warning}'))
+                if not result.get('ok'):
+                    failed.append(f'{slug} ({url})')
+                    self.stderr.write(self.style.ERROR(
+                        f'   ✗ {result.get("error", "импорт не удался")}'))
+                    continue
 
-            if not result.get('ok'):
-                failed.append(slug)
-                self.stderr.write(self.style.ERROR(
-                    f'   ✗ {result.get("error", "импорт не удался")}'))
-                continue
+                if meta.get('dry_run'):
+                    self.stdout.write(
+                        f'   ✓ вопросов в форме: {meta.get("questions_in_form")}, '
+                        f'с ключом: {meta.get("with_correct_answers")}, '
+                        f'картинок: {meta.get("with_images")}')
+                    continue
 
-            if meta.get('dry_run'):
+                stats = result.get('result') or {}
                 self.stdout.write(
-                    f'   ✓ вопросов в форме: {meta.get("questions_in_form")}, '
-                    f'с ключом: {meta.get("with_correct_answers")}, '
-                    f'картинок: {meta.get("with_images")}')
-                continue
-
-            stats = result.get('result') or {}
-            self.stdout.write(
-                f'   ✓ создано: {stats.get("created", 0)}, '
-                f'дубликатов: {stats.get("skipped_duplicates", 0)}, '
-                f'без ключа: {stats.get("drafted_no_correct", 0)}, '
-                f'с картинками: {result.get("attached_images", 0)}')
-            for error in stats.get('errors') or []:
-                self.stderr.write(self.style.WARNING(f'   ! {error}'))
+                    f'   ✓ создано: {stats.get("created", 0)}, '
+                    f'дубликатов: {stats.get("skipped_duplicates", 0)}, '
+                    f'без ключа: {stats.get("drafted_no_correct", 0)}, '
+                    f'с картинками: {result.get("attached_images", 0)}')
+                for error in stats.get('errors') or []:
+                    self.stderr.write(self.style.WARNING(f'   ! {error}'))
 
         if options['dry_run'] or options['no_sync'] or failed:
             if failed:
-                raise CommandError('Не удалось импортировать: ' + ', '.join(failed))
+                raise CommandError('Не удалось импортировать: ' + '; '.join(failed))
             return
 
         report = sync_counts(seconds_per_question=options['seconds_per_question'])
@@ -128,8 +131,14 @@ class Command(BaseCommand):
 
     # --- helpers -----------------------------------------------------------
 
-    def _collect_links(self, options) -> dict[str, str]:
-        links: dict[str, str] = {}
+    def _collect_links(self, options) -> dict[str, list[str]]:
+        links: dict[str, list[str]] = {}
+
+        def add(slug: str, url: str) -> None:
+            if not url:
+                raise CommandError(f'Пустая ссылка для «{slug}»')
+            links.setdefault(slug, []).append(url)
+
         path = options['from_file']
         if path:
             file_path = Path(path)
@@ -141,16 +150,16 @@ class Command(BaseCommand):
                 raise CommandError(f'Не удалось прочитать {file_path}: {exc}')
             if not isinstance(data, dict):
                 raise CommandError('Ожидался JSON-объект вида {"ent-01": "ссылка"}')
-            for slug, url in data.items():
-                links[str(slug).strip()] = str(url).strip()
+            for slug, value in data.items():
+                # Значение — ссылка или список ссылок (Math + Thinking Skills).
+                values = value if isinstance(value, list) else [value]
+                for url in values:
+                    add(str(slug).strip(), str(url).strip())
 
         for item in options['form']:
             if '=' not in item:
                 raise CommandError(
                     f'Ожидалось «слаг=ссылка», получено: {item}')
             slug, url = item.split('=', 1)
-            slug, url = slug.strip(), url.strip()
-            if not url:
-                raise CommandError(f'Пустая ссылка для «{slug}»')
-            links[slug] = url
+            add(slug.strip(), url.strip())
         return links

@@ -12,6 +12,8 @@ from typing import List, Optional, Union
 
 # Поддерживаемые типы вопроса из Apps Script.
 CHOICE_TYPES = {'multiple_choice', 'list', 'checkbox'}
+# Короткий ответ: вариантов нет, в answers лежат допустимые значения эталона.
+TEXT_TYPES = {'text'}
 
 
 @dataclass(frozen=True)
@@ -44,6 +46,11 @@ class QuestionDTO:
             raise ValueError('Вопрос без external_id — невозможно найти дубликат')
         if not self.title.strip():
             raise ValueError(f'Вопрос {self.external_id}: пустой текст')
+        if self.type in TEXT_TYPES:
+            # У короткого ответа нет вариантов: answers — это эталон(ы).
+            for a in self.answers:
+                a.validate()
+            return
         if self.type not in CHOICE_TYPES:
             raise ValueError(
                 f'Вопрос {self.external_id}: неподдерживаемый тип "{self.type}"'

@@ -12,10 +12,10 @@ import json
 from pathlib import Path
 from typing import Union
 
-from .dto import AnswerDTO, FormPayload, QuestionDTO
+from .dto import AnswerDTO, FormPayload, QuestionDTO, TEXT_TYPES
 
 # Типы, которые мы поддерживаем (из scraper/fetcher)
-_SUPPORTED_SCRAPER_TYPES = {'multiple_choice', 'list', 'checkbox'}
+_SUPPORTED_SCRAPER_TYPES = {'multiple_choice', 'list', 'checkbox', 'text'}
 
 # Паттерны для фильтрации личных/мета-вопросов (ФИО, email, класс и т.п.)
 _META_PATTERNS = [
@@ -24,6 +24,8 @@ _META_PATTERNS = [
     'телефон', 'phone', 'номер',
     'класс', 'школа', 'группа',
     'ученик', 'учащийся', 'студент',
+    # Английские заголовки служебных полей Google Forms (формы NUET).
+    'your name', 'tracking', 'do not change', 'submission id',
 ]
 
 
@@ -118,6 +120,10 @@ def _is_meta_question(raw: dict) -> bool:
     for pattern in _META_PATTERNS:
         if pattern in title:
             return True
+    # Короткий ответ с единственным эталоном — это норма (ученик вводит строку),
+    # поэтому «меньше двух вариантов» здесь не признак мета-поля.
+    if str(raw.get('type', '')) in TEXT_TYPES:
+        return False
     answers = raw.get('answers') or []
     texts = {a.get('text', '').strip() for a in answers if a.get('text', '').strip()}
     if len(texts) < 2:
@@ -216,7 +222,10 @@ def raw_to_payload(
                     is_correct=bool(a.get('is_correct', False)),
                 ))
 
-            if len(answers) < 2:
+            # У короткого ответа вариантов нет: пустой список — это «ключа ещё
+            # нет», вопрос сохраняем черновиком. У выбора без двух вариантов
+            # отвечать нечем, поэтому такой пункт отбрасываем.
+            if q_type not in TEXT_TYPES and len(answers) < 2:
                 continue
 
             image_ref = q_raw.get('image_ref') or None

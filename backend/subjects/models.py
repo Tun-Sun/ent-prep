@@ -11,6 +11,9 @@ MATH_NOISE = re.compile(r"\*\*|\\tag\{[^}]*\}")
 
 # Типы, на которые ученик может ответить выбором. Открытый ответ варианта не имеет.
 CHOICE_TYPES = ('single_choice', 'multiple_choice', 'matching')
+# Короткий ответ: ученик вводит строку, а сверяем её с эталоном сами.
+# Отличается от `open_answer` (задача из учебника без ключа): тот в тест не идёт.
+SHORT_ANSWER = 'short_answer'
 
 
 class QuestionQuerySet(models.QuerySet):
@@ -21,8 +24,14 @@ class QuestionQuerySet(models.QuerySet):
         а `_score_question` за любой тип вне CHOICE_TYPES начисляет 0. Молча
         набрать их в сессию — значит отнять у ученика баллы за то, что он их не терял.
         Второй признак — хоть один правильный вариант: тест без ключа проверять нечем.
+
+        Короткий ответ — исключение: вариантов у него нет по определению, но
+        эталон есть, и проверяется он сравнением строк. Без эталона он тоже
+        не годится: такой вопрос остаётся черновиком.
         """
-        return self.filter(question_type__in=CHOICE_TYPES).filter(
+        return self.filter(
+            Q(question_type__in=CHOICE_TYPES) | Q(question_type=SHORT_ANSWER)
+        ).filter(
             id__in=Answer.objects.filter(is_correct=True).values('question_id'),
         )
 
@@ -134,6 +143,9 @@ class Question(models.Model):
         ('matching', 'На соответствие'),
         # Задача из учебника: ответ студент пишет сам, варианта нет.
         ('open_answer', 'Открытый ответ'),
+        # Короткий ответ с эталоном (Google Forms, тесты NUET): ученик вводит
+        # строку, проверяем сравнением с вариантами, отмеченными is_correct.
+        ('short_answer', 'Короткий ответ'),
     ]
     SECTION_CHOICES = [
         ('history', 'История Казахстана'),

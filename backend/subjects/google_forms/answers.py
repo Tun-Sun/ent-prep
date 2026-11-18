@@ -288,6 +288,134 @@ def get_form_quiz_data(form_id: str) -> Optional[dict]:
     }
 
 
+def get_questions_via_api(form_id: str) -> Optional[dict]:
+    """Полный список вопросов формы из Forms API — без скрапинга.
+
+    Обычный путь `merge_into_questions` сшивает вопросы, выдранные из HTML, с
+    ответами по порядку. Короткие ответы (textQuestion) в HTML дают пункт
+    «other», и скрапер их выбрасывает, поэтому 3 вопроса из 30 терялись.
+
+    Здесь форма берётся целиком из API: у каждого item есть и текст, и тип,
+    и эталон. Возвращает dict:
+        {'form_title': str,
+         'questions': [{external_id, title, type, answers, help_text,
+                        image_urls, order_index, points}, ...],
+         'image_uris': {index: contentUri}}
+
+    Мета-поля (имя, tracking ID) отфильтровываются до нумерации, чтобы индексы
+    картинок совпадали с индексами вопросов.
+    """
+    if not is_available():
+        return None
+    service = _get_forms_service()
+    if not service:
+        return None
+
+    try:
+        form = service.forms().get(formId=form_id).execute(num_retries=2)
+    except HttpError as e:
+        logger.error(f'Forms API error ({form_id}): {e}')
+        return None
+
+    # Импорт здесь, а не наверху модуля: parser импортирует dto, а answers.py
+    # тянет googleapiclient — не хочется связывать их на уровне импорта.
+    from .parser import _is_meta_question
+
+    title = form.get('info', {}).get('title') or f'Form {form_id}'
+    questions: list[dict] = []
+    image_uris: dict[int, str] = {}
+
+    for item in form.get('items', []):
+        question_item = item.get('questionItem')
+        if not question_item:
+            continue
+        question = question_item.get('question') or {}
+        # Пустой dict — это нормальный short answer: `textQuestion: {}`.
+        # Проверять na truthiness нельзя, иначе такие вопросы пропадают
+        # (ровно те 3 из 30, которые ученик вписывает вручную).
+        choice = question.get('choiceQuestion')
+        has_text = 'textQuestion' in question
+        if choice is None and not has_text:
+            # Сетки (questionGroupItem) и прочие типы не поддерживаются тестами.
+            continue
+
+        grading = question.get('grading') or {}
+        correct_values = [
+            str(a.get('value', '')).strip()
+            for a in (grading.get('correctAnswers') or {}).get('answers', [])
+            if str(a.get('value', '')).strip()
+        ]
+        points = float(grading.get('pointValue', 1.0) or 1.0)
+
+        if choice:
+            qtype = _CHOICE_TYPE_MAP.get(choice.get('type'), 'multiple_choice')
+            options = [str(o.get('value', '')).strip()
+                       for o in choice.get('options', [])]
+            answers = [
+                {'text': value, 'is_correct': value in correct_values}
+                for value in options if value
+            ]
+        else:
+            qtype = 'text'
+            answers = [{'text': value, 'is_correct': True}
+                       for value in correct_values]
+
+        raw = {
+            'external_id': f"{form_id}/{item.get('itemId', '')}",
+            'title': (item.get('title') or '').strip(),
+            'type': qtype,
+            'answers': answers,
+            'help_text': (item.get('description') or '').strip(),
+            'image_urls': [],
+            'order_index': len(questions),
+            'points': points,
+        }
+        if not raw['title'] or _is_meta_question(raw):
+            continue
+        if qtype == 'text' and not answers:
+            logger.info(f'Форма {form_id}: короткий ответ без эталона — '
+                        f'останется черновиком')
+
+        image_uri = ((question_item.get('image') or {}).get('contentUri')
+                     or (question.get('image') or {}).get('contentUri'))
+        if image_uri:
+            image_uris[len(questions)] = image_uri
+
+        questions.append(raw)
+
+    if not questions:
+        logger.warning(f'Forms API ({form_id}): нет поддерживаемых вопросов')
+        return None
+
+    logger.info(f'Forms API ({form_id}): {len(questions)} вопросов, '
+                f'{len(image_uris)} с картинками')
+    return {'form_title': title, 'questions': questions, 'image_uris': image_uris}
+
+
+def download_images_by_uri(image_uris: dict[int, str]) -> dict[int, list[bytes]]:
+    """Скачивает картинки вопросов по contentUri (индекс → байты)."""
+    images: dict[int, list[bytes]] = {}
+    for index, uri in image_uris.items():
+        try:
+            resp = requests.get(uri, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                              'AppleWebKit/537.36 (KHTML, like Gecko) '
+                              'Chrome/125.0.0.0 Safari/537.36',
+            }, timeout=20)
+            if resp.status_code == 200 and len(resp.content) > 100:
+                images[index] = [resp.content]
+        except Exception as e:  # noqa: BLE001 — картинка не должна валить импорт
+            logger.warning(f'Forms API: картинка Q{index} не скачана: {e}')
+    return images
+
+
+_CHOICE_TYPE_MAP = {
+    'RADIO': 'multiple_choice',
+    'CHECKBOX': 'checkbox',
+    'DROP_DOWN': 'list',
+}
+
+
 def merge_into_questions(
     questions: list[dict[str, Any]],
     correct_answers: list[str],

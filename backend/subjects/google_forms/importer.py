@@ -28,6 +28,8 @@ _TYPE_MAP = {
     'multiple_choice': 'single_choice',
     'list':            'single_choice',
     'checkbox':        'multiple_choice',
+    # Google Forms short answer: ученик вводит текст, эталон — в answers.
+    'text':            'short_answer',
 }
 
 
