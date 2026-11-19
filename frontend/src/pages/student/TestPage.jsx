@@ -24,10 +24,10 @@ function splitIntoTopicBlocks(questions) {
     if (!groups.has(key)) groups.set(key, [])
     groups.get(key).push(q)
   })
-  // Группируем только когда это явно пробник: ровно две темы по 20+ вопросов.
-  // Обычные тренировки по темам оставляем как есть.
+  // Группируем пробники: у ЕНТ-варианта может быть 4 предмета, у NUET — 2.
+  // Обычные короткие тренировки по темам оставляем перемешанными.
   const sizes = [...groups.values()].map(g => g.length)
-  if (groups.size !== 2 || sizes.some(n => n < 20)) {
+  if (groups.size < 2 || sizes.some(n => n < 10)) {
     return { questions, sections: [] }
   }
   let start = 1
