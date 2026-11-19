@@ -321,7 +321,10 @@ def get_questions_via_api(form_id: str) -> Optional[dict]:
     # тянет googleapiclient — не хочется связывать их на уровне импорта.
     from .parser import _is_meta_question
 
-    title = form.get('info', {}).get('title') or f'Form {form_id}'
+    info = form.get('info') or {}
+    # У старых ENT-форм заголовок лежит в documentTitle, а не в title.
+    title = (info.get('title') or info.get('documentTitle')
+             or f'Form {form_id}')
     questions: list[dict] = []
     image_uris: dict[int, str] = {}
 

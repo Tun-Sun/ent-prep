@@ -26,6 +26,8 @@ _META_PATTERNS = [
     'ученик', 'учащийся', 'студент',
     # Английские заголовки служебных полей Google Forms (формы NUET).
     'your name', 'tracking', 'do not change', 'submission id',
+    # Сервисные поля Quilgo, которые Google Forms отдаёт как вопросы без ключа.
+    'quilgo', 'test id',
 ]
 
 
