@@ -312,7 +312,8 @@ export default function TestPage() {
           <div style={{ padding: '0 24px 24px' }}>
             <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 16 }}>
               История Казахстана (20) и математическая грамотность (10) уже включены.
-              Выберите два профильных предмета — всего будет 90 вопросов за 3 часа.
+              История Казахстана (20) и математическая грамотность (10) уже включены.
+              Выберите два профильных предмета — время на пробник 3 часа.
             </p>
             {trialError && <div className="alert alert-error" style={{ marginBottom: 12 }}>{trialError}</div>}
             {[0, 1].map(index => (

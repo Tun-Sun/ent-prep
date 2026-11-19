@@ -21,7 +21,7 @@ from .models import (Subject, Topic, Question, Answer, Assignment, AssignmentBlo
                      AssignmentSubmission, AssignmentAnswer)
 from core.tracks import filter_subjects_by_track, filter_subjects_for_user, is_valid_track
 from .permissions import IsTeacherOrAdmin
-from .trial_variants import TRIAL_SLUGS
+from .trial_variants import TRIAL_SLUGS, trial_topics
 from .serializers import (
     SubjectSerializer, SubjectMinimalSerializer,
     TopicSerializer, TopicListSerializer,
@@ -122,6 +122,17 @@ class SubjectViewSet(viewsets.ModelViewSet):
             else:
                 status = 'open'
             row['status'] = status
+            if subject.track == 'ent':
+                pools = sorted(min(
+                    Question.objects.filter(
+                        topic__in=trial_topics(subject, role)).answerable().count(), 40)
+                    for role in ('math', 'physics', 'geography'))
+                # В пробник идут две из трёх профильных тем, по 40 вопросов максимум.
+                row['questions_min'] = 30 + pools[0] + pools[1]
+                row['questions_max'] = 30 + pools[-1] + pools[-2]
+            else:
+                row['questions_min'] = None
+                row['questions_max'] = None
             data.append(row)
         return Response(data)
 

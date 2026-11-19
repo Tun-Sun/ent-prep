@@ -340,6 +340,11 @@ export default function SubjectListPage() {
                     {group.map(s => {
                       const info = trialStatus(s)
                       const questions = s.total_questions || s.question_count || 0
+                      const inTest = s.questions_min != null && s.questions_max != null
+                        ? (s.questions_min === s.questions_max
+                          ? `${s.questions_min} в тесте`
+                          : `${s.questions_min}–${s.questions_max} в тесте`)
+                        : null
                       return (
                         <div key={s.id} style={{
                           display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
@@ -359,7 +364,7 @@ export default function SubjectListPage() {
                             </div>
                             <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
                               {questions > 0
-                                ? `${questions} вопросов · ${Math.round(s.time_limit / 60)} мин`
+                                ? `${inTest || `${questions} вопросов в банке`} · ${Math.round(s.time_limit / 60)} мин`
                                 : 'Вопросы ещё загружаются'}
                             </div>
                             <div style={{ marginTop: 6 }}>

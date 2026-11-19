@@ -45,6 +45,30 @@ MIN_TIME_LIMIT = 600
 MAX_TIME_LIMIT = 14400
 
 
+# Роли тем пробника определяются по названию формы: одной теме — одна роль.
+# Функции живут здесь, чтобы каталог пробников и старт теста считали вопросы
+# по одним и тем же правилам.
+def trial_topic_role(topic_name: str) -> str:
+    name = (topic_name or '').casefold()
+    # Матграмотность проверяем раньше математики: иначе «математическая
+    # грамотность» попала бы в профильную математику.
+    if 'грамотност' in name:
+        return 'math_lit'
+    if 'истори' in name:
+        return 'history'
+    if 'географ' in name:
+        return 'geography'
+    if 'физ' in name:
+        return 'physics'
+    if 'математи' in name:
+        return 'math'
+    return ''
+
+
+def trial_topics(subject, role: str):
+    return [t for t in subject.topics.all() if trial_topic_role(t.name) == role]
+
+
 def variant_name(variant: dict) -> str:
     label = 'ЕНТ' if variant['track'] == 'ent' else 'NUET'
     return f"{UMBRELLA} · {label} {variant['number']:02d}"

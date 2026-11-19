@@ -93,3 +93,21 @@ class TrialCatalogEndpointTest(TestCase):
         self.ent1.available_until = timezone.now() - timedelta(hours=1)
         self.ent1.save(update_fields=['available_until'])
         self.assertEqual(self.rows(self.ent_student)['ent-01']['status'], 'closed')
+
+    def test_ent_trial_reports_questions_per_test_range(self):
+        # В пробник идут две из трёх профильных тем: показываем вилку,
+        # а не общее число вопросов в банке предмета.
+        for role, count in (('Математика', 2), ('Физика', 3), ('География', 4)):
+            topic = Topic.objects.create(name=role, subject=self.ent1)
+            for i in range(count):
+                question = Question.objects.create(
+                    text=f'{role} {i}', topic=topic,
+                    question_type='single_choice', verification_status='verified')
+                Answer.objects.create(question=question, text='Верно', is_correct=True)
+
+        row = self.rows(self.ent_student)['ent-01']
+        self.assertEqual(row['questions_min'], 35)
+        self.assertEqual(row['questions_max'], 37)
+
+    def test_nuet_trial_has_no_profile_range(self):
+        self.assertIsNone(self.rows(self.nuet_student)['nuet-01']['questions_min'])

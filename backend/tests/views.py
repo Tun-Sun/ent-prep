@@ -20,7 +20,11 @@ from subjects.permissions import IsTeacherOrAdmin
 from core.choices import TrackChoices
 from core.tracks import (available_tracks, can_use_subject, filter_subjects_for_user,
                          requires_track, student_track)
-from subjects.trial_variants import ENT_TRIAL_SLUGS
+from subjects.trial_variants import (
+    ENT_TRIAL_SLUGS,
+    trial_topic_role as _trial_topic_role,
+    trial_topics as _trial_topics,
+)
 from .models import TestSession, TestSessionQuestion, TestSectionResult, AnswerRecord
 from .serializers import (
     StartTestSerializer, StartEntSerializer, StartTrialSerializer, AnswerBulkSerializer,
@@ -39,28 +43,6 @@ ENT_SECTION_CONFIG = {
 # Профильные предметы, которые ученик выбирает в окне старта ЕНТ-пробника.
 TRIAL_PROFILE_SLUGS = ('math', 'physics', 'geography')
 TRIAL_PROFILE_ROLE = {'math': 'math', 'physics': 'physics', 'geography': 'geography'}
-
-
-def _trial_topic_role(topic_name):
-    """Определить роль темы пробника по её названию из Google Forms."""
-    name = (topic_name or '').casefold()
-    # Матграмотность проверяем раньше математики: «математическая грамотность»
-    # иначе попала бы в профильную математику.
-    if 'грамотност' in name:
-        return 'math_lit'
-    if 'истори' in name:
-        return 'history'
-    if 'географ' in name:
-        return 'geography'
-    if 'физ' in name:
-        return 'physics'
-    if 'математи' in name:
-        return 'math'
-    return ''
-
-
-def _trial_topics(subject, role):
-    return [t for t in subject.topics.all() if _trial_topic_role(t.name) == role]
 
 
 def _build_question_data(questions, request):
