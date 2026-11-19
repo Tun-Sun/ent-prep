@@ -2,12 +2,13 @@ from django.urls import path
 from .views import (
     RegisterView, ProfileView, UpdateProfileSubjectsView,
     ClearTestHistoryView, DeleteOwnAccountView,
-    UpdateStudentSubjectsView, UpdateStudentTracksView, ChangePasswordView, ResetStudentPasswordView,
+    UpdateStudentSubjectsView, UpdateStudentTracksView, DeactivateStudentView,
+    ChangePasswordView, ResetStudentPasswordView, ResetStudentPasswordView,
     StudyGroupListCreateView, StudyGroupDetailView,
     StudyGroupAddStudentsView, CreateStudentView, StudentListView,
     AdminUserListView, AdminUserDetailView, AdminUserDeleteView,
     AdminSettingListView, AdminSettingDetailView,
-    TelegramAuthView, TelegramConfigView,
+    TelegramAuthView, TelegramConfigView, PublicGroupListView,
 )
 
 urlpatterns = [
@@ -22,6 +23,7 @@ urlpatterns = [
     path('profile/history/', ClearTestHistoryView.as_view(), name='profile-history'),
     path('profile/account/', DeleteOwnAccountView.as_view(), name='profile-account'),
     # Groups
+    path('groups/public/', PublicGroupListView.as_view(), name='public-groups'),
     path('groups/', StudyGroupListCreateView.as_view(), name='study-groups'),
     path('groups/<int:pk>/', StudyGroupDetailView.as_view(), name='study-group-detail'),
     path('groups/<int:pk>/students/', StudyGroupAddStudentsView.as_view(), name='study-group-students'),
@@ -29,6 +31,7 @@ urlpatterns = [
     path('students/search/', StudentListView.as_view(), name='student-search'),
     path('students/<int:student_id>/subjects/', UpdateStudentSubjectsView.as_view(), name='student-subjects'),
     path('students/<int:student_id>/tracks/', UpdateStudentTracksView.as_view(), name='student-tracks'),
+    path('students/<int:student_id>/', DeactivateStudentView.as_view(), name='student-deactivate'),
     path('students/<int:student_id>/reset-password/', ResetStudentPasswordView.as_view(), name='student-reset-password'),
     # Admin panel
     path('admin/users/', AdminUserListView.as_view(), name='admin-users'),

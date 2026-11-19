@@ -210,6 +210,13 @@ class StartTestView(APIView):
                 {'error': 'Этот предмет относится к другому треку'},
                 status=status.HTTP_403_FORBIDDEN,
             )
+        # Прямая ссылка на /test/start/<id> не должна обходить расписание.
+        if (getattr(request.user, 'role', '') == 'student'
+                and not subject.is_available_now()):
+            return Response(
+                {'error': 'Пробный тест сейчас недоступен'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         # Ученики не стартуют скрытые предметы (учителя/админы — могут для проверки)
         if getattr(request.user, 'role', '') == 'student' and not subject.is_visible:

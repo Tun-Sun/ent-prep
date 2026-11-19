@@ -47,6 +47,15 @@ class LoginView(TokenObtainPairView):
         return response
 
 
+class PublicGroupListView(APIView):
+    """Группы для экрана регистрации: только id и название, без учителей."""
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        groups = StudyGroup.objects.order_by('name').values('id', 'name')
+        return Response(list(groups))
+
+
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = RegisterSerializer
@@ -256,6 +265,22 @@ class UpdateStudentTracksView(APIView):
             'track': student.track or '',
             'extra_tracks': student.extra_tracks,
         })
+
+
+class DeactivateStudentView(APIView):
+    """Снять ученику доступ без удаления истории тестов и журнала."""
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, student_id):
+        if request.user.role not in ('teacher', 'admin'):
+            return Response({'error': 'Доступ только для учителей'}, status=403)
+        student = User.objects.filter(id=student_id, role='student').first()
+        if not student:
+            return Response({'error': 'Ученик не найден'}, status=404)
+        student.is_active = False
+        student.save(update_fields=['is_active'])
+        return Response({'id': student.id, 'username': student.username,
+                         'is_active': False, 'message': 'Ученик деактивирован'})
 
 
 class ChangePasswordView(APIView):

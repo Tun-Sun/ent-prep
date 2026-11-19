@@ -61,6 +61,13 @@ class SubjectViewSet(viewsets.ModelViewSet):
             qs = qs.filter(is_visible=True)
         if getattr(user, 'role', '') == 'student':
             qs = filter_subjects_for_user(qs, user)
+            # Заранее объявленное окно доступности: пробник не должен светиться
+            # в каталоге до даты открытия и после даты закрытия.
+            now = timezone.now()
+            qs = qs.filter(
+                Q(available_from__isnull=True) | Q(available_from__lte=now),
+                Q(available_until__isnull=True) | Q(available_until__gte=now),
+            )
         search = self.request.query_params.get('search', '')
         if search:
             qs = qs.filter(name__icontains=search)

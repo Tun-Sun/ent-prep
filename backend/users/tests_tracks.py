@@ -8,7 +8,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from subjects.models import Subject
-from users.models import User
+from users.models import StudyGroup, User
 
 STRONG_PASSWORD = 'Str0ng-Test-Pass-2026'
 
@@ -134,6 +134,48 @@ class ProfileSubjectsTrackTest(TestCase):
         self.assertEqual(response.data['profile_subjects'], [self.shared.id])
         self.assertEqual(list(self.pupil.profile_subjects.values_list('id', flat=True)),
                          [self.shared.id])
+
+
+class StudentManagementTest(TestCase):
+    def setUp(self):
+        self.student = User.objects.create_user(
+            username='manage-pupil', password=STRONG_PASSWORD, role='student',
+            grade=11, track='nuet', full_name='Ахметов Арман')
+        self.teacher = User.objects.create_user(
+            username='manage-teacher', password=STRONG_PASSWORD, role='teacher')
+        self.group = StudyGroup.objects.create(
+            name='ЕНТ-1Р/S26-27', teacher=self.teacher)
+        self.api = APIClient()
+
+    def test_teacher_deactivates_student_without_deleting_history(self):
+        self.api.force_authenticate(self.teacher)
+        response = self.api.delete(f'/api/auth/students/{self.student.id}/')
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.student.refresh_from_db()
+        self.assertFalse(self.student.is_active)
+        self.assertTrue(User.objects.filter(id=self.student.id).exists())
+
+    def test_student_cannot_deactivate_anyone(self):
+        self.api.force_authenticate(self.student)
+        response = self.api.delete(f'/api/auth/students/{self.student.id}/')
+        self.assertEqual(response.status_code, 403)
+
+    def test_public_groups_are_visible_without_auth(self):
+        response = self.api.get('/api/auth/groups/public/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(self.group.name, [g['name'] for g in response.data])
+
+    def test_registration_can_join_optional_group(self):
+        response = self.api.post('/api/auth/register/', {
+            'username': 'group-pupil', 'email': 'g@example.test',
+            'password': STRONG_PASSWORD, 'full_name': 'Ахметов Арман',
+            'account_type': 'student', 'grade': 11, 'track': 'nuet',
+            'group_id': self.group.id,
+        }, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        pupil = User.objects.get(username='group-pupil')
+        self.assertIn(self.group, pupil.student_groups.all())
 
 
 class ExtraTracksTest(TestCase):

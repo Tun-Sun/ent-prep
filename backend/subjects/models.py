@@ -72,6 +72,12 @@ class Subject(models.Model):
     icon = models.CharField(max_length=50, default='📚')
     description = models.TextField(blank=True)
     is_visible = models.BooleanField(default=True, verbose_name='Виден ученикам')
+    # Окно доступности пробника. Пусто — предмет открыт всегда; если даты
+    # заполнены, вне окна он не показывается в каталоге и не стартует.
+    available_from = models.DateTimeField(null=True, blank=True,
+                                          verbose_name='Доступен с')
+    available_until = models.DateTimeField(null=True, blank=True,
+                                           verbose_name='Доступен до')
     sort_order = models.IntegerField(default=0, verbose_name='Порядок сортировки')
     subject_type = models.CharField(
         max_length=12, choices=SUBJECT_TYPE_CHOICES, default='profile',
@@ -91,6 +97,15 @@ class Subject(models.Model):
 
     def __str__(self):
         return self.name
+
+    def is_available_now(self):
+        """Открыт ли предмет по расписанию (незаполненные даты = всегда)."""
+        now = timezone.now()
+        if self.available_from and now < self.available_from:
+            return False
+        if self.available_until and now > self.available_until:
+            return False
+        return True
 
 
 class Variant(models.Model):

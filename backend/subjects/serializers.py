@@ -48,7 +48,8 @@ class SubjectSerializer(serializers.ModelSerializer):
         model = Subject
         fields = ('id', 'name', 'slug', 'icon', 'description', 'track',
                   'topic_count', 'total_questions', 'question_count', 'time_limit',
-                  'is_visible', 'sort_order', 'subject_type', 'show_in_profiles')
+                  'is_visible', 'available_from', 'available_until',
+                  'sort_order', 'subject_type', 'show_in_profiles')
 
     def get_topic_count(self, obj):
         return obj.topics.count()

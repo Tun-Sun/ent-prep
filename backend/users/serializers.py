@@ -45,12 +45,15 @@ class RegisterSerializer(serializers.ModelSerializer):
     track = serializers.CharField(required=False, allow_null=True, allow_blank=True, write_only=True)
     subject = serializers.IntegerField(required=False, allow_null=True, write_only=True)
     invite_code = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    # Группа необязательна: 11-классник может выбрать её при регистрации,
+    # позже её привяжет учитель или система по классу.
+    group_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
 
     class Meta:
         model = User
         fields = ('username', 'email', 'password', 'password_confirm', 'role', 'account_type',
                   'full_name', 'school', 'grade', 'track', 'subject', 'invite_code',
-                  'profile_subjects')
+                  'profile_subjects', 'group_id')
 
     def validate_grade(self, value):
         if value is not None and value not in dict(User.GRADE_CHOICES):
@@ -90,6 +93,11 @@ class RegisterSerializer(serializers.ModelSerializer):
             if attrs['grade'] == 11 and requested_track not in GRADUATION_TRACKS:
                 raise serializers.ValidationError({'track': 'Для 11 класса выберите ЕНТ или NUET'})
             attrs['track'] = normalize_track(attrs['grade'], requested_track)
+            group_id = attrs.get('group_id')
+            if group_id:
+                from .models import StudyGroup
+                if not StudyGroup.objects.filter(id=group_id).exists():
+                    raise serializers.ValidationError({'group_id': 'Группа не найдена'})
         attrs['account_type'] = account_type
         return attrs
 
@@ -99,12 +107,19 @@ class RegisterSerializer(serializers.ModelSerializer):
         validated_data.pop('password_confirm', None)
         validated_data.pop('invite_code', None)
         validated_data.pop('account_type')
+        group_id = validated_data.pop('group_id', None)
         password = validated_data.pop('password')
         first_name, last_name = split_full_name(validated_data.get('full_name'))
         validated_data.update(first_name=first_name, last_name=last_name)
         user = User(**validated_data)
         user.set_password(password)
         user.save()
+
+        if group_id and user.role == 'student':
+            from .models import StudyGroup
+            group = StudyGroup.objects.filter(id=group_id).first()
+            if group:
+                user.student_groups.add(group)
 
         from subjects.models import Subject
         if user.role == 'student':

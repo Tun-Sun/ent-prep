@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { subjectsAPI } from '../../api'
+import { subjectsAPI, groupsAPI } from '../../api'
 import { GRADUATION_TRACKS } from '../../constants/tracks'
 
 // Экран регистрации (Блок 2.2): до этого платформа была тренажёром ЕНТ для
@@ -20,12 +20,13 @@ export default function RegisterPage() {
   const [kind, setKind] = useState('student')
   const [form, setForm] = useState({
     username: '', email: '', password: '', full_name: '', school: '',
-    grade: null, track: '', subject: '', invite_code: '',
+    grade: null, track: '', subject: '', invite_code: '', group_id: null,
   })
   const [showPassword, setShowPassword] = useState(false)
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
   const [subjects, setSubjects] = useState([])
+  const [groups, setGroups] = useState([])
   const [profileSubjects, setProfileSubjects] = useState([])
   const { register } = useAuth()
   const navigate = useNavigate()
@@ -43,6 +44,10 @@ export default function RegisterPage() {
       // Профильные предметы по умолчанию — те же два, что ставит сервер: ребёнок
       // видит предвыбранные чипы, а не пустой список.
       setProfileSubjects(sorted.filter(s => DEFAULT_SUBJECT_SLUGS.includes(s.slug)).map(s => s.id))
+    }).catch(() => {})
+    // Группы нужны только 11-классникам, но список публичный и маленький.
+    groupsAPI.publicList().then(res => {
+      setGroups(Array.isArray(res.data) ? res.data : [])
     }).catch(() => {})
   }, [])
 
@@ -87,6 +92,7 @@ export default function RegisterPage() {
           full_name: form.full_name, school: form.school, grade: form.grade,
           track: form.track || undefined,
           email: form.email,
+          group_id: form.grade === 11 ? form.group_id : null,
           // Профильные предметы — только у ЕНТ: у школы и NUET своего каталога
           // пока нет, и список ЕНТ-предметов им не принадлежит.
           profile_subjects: showProfileSubjects ? profileSubjects : [],
@@ -192,6 +198,28 @@ export default function RegisterPage() {
               </div>
               <p className="form-hint">ЕНТ или NUET — от этого зависит каталог предметов.</p>
               {errors.track && <div className="form-error">{errors.track}</div>}
+            </div>
+          )}
+
+          {kind === 'student' && form.grade === 11 && groups.length > 0 && (
+            <div className="form-group">
+              <label className="form-label">Группа (не обязательно)</label>
+              <div className="grade-chips" style={{ flexWrap: 'wrap' }}>
+                <button type="button"
+                  className={'grade-chip' + (!form.group_id ? ' active' : '')}
+                  onClick={() => set('group_id', null)}>
+                  Без группы
+                </button>
+                {groups.map(group => (
+                  <button type="button" key={group.id}
+                    className={'grade-chip' + (form.group_id === group.id ? ' active' : '')}
+                    onClick={() => set('group_id', group.id)}>
+                    {group.name}
+                  </button>
+                ))}
+              </div>
+              <p className="form-hint">Позже группу можно поменять у преподавателя.</p>
+              {errors.group_id && <div className="form-error">{errors.group_id}</div>}
             </div>
           )}
 

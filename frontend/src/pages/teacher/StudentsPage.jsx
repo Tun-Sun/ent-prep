@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { dashboardAPI, groupsAPI, subjectsAPI, authAPI } from '../../api'
 import { TRACK_LABELS, GRADUATION_TRACKS } from '../../constants/tracks'
-import { X, Users, Plus, Check, BookOpen, Search, Filter, GraduationCap, School, BarChart3, Trophy, FileDown, KeyRound, Settings } from 'lucide-react'
+import { X, Users, Plus, Check, BookOpen, Search, Filter, GraduationCap, School, BarChart3, Trophy, FileDown, KeyRound, Settings, UserX } from 'lucide-react'
 
 export default function StudentsPage() {
   const [students, setStudents] = useState([])
@@ -88,6 +88,16 @@ export default function StudentsPage() {
       setSubjectsStudent(null)
       loadData()
     } catch { alert('Ошибка сохранения') }
+  }
+
+  const doDeactivateStudent = async (student) => {
+    if (!window.confirm(`Деактивировать ${student.full_name || student.username}? Ученик не сможет войти, история тестов сохранится.`)) return
+    try {
+      await groupsAPI.deactivateStudent(student.id)
+      await loadData()
+    } catch (err) {
+      alert(err.response?.data?.error || 'Не удалось деактивировать ученика')
+    }
   }
 
   const openTracks = (student) => {
@@ -274,6 +284,12 @@ export default function StudentsPage() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <GraduationCap size={16} strokeWidth={1.5} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
                       {s.full_name || s.username}
+                      {s.is_active === false && (
+                        <span style={{
+                          padding: '2px 8px', borderRadius: 100, fontSize: 11, fontWeight: 600,
+                          background: 'rgba(239,68,68,0.1)', color: '#991B1B',
+                        }}>деактивирован</span>
+                      )}
                     </div>
                   </td>
                   <td style={{ padding: '14px 8px', fontSize: 13 }}>
@@ -360,6 +376,16 @@ export default function StudentsPage() {
                       }}>
                       <Settings size={16} strokeWidth={1.8} />
                     </button>
+                    {s.is_active !== false && (
+                      <button onClick={() => doDeactivateStudent(s)} title="Деактивировать ученика"
+                        style={{
+                          border: 'none', background: 'transparent', cursor: 'pointer',
+                          color: 'var(--danger)', marginRight: 10, verticalAlign: 'middle',
+                          display: 'inline-flex', alignItems: 'center',
+                        }}>
+                        <UserX size={16} strokeWidth={1.8} />
+                      </button>
+                    )}
                     <button onClick={() => downloadReport(s)} title="PDF-отчёт для родителей"
                       style={{
                         border: 'none', background: 'transparent', cursor: 'pointer',

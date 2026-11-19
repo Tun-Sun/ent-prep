@@ -13,6 +13,14 @@ const TABS = [
 const ROLE_LABELS = { student: 'Ученик', teacher: 'Учитель', admin: 'Админ' }
 const ROLE_COLORS = { student: '#10B981', teacher: '#4F46E5', admin: '#EF4444' }
 
+// datetime-local работает в местном времени браузера, API — в UTC.
+const dateToInput = (iso) => {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+}
+const inputToDate = (value) => value ? new Date(value).toISOString() : null
+
 export default function AdminPanelPage() {
   const [tab, setTab] = useState('users')
   return (
@@ -159,7 +167,7 @@ function SubjectsTab() {
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState(null)
   const [pressedId, setPressedId] = useState(null)
-  const [form, setForm] = useState({ name: '', slug: '', icon: '📚', description: '', subject_type: 'profile', sort_order: 0, is_visible: true, question_count: 10, time_limit: 600, show_in_profiles: true })
+  const [form, setForm] = useState({ name: '', slug: '', icon: '📚', description: '', subject_type: 'profile', sort_order: 0, is_visible: true, question_count: 10, time_limit: 600, show_in_profiles: true, available_from: '', available_until: '' })
 
   const SUBJECT_COLORS = ['#4F46E5','#10B981','#F59E0B','#EF4444','#8B5CF6','#EC4899','#14B8A6','#F97316','#06B6D4','#84CC16','#6366F1','#D946EF','#0EA5E9']
   const colorMap = {}
@@ -170,13 +178,13 @@ function SubjectsTab() {
 
   const openCreate = () => {
     setEditId(null)
-    setForm({ name: '', slug: '', icon: '📚', description: '', subject_type: 'profile', sort_order: 0, is_visible: true, show_in_profiles: true })
+    setForm({ name: '', slug: '', icon: '📚', description: '', subject_type: 'profile', sort_order: 0, is_visible: true, show_in_profiles: true, available_from: '', available_until: '' })
     setShowForm(true)
   }
 
   const openEdit = (s) => {
     setEditId(s.id)
-    setForm({ name: s.name, slug: s.slug, icon: s.icon, description: s.description, subject_type: s.subject_type, sort_order: s.sort_order, is_visible: s.is_visible, question_count: s.question_count ?? 10, time_limit: s.time_limit ?? 600, show_in_profiles: s.show_in_profiles ?? true })
+    setForm({ name: s.name, slug: s.slug, icon: s.icon, description: s.description, subject_type: s.subject_type, sort_order: s.sort_order, is_visible: s.is_visible, question_count: s.question_count ?? 10, time_limit: s.time_limit ?? 600, show_in_profiles: s.show_in_profiles ?? true, available_from: dateToInput(s.available_from), available_until: dateToInput(s.available_until) })
     setShowForm(true)
   }
 
@@ -187,7 +195,11 @@ function SubjectsTab() {
       await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token')}` },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          available_from: inputToDate(form.available_from),
+          available_until: inputToDate(form.available_until),
+        }),
       })
       setShowForm(false)
       load()
@@ -268,6 +280,9 @@ function SubjectsTab() {
                 <div className="subject-row-name">{s.name}</div>
                 <div className="subject-row-meta">
                   {s.question_count} вопросов · {s.topic_count} тем
+                  {(s.available_from || s.available_until) && (
+                    <span className="badge" style={{ marginLeft: 6, fontSize: 9 }}>по расписанию</span>
+                  )}
                   <span className={`badge ${s.is_visible ? 'badge-easy' : 'badge-hard'}`}
                     style={{ marginLeft: 8, cursor: 'pointer', fontSize: 9 }}
                     onClick={e => { e.stopPropagation(); toggleSubjectVisibility(s.id, s.is_visible) }}>
@@ -328,6 +343,12 @@ function SubjectsTab() {
                   onChange={e => setForm(f => ({ ...f, is_visible: e.target.checked }))} />
                 Виден ученикам
               </label>
+              <label className="form-label" style={{ marginTop: 8 }}>Доступен с (пусто — всегда)</label>
+              <input className="form-input" type="datetime-local" value={form.available_from}
+                onChange={e => setForm(f => ({ ...f, available_from: e.target.value }))} />
+              <label className="form-label">Доступен до (пусто — всегда)</label>
+              <input className="form-input" type="datetime-local" value={form.available_until}
+                onChange={e => setForm(f => ({ ...f, available_until: e.target.value }))} />
               <input className="form-input" type="number" placeholder="Кол-во вопросов" value={form.question_count}
                 onChange={e => setForm(f => ({ ...f, question_count: parseInt(e.target.value) || 10 }))} />
               <input className="form-input" type="number" placeholder="Лимит времени (сек)" value={form.time_limit}

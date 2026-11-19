@@ -208,6 +208,7 @@ export const adminAPI = {
 // Groups (учительские группы)
 export const groupsAPI = {
   list: () => api.get('/auth/groups/'),
+  publicList: () => api.get('/auth/groups/public/'),
   create: (name) => api.post('/auth/groups/', { name }),
   detail: (id) => api.get(`/auth/groups/${id}/`),
   update: (id, data) => api.patch(`/auth/groups/${id}/`, data),
@@ -226,6 +227,7 @@ export const groupsAPI = {
     api.put(`/auth/students/${studentId}/tracks/`, {
       track, extra_tracks: extraTracks,
     }),
+  deactivateStudent: (studentId) => api.delete(`/auth/students/${studentId}/`),
 }
 
 // Оцифровка новых книг: загрузил PDF — сервер сам прогнал конвейер и положил черновики
