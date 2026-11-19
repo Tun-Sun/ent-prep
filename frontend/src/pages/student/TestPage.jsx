@@ -360,7 +360,9 @@ export default function TestPage() {
               {isEnt ? 'ЕНТ симуляция' : isRush ? '⚡ Question Rush' : isDuel ? '⚔️ Дуэль' : 'Тренировка'}
             </span>
             <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>
-              Вопрос {currentIdx + 1} из {questions.length}
+              {currentSection
+                ? `Вопрос ${currentIdx + 2 - currentSection.start} из ${currentSection.end - currentSection.start + 1}`
+                : `Вопрос ${currentIdx + 1} из ${questions.length}`}
             </span>
           </div>
           <div style={{ marginTop: 6, width: 200, height: 4, background: 'var(--border)', borderRadius: 4, overflow: 'hidden' }}>
@@ -416,7 +418,7 @@ export default function TestPage() {
                       const st = dotStatus(q, idx)
                       return (
                         <div key={q.id} onClick={() => goToQuestion(idx)}
-                          title={`Вопрос ${idx + 1}`}
+                          title={`Вопрос ${i + 1}`}
                           style={{
                             aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center',
                             fontSize: 11, fontWeight: 600, borderRadius: 6, cursor: 'pointer',
@@ -429,7 +431,7 @@ export default function TestPage() {
                         >
                           {st === 'answered' ? <CheckCircle size={12} strokeWidth={2} /> :
                            st === 'flagged' ? <Flag size={11} strokeWidth={2} /> :
-                           idx + 1}
+                           i + 1}
                         </div>
                       )
                     })}
@@ -493,7 +495,7 @@ export default function TestPage() {
               <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{currentSection.label}</span>
               <span style={{ color: 'var(--text-secondary)' }}>·</span>
               <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
-                Вопросы {currentSection.start}–{currentSection.end}
+                Вопросы 1–{currentSection.end - currentSection.start + 1}
               </span>
             </div>
           )}
