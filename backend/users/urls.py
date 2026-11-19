@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     RegisterView, ProfileView, UpdateProfileSubjectsView,
     ClearTestHistoryView, DeleteOwnAccountView,
-    UpdateStudentSubjectsView, ChangePasswordView, ResetStudentPasswordView,
+    UpdateStudentSubjectsView, UpdateStudentTracksView, ChangePasswordView, ResetStudentPasswordView,
     StudyGroupListCreateView, StudyGroupDetailView,
     StudyGroupAddStudentsView, CreateStudentView, StudentListView,
     AdminUserListView, AdminUserDetailView, AdminUserDeleteView,
@@ -28,6 +28,7 @@ urlpatterns = [
     path('students/create/', CreateStudentView.as_view(), name='student-create'),
     path('students/search/', StudentListView.as_view(), name='student-search'),
     path('students/<int:student_id>/subjects/', UpdateStudentSubjectsView.as_view(), name='student-subjects'),
+    path('students/<int:student_id>/tracks/', UpdateStudentTracksView.as_view(), name='student-tracks'),
     path('students/<int:student_id>/reset-password/', ResetStudentPasswordView.as_view(), name='student-reset-password'),
     # Admin panel
     path('admin/users/', AdminUserListView.as_view(), name='admin-users'),

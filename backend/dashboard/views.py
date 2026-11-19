@@ -316,6 +316,7 @@ class TeacherStudentsView(APIView):
                 'school': s.school,
                 'grade': s.grade,
                 'track': s.track or '',
+                'extra_tracks': s.extra_tracks or [],
                 'total_tests': s.total_tests,
                 'avg_score': round(s.avg_score or 0, 1),
                 'subject_progress': subject_progress,

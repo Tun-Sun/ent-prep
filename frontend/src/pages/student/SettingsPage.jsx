@@ -2,17 +2,16 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { authAPI, subjectsAPI } from '../../api'
 import { useAuth } from '../../context/AuthContext'
-import { GRADUATION_TRACKS, trackLabel } from '../../constants/tracks'
+import { trackLabel } from '../../constants/tracks'
 import { ArrowLeft, User, Camera, LogOut, Trash2, BookOpen, BarChart3, Settings, AlertTriangle, Tag, KeyRound, Check, Eye, EyeOff } from 'lucide-react'
 
 export default function SettingsPage() {
   const navigate = useNavigate()
-  const { user, logout, refreshUser } = useAuth()
+  const { user, logout } = useAuth()
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [allSubjects, setAllSubjects] = useState([])
   const [selectedSubjects, setSelectedSubjects] = useState([])
-  const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
   const [oldPassword, setOldPassword] = useState('')
@@ -106,20 +105,6 @@ export default function SettingsPage() {
     }
   }
 
-  const updateTrack = async (track) => {
-    if (saving || track === (profile?.track || '')) return
-    setSaving(true)
-    try {
-      const res = await authAPI.updateProfile({ track })
-      setProfile(prev => ({ ...prev, ...res.data }))
-      await refreshUser()
-    } catch (error) {
-      alert(error.response?.data?.error || error.response?.data?.track?.[0] || 'Не удалось сменить трек')
-    } finally {
-      setSaving(false)
-    }
-  }
-
   const initials = user?.full_name
     ? user.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     : user?.username?.[0]?.toUpperCase() || '?'
@@ -130,7 +115,6 @@ export default function SettingsPage() {
   const isStudent = user?.role === 'student'
   const profileGrade = profile?.grade ?? user?.grade ?? null
   const profileTrack = profile?.track || ''
-  const canChooseTrack = isStudent && Number(profileGrade) === 11
   const showEntSubjects = isStudent && profileTrack === 'ent'
 
   return (
@@ -221,34 +205,19 @@ export default function SettingsPage() {
               Класс меняет преподаватель или администратор. Он же пересчитывает трек.
             </p>
 
-            {canChooseTrack ? (
-              <div style={{ marginTop: 16 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>Трек подготовки</div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {GRADUATION_TRACKS.map(option => (
-                    <button key={option.value} type="button" disabled={saving}
-                      onClick={() => updateTrack(option.value)}
-                      style={{
-                        flex: 1, padding: '10px 14px', borderRadius: 12, cursor: saving ? 'wait' : 'pointer',
-                        border: '1px solid ' + (profileTrack === option.value ? 'var(--primary)' : 'var(--border)'),
-                        background: profileTrack === option.value ? 'rgba(99,102,241,0.08)' : '#fff',
-                        color: profileTrack === option.value ? 'var(--primary)' : 'var(--text)',
-                        fontSize: 14, fontWeight: 700,
-                      }}>
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-                <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 8 }}>
-                  От трека зависит каталог предметов и инструменты кабинета.
-                </p>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: 16 }}>
-                <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Трек</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{trackLabel(profileTrack)}</span>
-              </div>
-            )}
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              gap: 12, marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)',
+            }}>
+              <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Трек подготовки</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
+                {trackLabel(profileTrack)}
+              </span>
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 10 }}>
+              Трек выбирается один раз. Изменить его или выдать дополнительный может
+              преподаватель или администратор.
+            </p>
           </div>
         </>
       )}

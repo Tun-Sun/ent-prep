@@ -19,7 +19,7 @@ class UserAdmin(BaseUserAdmin):
     ordering = ('full_name', 'username')
     fieldsets = BaseUserAdmin.fieldsets + (
         ('Учёба', {
-            'fields': ('role', 'grade', 'track', 'full_name', 'school', 'gc_uid',
+            'fields': ('role', 'grade', 'track', 'extra_tracks', 'full_name', 'school', 'gc_uid',
                        'telegram_id', 'telegram_username', 'avatar',
                        'dashboard_subjects', 'profile_subjects'),
         }),

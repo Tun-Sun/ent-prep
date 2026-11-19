@@ -19,7 +19,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import (Subject, Topic, Question, Answer, Assignment, AssignmentBlock,
                      AssignmentSubmission, AssignmentAnswer)
-from core.tracks import filter_subjects_by_track, is_valid_track
+from core.tracks import filter_subjects_by_track, filter_subjects_for_user, is_valid_track
 from .permissions import IsTeacherOrAdmin
 from .serializers import (
     SubjectSerializer, SubjectMinimalSerializer,
@@ -60,7 +60,7 @@ class SubjectViewSet(viewsets.ModelViewSet):
         if not user.is_authenticated or getattr(user, 'role', '') == 'student':
             qs = qs.filter(is_visible=True)
         if getattr(user, 'role', '') == 'student':
-            qs = filter_subjects_by_track(qs, user.track)
+            qs = filter_subjects_for_user(qs, user)
         search = self.request.query_params.get('search', '')
         if search:
             qs = qs.filter(name__icontains=search)

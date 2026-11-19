@@ -6,8 +6,9 @@ from django.contrib.auth.password_validation import validate_password
 User = get_user_model()
 
 from core.choices import TrackChoices
-from core.tracks import (GRADUATION_TRACKS, filter_subjects_by_track, is_valid_track,
-                         normalize_track, student_track, subject_track, tracks_conflict)
+from core.tracks import (GRADUATION_TRACKS, available_tracks, filter_subjects_by_track,
+                         filter_subjects_for_user, is_valid_track, normalize_track,
+                         subject_track)
 
 from .models import StudyGroup, SystemSetting
 
@@ -128,10 +129,10 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('id', 'username', 'email', 'role', 'full_name', 'first_name', 'last_name',
-                  'grade', 'track', 'school', 'profile_subjects', 'avatar', 'is_staff', 'is_superuser',
-                  'telegram_username', 'profile_completed')
-        read_only_fields = ('id', 'username', 'role', 'track', 'is_staff', 'is_superuser',
-                            'telegram_username')
+                  'grade', 'track', 'extra_tracks', 'school', 'profile_subjects', 'avatar',
+                  'is_staff', 'is_superuser', 'telegram_username', 'profile_completed')
+        read_only_fields = ('id', 'username', 'role', 'track', 'extra_tracks',
+                            'is_staff', 'is_superuser', 'telegram_username')
 
     def get_avatar(self, obj):
         if obj.avatar:
@@ -144,9 +145,10 @@ class UserSerializer(serializers.ModelSerializer):
     def get_profile_subjects(self, obj):
         """Только предметы своего трека: ЕНТ-предмет в профиле школьника — это
         каталог, из которого он всё равно не сможет начать тест."""
-        track = student_track(obj)
+        tracks = available_tracks(obj)
         subjects = obj.profile_subjects.all()
-        return [s.id for s in subjects if not tracks_conflict(track, subject_track(s))]
+        return [s.id for s in subjects
+                if not subject_track(s) or subject_track(s) in tracks]
 
     def get_profile_completed(self, obj):
         return obj.is_profile_completed
@@ -156,18 +158,18 @@ class AdminUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('id', 'username', 'email', 'role', 'full_name', 'school', 'grade', 'track',
-                  'is_active', 'date_joined', 'last_login')
+                  'extra_tracks', 'is_active', 'date_joined', 'last_login')
         read_only_fields = ('id', 'date_joined', 'last_login')
 
 
 class AdminUserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('role', 'is_active', 'grade', 'track')
+        fields = ('role', 'is_active', 'grade', 'track', 'extra_tracks')
 
     def validate(self, attrs):
         """Админ меняет класс и трек теми же правилами, что и ученик в профиле."""
-        if not ({'role', 'grade', 'track'} & set(attrs)):
+        if not ({'role', 'grade', 'track', 'extra_tracks'} & set(attrs)):
             # PATCH только `is_active` не должен пересчитывать трек: иначе снятие
             # блокировки молча меняло бы профиль ученика.
             return attrs
@@ -176,11 +178,54 @@ class AdminUserUpdateSerializer(serializers.ModelSerializer):
         track = attrs.get('track', self.instance.track if self.instance else None)
         if role != 'student':
             attrs['track'] = None
+            attrs['extra_tracks'] = []
         else:
             if track and not is_valid_track(track):
                 raise serializers.ValidationError({'track': 'Такого трека нет: school / ent / nuet'})
             attrs['track'] = normalize_track(grade, track)
+            if 'extra_tracks' in attrs:
+                extra = attrs['extra_tracks']
+                if not isinstance(extra, list):
+                    raise serializers.ValidationError({'extra_tracks': 'Ожидается список треков'})
+                bad = [value for value in extra if not is_valid_track(value)]
+                if bad:
+                    raise serializers.ValidationError({'extra_tracks': 'Такого трека нет'})
+                attrs['extra_tracks'] = [
+                    value for value in dict.fromkeys(extra)
+                    if value and value != attrs['track']
+                ]
+                if grade != 11:
+                    attrs['extra_tracks'] = []
         return attrs
+
+
+class StudentTracksSerializer(serializers.Serializer):
+    """Смена трека ученика учителем/админом (ученик сам менять не может)."""
+    track = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    extra_tracks = serializers.ListField(
+        child=serializers.CharField(), required=False, allow_empty=True)
+
+    def validate(self, attrs):
+        student = self.context['student']
+        track = attrs.get('track', student.track)
+        if track in ('', 'null', None):
+            track = None
+        if track and not is_valid_track(track):
+            raise serializers.ValidationError({'track': 'Такого трека нет: school / ent / nuet'})
+        track = normalize_track(student.grade, track)
+        extra = attrs.get('extra_tracks', getattr(student, 'extra_tracks', None) or [])
+        if not isinstance(extra, list):
+            raise serializers.ValidationError({'extra_tracks': 'Ожидается список треков'})
+        bad = [value for value in extra if not is_valid_track(value)]
+        if bad:
+            raise serializers.ValidationError({'extra_tracks': 'Такого трека нет'})
+        if student.grade != 11:
+            # Школьнику нечего открывать дополнительными выпускными треками.
+            extra = []
+        return {
+            'track': track,
+            'extra_tracks': [v for v in dict.fromkeys(extra) if v and v != track],
+        }
 
 
 class StudyGroupSerializer(serializers.ModelSerializer):

@@ -222,6 +222,10 @@ export const groupsAPI = {
   createStudent: (data) => api.post('/auth/students/create/', data),
   updateStudentSubjects: (studentId, subjectIds) =>
     api.put(`/auth/students/${studentId}/subjects/`, { profile_subjects: subjectIds }),
+  updateStudentTracks: (studentId, track, extraTracks) =>
+    api.put(`/auth/students/${studentId}/tracks/`, {
+      track, extra_tracks: extraTracks,
+    }),
 }
 
 // Оцифровка новых книг: загрузил PDF — сервер сам прогнал конвейер и положил черновики

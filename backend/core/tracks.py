@@ -35,10 +35,24 @@ def normalize_track(grade, requested=None):
 
 
 def student_track(user):
-    """Трек ученика или None. У тренера и админа трека нет."""
+    """Основной трек ученика или None. У тренера и админа трека нет."""
     if getattr(user, 'role', None) != 'student':
         return None
     return getattr(user, 'track', None) or None
+
+
+def available_tracks(user):
+    """Все треки, открытые ученику: основной плюс выданные учителем."""
+    if getattr(user, 'role', None) != 'student':
+        return set()
+    tracks = set()
+    main = getattr(user, 'track', None)
+    if main in VALID_TRACKS:
+        tracks.add(main)
+    for value in (getattr(user, 'extra_tracks', None) or []):
+        if value in VALID_TRACKS:
+            tracks.add(value)
+    return tracks
 
 
 def subject_track(subject):
@@ -62,11 +76,24 @@ def filter_subjects_by_track(queryset, track):
     return queryset.filter(Q(track='') | Q(track=track))
 
 
+def filter_subjects_for_user(queryset, user):
+    """Предметы для ученика с учётом основного и дополнительных треков."""
+    tracks = available_tracks(user)
+    if not tracks:
+        return queryset
+    return queryset.filter(Q(track='') | Q(track__in=tracks))
+
+
 def can_use_subject(user, subject):
     """Может ли ученик работать с предметом. Тренеру и админу — всегда да."""
     if getattr(user, 'role', None) != 'student':
         return True
-    return not tracks_conflict(student_track(user), subject_track(subject))
+    tracks = available_tracks(user)
+    if not tracks:
+        # Трек ещё не выбран — не наказываем ученика за незаполненный профиль.
+        return True
+    value = subject_track(subject)
+    return not value or value in tracks
 
 
 def requires_track(user):

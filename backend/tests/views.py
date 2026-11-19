@@ -18,8 +18,8 @@ from subjects.models import Question, Answer, Subject, Topic
 from subjects.serializers import QuestionDetailSerializer
 from subjects.permissions import IsTeacherOrAdmin
 from core.choices import TrackChoices
-from core.tracks import (can_use_subject, filter_subjects_by_track, requires_track,
-                         student_track)
+from core.tracks import (available_tracks, can_use_subject, filter_subjects_for_user,
+                         requires_track, student_track)
 from .models import TestSession, TestSessionQuestion, TestSectionResult, AnswerRecord
 from .serializers import (
     StartTestSerializer, StartEntSerializer, AnswerBulkSerializer,
@@ -267,14 +267,13 @@ class StartTestView(APIView):
                 )
             # Rush — игра ЕНТ-подготовки. Школе и NUET её не показывают и не
             # запускают: тратить 5 минут на чужие вопросы ученику незачем.
-            if student_track(user) in (TrackChoices.SCHOOL, TrackChoices.NUET):
+            if student_track(user) in (TrackChoices.SCHOOL, TrackChoices.NUET) and TrackChoices.ENT not in available_tracks(user):
                 return Response(
                     {'error': 'Question Rush доступен только в треке ЕНТ'},
                     status=status.HTTP_403_FORBIDDEN,
                 )
             profile_ids = list(user.profile_subjects.values_list('id', flat=True))
-            subjects = filter_subjects_by_track(
-                Subject.objects.filter(is_visible=True), student_track(user))
+            subjects = filter_subjects_for_user(Subject.objects.filter(is_visible=True), user)
             if profile_ids:
                 subjects = subjects.filter(
                     Q(subject_type='mandatory') | Q(id__in=profile_ids)
@@ -340,7 +339,7 @@ class StartEntView(APIView):
                     {'error': 'Выберите трек: ЕНТ или NUET', 'code': 'track_required'},
                     status=status.HTTP_403_FORBIDDEN,
                 )
-            if student_track(request.user) in (TrackChoices.SCHOOL, TrackChoices.NUET):
+            if student_track(request.user) in (TrackChoices.SCHOOL, TrackChoices.NUET) and TrackChoices.ENT not in available_tracks(request.user):
                 return Response(
                     {'error': 'Полная симуляция ЕНТ доступна только в треке ЕНТ'},
                     status=status.HTTP_403_FORBIDDEN,

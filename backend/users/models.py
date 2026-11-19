@@ -22,6 +22,11 @@ class User(AbstractUser):
     # без класса), а не «школьный трек по умолчанию».
     track = models.CharField(max_length=10, choices=TrackChoices.choices, null=True, blank=True,
                              default=None, verbose_name='Трек')
+    # Дополнительные треки выдаёт учитель/админ: например, NUET-ученику можно
+    # открыть пробные ЕНТ-варианты, не меняя его основной трек. Ученик это поле
+    # не редактирует — иначе можно было бы самому открыть чужой каталог.
+    extra_tracks = models.JSONField(default=list, blank=True,
+                                    verbose_name='Дополнительные треки')
     full_name = models.CharField(max_length=150, blank=True)
     school = models.CharField(max_length=200, blank=True)
     # Код ученика в GetCourse: по нему вход из урока находит своего человека, не

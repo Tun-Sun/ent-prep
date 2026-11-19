@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { dashboardAPI, groupsAPI, subjectsAPI, authAPI } from '../../api'
-import { TRACK_LABELS } from '../../constants/tracks'
-import { X, Users, Plus, Check, BookOpen, Search, Filter, GraduationCap, School, BarChart3, Trophy, FileDown, KeyRound } from 'lucide-react'
+import { TRACK_LABELS, GRADUATION_TRACKS } from '../../constants/tracks'
+import { X, Users, Plus, Check, BookOpen, Search, Filter, GraduationCap, School, BarChart3, Trophy, FileDown, KeyRound, Settings } from 'lucide-react'
 
 export default function StudentsPage() {
   const [students, setStudents] = useState([])
@@ -25,6 +25,10 @@ export default function StudentsPage() {
   const [resetStudent, setResetStudent] = useState(null)
   const [resetResult, setResetResult] = useState(null)
   const [resetting, setResetting] = useState(false)
+  const [trackStudent, setTrackStudent] = useState(null)
+  const [primaryTrack, setPrimaryTrack] = useState('')
+  const [extraTracks, setExtraTracks] = useState([])
+  const [savingTracks, setSavingTracks] = useState(false)
 
   const loadData = () => {
     setLoading(true)
@@ -84,6 +88,31 @@ export default function StudentsPage() {
       setSubjectsStudent(null)
       loadData()
     } catch { alert('Ошибка сохранения') }
+  }
+
+  const openTracks = (student) => {
+    setTrackStudent(student)
+    setPrimaryTrack(student.track || '')
+    setExtraTracks(Array.isArray(student.extra_tracks) ? student.extra_tracks : [])
+  }
+
+  const toggleExtraTrack = (value) => {
+    setExtraTracks(prev =>
+      prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value])
+  }
+
+  const saveTracks = async () => {
+    if (!trackStudent) return
+    setSavingTracks(true)
+    try {
+      await groupsAPI.updateStudentTracks(trackStudent.id, primaryTrack, extraTracks)
+      setTrackStudent(null)
+      await loadData()
+    } catch (err) {
+      alert(err.response?.data?.error || err.response?.data?.track?.[0] || 'Ошибка сохранения')
+    } finally {
+      setSavingTracks(false)
+    }
   }
 
   const clearFilters = () => {
@@ -323,6 +352,14 @@ export default function StudentsPage() {
                     </div>
                   </td>
                   <td style={{ textAlign: 'right', padding: '14px 16px', whiteSpace: 'nowrap' }}>
+                    <button onClick={() => openTracks(s)} title="Треки подготовки"
+                      style={{
+                        border: 'none', background: 'transparent', cursor: 'pointer',
+                        color: 'var(--primary)', marginRight: 10, verticalAlign: 'middle',
+                        display: 'inline-flex', alignItems: 'center',
+                      }}>
+                      <Settings size={16} strokeWidth={1.8} />
+                    </button>
                     <button onClick={() => downloadReport(s)} title="PDF-отчёт для родителей"
                       style={{
                         border: 'none', background: 'transparent', cursor: 'pointer',
@@ -425,6 +462,60 @@ export default function StudentsPage() {
               <button className="btn btn-primary" onClick={saveSubjects}
                 style={{ width: '100%', borderRadius: 12, padding: '10px' }}>
                 Сохранить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {trackStudent && (
+        <div className="modal-overlay" onClick={() => setTrackStudent(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}
+            style={{ maxWidth: 460, borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)' }}>
+            <div className="modal-header">
+              <h3 style={{ fontSize: 18, fontWeight: 800 }}>Треки ученика</h3>
+              <button className="btn btn-sm" onClick={() => setTrackStudent(null)}
+                style={{ borderRadius: 8, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <X size={16} />
+              </button>
+            </div>
+            <div style={{ padding: '12px 20px 20px' }}>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 14 }}>
+                {trackStudent.full_name || trackStudent.username} · {trackStudent.grade || '—'} класс
+              </p>
+              <label style={{ fontSize: 13, fontWeight: 700 }}>Основной трек</label>
+              <select value={primaryTrack} onChange={e => setPrimaryTrack(e.target.value)}
+                style={{
+                  width: '100%', padding: '10px 12px', borderRadius: 10, marginTop: 6,
+                  border: '1px solid var(--border)', fontSize: 14, background: '#fff', cursor: 'pointer',
+                }}>
+                <option value="">Не выбран</option>
+                {Object.entries(TRACK_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+
+              <div style={{ fontSize: 13, fontWeight: 700, marginTop: 18 }}>Дополнительные треки</div>
+              <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '4px 0 10px' }}>
+                Откроют каталог и инструменты этого трека, не меняя основной.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {GRADUATION_TRACKS.map(t => (
+                  <label key={t.value} style={{
+                    display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+                    borderRadius: 10, border: '1px solid var(--border)', cursor: 'pointer',
+                  }}>
+                    <input type="checkbox" checked={extraTracks.includes(t.value)}
+                      onChange={() => toggleExtraTrack(t.value)}
+                      style={{ width: 16, height: 16, accentColor: 'var(--primary)' }} />
+                    <span style={{ fontSize: 14, fontWeight: 600 }}>{t.label}</span>
+                    <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{t.hint}</span>
+                  </label>
+                ))}
+              </div>
+
+              <button className="btn btn-primary" onClick={saveTracks} disabled={savingTracks}
+                style={{ width: '100%', borderRadius: 12, padding: '10px', marginTop: 18, opacity: savingTracks ? 0.6 : 1 }}>
+                {savingTracks ? 'Сохраняем…' : 'Сохранить'}
               </button>
             </div>
           </div>

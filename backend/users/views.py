@@ -16,14 +16,14 @@ from django.shortcuts import get_object_or_404
 
 from .serializers import (
     RegisterSerializer, UserSerializer,
-    AdminUserSerializer, AdminUserUpdateSerializer,
+    AdminUserSerializer, AdminUserUpdateSerializer, StudentTracksSerializer,
     StudyGroupSerializer, StudyGroupDetailSerializer,
     SystemSettingSerializer,
 )
 from .models import StudyGroup, SystemSetting
 from core.choices import TrackChoices
-from core.tracks import (GRADUATION_TRACKS, filter_subjects_by_track, is_valid_track,
-                         normalize_track)
+from core.tracks import (GRADUATION_TRACKS, filter_subjects_by_track,
+                         filter_subjects_for_user, is_valid_track, normalize_track)
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -124,6 +124,12 @@ class ProfileView(APIView):
             request.user.last_name = last_name
             update_fields += ['full_name', 'first_name', 'last_name']
         if 'grade' in request.data:
+            # Класс и трек — не игрушка: смена класса пересчитывала бы трек и
+            # открывала чужой каталог. Но пустая карточка Telegram/GetCourse
+            # должна заполниться — без класса профиль не считается готовым.
+            if (getattr(request.user, 'role', '') == 'student'
+                    and request.user.is_profile_completed):
+                return Response({'error': 'Класс меняет преподаватель или администратор'}, status=403)
             grade = request.data.get('grade')
             if grade in (None, '', 'null'):
                 request.user.grade = None
@@ -148,6 +154,11 @@ class ProfileView(APIView):
             if request.user.role != 'student':
                 request.user.track = None
             else:
+                if request.user.track and requested != request.user.track:
+                    return Response(
+                        {'error': 'Трек меняет преподаватель или администратор'}, status=403)
+                # Трек выбирают один раз — при первом входе/регистрации.
+                # Дальше его меняет только учитель через карточку ученика.
                 if track_sent and request.user.grade == 11 and requested not in GRADUATION_TRACKS:
                     return Response({'error': 'Для 11 класса выберите ЕНТ или NUET'}, status=400)
                 request.user.track = normalize_track(request.user.grade, requested)
@@ -171,8 +182,8 @@ class UpdateProfileSubjectsView(APIView):
             return Response({'error': 'Ожидается список ID предметов'}, status=400)
         # Скрытый предмет в профиль ученика не кладём: иначе он висел бы в его
         # выборке, хотя на платформе его нет. Предмет чужого трека — тоже.
-        subjects = filter_subjects_by_track(
-            Subject.objects.filter(id__in=subject_ids, is_visible=True), request.user.track)
+        subjects = filter_subjects_for_user(
+            Subject.objects.filter(id__in=subject_ids, is_visible=True), request.user)
         request.user.profile_subjects.set(subjects)
         return Response({'profile_subjects': list(subjects.values_list('id', flat=True))})
 
@@ -218,10 +229,33 @@ class UpdateStudentSubjectsView(APIView):
         # Тренеру скрытый предмет в списке доступен, но в профиль ученика он лечь
         # не должен: ответ возвращает только то, что действительно прикрепилось.
         # Трек ученика здесь важнее желания тренера: школа не получает ЕНТ-предмет.
-        subjects = filter_subjects_by_track(
-            Subject.objects.filter(id__in=subject_ids, is_visible=True), student.track)
+        subjects = filter_subjects_for_user(
+            Subject.objects.filter(id__in=subject_ids, is_visible=True), student)
         student.profile_subjects.set(subjects)
         return Response({'profile_subjects': list(subjects.values_list('id', flat=True))})
+
+
+class UpdateStudentTracksView(APIView):
+    """Учитель/админ меняет основной трек и выдаёт дополнительные."""
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, student_id):
+        if request.user.role not in ('teacher', 'admin'):
+            return Response({'error': 'Доступ только для учителей'}, status=403)
+        student = User.objects.filter(id=student_id, role='student').first()
+        if not student:
+            return Response({'error': 'Ученик не найден'}, status=404)
+        serializer = StudentTracksSerializer(data=request.data, context={'student': student})
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        student.track = data['track']
+        student.extra_tracks = data['extra_tracks']
+        student.save(update_fields=['track', 'extra_tracks'])
+        return Response({
+            'id': student.id,
+            'track': student.track or '',
+            'extra_tracks': student.extra_tracks,
+        })
 
 
 class ChangePasswordView(APIView):
