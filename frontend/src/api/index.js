@@ -69,6 +69,8 @@ export const telegramAPI = {
 // Subjects
 export const subjectsAPI = {
   list: () => api.get('/subjects/'),
+  /** Пробные варианты вместе с датами и статусом — даже если ещё не открыты */
+  trials: () => api.get('/subjects/trials/'),
   /** Публичный список для экрана регистрации (без JWT) */
   forRegistration: () => api.get('/subjects/for-registration/'),
   retrieve: (id) => api.get(`/subjects/${id}/`),

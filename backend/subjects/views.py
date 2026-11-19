@@ -21,6 +21,7 @@ from .models import (Subject, Topic, Question, Answer, Assignment, AssignmentBlo
                      AssignmentSubmission, AssignmentAnswer)
 from core.tracks import filter_subjects_by_track, filter_subjects_for_user, is_valid_track
 from .permissions import IsTeacherOrAdmin
+from .trial_variants import TRIAL_SLUGS
 from .serializers import (
     SubjectSerializer, SubjectMinimalSerializer,
     TopicSerializer, TopicListSerializer,
@@ -48,7 +49,7 @@ class SubjectViewSet(viewsets.ModelViewSet):
         # Публичный список для экрана регистрации (только видимые)
         if self.action == 'for_registration':
             return [AllowAny()]
-        if self.action in ['list', 'retrieve', 'minimal']:
+        if self.action in ['list', 'retrieve', 'minimal', 'trials']:
             return [IsAuthenticated()]
         return [IsTeacherOrAdmin()]
 
@@ -93,6 +94,36 @@ class SubjectViewSet(viewsets.ModelViewSet):
         """Только id, name, slug, icon — для выпадающих списков"""
         qs = self.filter_queryset(self.get_queryset())
         return Response(SubjectMinimalSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=['get'])
+    def trials(self, request):
+        """Пробные варианты для картки «Пробное тестирование INTELLECT».
+
+        Обычный каталог прячет предметы вне окна доступности. Здесь даты,
+        наоборот, должны быть видны: ученик обязан понимать, когда откроется
+        пробник. Старт теста всё равно проверяет окно и трек на сервере.
+        Никаких ответов и тем в ответе нет — только метаданные и статус.
+        """
+        qs = Subject.objects.filter(slug__in=TRIAL_SLUGS, is_visible=True)
+        if getattr(request.user, 'role', '') == 'student':
+            qs = filter_subjects_for_user(qs, request.user)
+        qs = qs.order_by('track', 'sort_order')
+
+        now = timezone.now()
+        data = []
+        for subject in qs:
+            row = SubjectSerializer(subject).data
+            if subject.available_from and now < subject.available_from:
+                status = 'upcoming'
+            elif subject.available_until and now > subject.available_until:
+                status = 'closed'
+            elif not Question.objects.filter(topic__subject=subject).answerable().exists():
+                status = 'empty'
+            else:
+                status = 'open'
+            row['status'] = status
+            data.append(row)
+        return Response(data)
 
     @action(detail=True, methods=['post'])
     def toggle_visibility(self, request, pk=None):

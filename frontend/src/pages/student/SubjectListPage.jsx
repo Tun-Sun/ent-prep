@@ -3,13 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { subjectsAPI, dashboardAPI, authAPI } from '../../api'
 import { useAuth } from '../../context/AuthContext'
 import { seesEntTools, trackLabel } from '../../constants/tracks'
-import { Target, ArrowLeft, ChevronRight, Clock, BookOpen } from 'lucide-react'
+import { Target, ArrowLeft, ChevronRight, Clock, BookOpen, ClipboardList, CalendarDays } from 'lucide-react'
 
 export default function SubjectListPage() {
   const { user } = useAuth()
   const [subjects, setSubjects] = useState([])
+  const [trials, setTrials] = useState([])
   const [loading, setLoading] = useState(true)
   const [showEntModal, setShowEntModal] = useState(false)
+  const [showTrialModal, setShowTrialModal] = useState(false)
   const [profile1, setProfile1] = useState('')
   const [profile2, setProfile2] = useState('')
   const [dashboardFilter, setDashboardFilter] = useState(false)
@@ -26,6 +28,11 @@ export default function SubjectListPage() {
       .then(res => setSubjects(res.data))
       .catch(() => {})
       .finally(() => setLoading(false))
+    // Отдельный список: пробники вне окна доступности скрыты из каталога,
+    // но ученик должен видеть дату, когда они откроются.
+    subjectsAPI.trials()
+      .then(res => setTrials(Array.isArray(res.data) ? res.data : []))
+      .catch(() => {})
     if (isTeacher) {
       dashboardAPI.dashboardSubjects()
         .then(res => {
@@ -61,7 +68,6 @@ export default function SubjectListPage() {
   // Пробные варианты сделаны mandatory только затем, чтобы каталог их не
   // отфильтровал. По смыслу это не обязательные предметы, а отдельные пробники.
   const isTrial = (s) => /^(ent|nuet)-0[1-3]$/.test(s.slug || '')
-  const trials = mandatory.filter(isTrial)
   const regularMandatory = mandatory.filter(s => !isTrial(s))
 
   const startEnt = () => {
@@ -83,6 +89,66 @@ export default function SubjectListPage() {
         state: (isTrial(subj) && subj.slug.startsWith('ent-')) ? { trial: true } : {},
       })
     }
+  }
+
+  // Карточка пробника показывает даты даже для ещё не открытых вариантов:
+  // их нет в обычном каталоге, но дата приходит из отдельного эндпоинта.
+  const formatMoment = (value) => value
+    ? new Date(value).toLocaleString('ru-RU', {
+      day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
+    })
+    : ''
+
+  const trialNumber = (s) => (s.slug || '').split('-')[1]?.replace(/^0/, '') || '—'
+  const trialTitle = (s) => `${s.track === 'nuet' ? 'Пробник NUET' : 'Пробный вариант ЕНТ'} №${trialNumber(s)}`
+
+  const trialStatus = (s) => {
+    if (s.status === 'upcoming') {
+      return { label: `Откроется ${formatMoment(s.available_from)}`, cls: 'badge-medium', disabled: true, cta: 'Скоро' }
+    }
+    if (s.status === 'closed') {
+      return { label: `Закрыт ${formatMoment(s.available_until)}`, cls: 'badge-hard', disabled: true, cta: 'Закрыт' }
+    }
+    if (s.status === 'empty') {
+      return { label: 'Материалы готовятся', cls: 'badge-medium', disabled: true, cta: 'Скоро' }
+    }
+    if (s.available_from && s.available_until) {
+      return { label: `${formatMoment(s.available_from)} — ${formatMoment(s.available_until)}`, cls: 'badge-easy', disabled: false, cta: 'Начать' }
+    }
+    if (s.available_until) {
+      return { label: `Открыт до ${formatMoment(s.available_until)}`, cls: 'badge-easy', disabled: false, cta: 'Начать' }
+    }
+    if (s.available_from) {
+      return { label: `Открыт с ${formatMoment(s.available_from)}`, cls: 'badge-easy', disabled: false, cta: 'Начать' }
+    }
+    return { label: 'Доступен всегда', cls: 'badge-easy', disabled: false, cta: 'Начать' }
+  }
+
+  const orderedTrials = useMemo(() => {
+    const preferred = user?.track || 'ent'
+    const order = [preferred, ...['ent', 'nuet'].filter(t => t !== preferred)]
+    return [...trials].sort((a, b) =>
+      (order.indexOf(a.track) - order.indexOf(b.track)) || a.slug.localeCompare(b.slug))
+  }, [trials, user?.track])
+
+  const trialSubtitle = (() => {
+    const open = orderedTrials.filter(s => s.status === 'open')
+    const upcoming = orderedTrials.filter(s => s.status === 'upcoming')
+    if (open.length) {
+      const noun = open.length === 1 ? 'вариант' : open.length < 5 ? 'варианта' : 'вариантов'
+      return `Доступно ${open.length} ${noun} · пробники по номерам внутри`
+    }
+    if (upcoming.length) {
+      const next = [...upcoming].sort(
+        (a, b) => new Date(a.available_from) - new Date(b.available_from))[0]
+      return `Ближайший откроется ${formatMoment(next.available_from)}`
+    }
+    return 'Пробные варианты появятся скоро'
+  })()
+
+  const openTrial = (s) => {
+    setShowTrialModal(false)
+    goToSubject(s)
   }
 
   const SubjectRow = ({ subj }) => {
@@ -155,41 +221,55 @@ export default function SubjectListPage() {
         </div>
       )}
 
-      {entTools && (
-        <>
-          {/* Симуляция собирается из старых обязательных предметов: пока их
-              банк скрыт, карточка ведёт в никуда. Возвращается вместе с ними. */}
-          {profileSubjects.length > 0 && (
-          <div className="d-card d-ent-countdown" style={{ marginBottom: 24 }} onClick={() => setShowEntModal(true)}>
-            <Target size={28} strokeWidth={1.5} style={{ color: 'var(--primary)', flexShrink: 0 }} />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Полная симуляция ЕНТ</div>
-              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>120 вопросов · 5 предметов · 240 мин</div>
-            </div>
-            <span style={{
-              padding: '6px 16px', borderRadius: 100, fontSize: 13, fontWeight: 700,
-              background: 'var(--primary)', color: '#fff',
-            }}>Начать</span>
+      {/* Симуляция собирается из старых обязательных предметов: пока их
+          банк скрыт, карточка ведёт в никуда. Возвращается вместе с ними. */}
+      {entTools && profileSubjects.length > 0 && (
+        <div className="d-card d-ent-countdown" style={{ marginBottom: 24 }} onClick={() => setShowEntModal(true)}>
+          <Target size={28} strokeWidth={1.5} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Полная симуляция ЕНТ</div>
+            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>120 вопросов · 5 предметов · 240 мин</div>
           </div>
-          )}
+          <span style={{
+            padding: '6px 16px', borderRadius: 100, fontSize: 13, fontWeight: 700,
+            background: 'var(--primary)', color: '#fff',
+          }}>Начать</span>
+        </div>
+      )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 28 }}>
-            <div className="card" style={{ padding: '16px 18px', cursor: 'pointer' }} onClick={() => navigate('/test/rush')}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                <span style={{ fontSize: 22 }}>⚡</span>
-                <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Question Rush</span>
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>30 вопросов за 5 минут. Успеешь?</div>
+      {/* Отдельная карточка пробников: видна и ЕНТ, и NUET. Внутри — варианты
+          по номерам и даты, даже если вариант ещё не открыт. */}
+      {(isTeacher || orderedTrials.length > 0) && (
+      <div className="d-card d-ent-countdown" style={{ marginBottom: 24 }} onClick={() => setShowTrialModal(true)}>
+        <ClipboardList size={28} strokeWidth={1.5} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Пробное тестирование INTELLECT</div>
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>{trialSubtitle}</div>
+        </div>
+        <span style={{
+          padding: '6px 16px', borderRadius: 100, fontSize: 13, fontWeight: 700,
+          background: 'var(--primary)', color: '#fff',
+        }}>Выбрать</span>
+      </div>
+      )}
+
+      {entTools && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 28 }}>
+          <div className="card" style={{ padding: '16px 18px', cursor: 'pointer' }} onClick={() => navigate('/test/rush')}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <span style={{ fontSize: 22 }}>⚡</span>
+              <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Question Rush</span>
             </div>
-            <div className="card" style={{ padding: '16px 18px', cursor: 'pointer' }} onClick={() => navigate('/duels')}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                <span style={{ fontSize: 22 }}>⚔️</span>
-                <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Дуэли</span>
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Вызови одноклассника на битву</div>
-            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>30 вопросов за 5 минут. Успеешь?</div>
           </div>
-        </>
+          <div className="card" style={{ padding: '16px 18px', cursor: 'pointer' }} onClick={() => navigate('/duels')}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <span style={{ fontSize: 22 }}>⚔️</span>
+              <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Дуэли</span>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Вызови одноклассника на битву</div>
+          </div>
+        </div>
       )}
 
       {!isTeacher && filtered.length === 0 && (
@@ -205,18 +285,6 @@ export default function SubjectListPage() {
                 : 'Выберите трек в профиле — и каталог подстроится под вашу программу.'}
             </p>
           </div>
-        </div>
-      )}
-
-      {trials.length > 0 && (
-        <div style={{ marginBottom: 28 }}>
-          <div style={{
-            fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase',
-            color: 'var(--text-secondary)', marginBottom: 10, paddingLeft: 4,
-          }}>
-            Пробные варианты
-          </div>
-          {trials.map(s => <SubjectRow key={s.id} subj={s} />)}
         </div>
       )}
 
@@ -241,6 +309,82 @@ export default function SubjectListPage() {
             Профильные предметы
           </div>
           {profile.map(s => <SubjectRow key={s.id} subj={s} />)}
+        </div>
+      )}
+
+      {showTrialModal && (
+        <div className="modal-overlay" onClick={() => setShowTrialModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}
+            style={{ maxWidth: 640, width: '100%', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)' }}>
+            <div className="modal-header">
+              <h3 style={{ fontSize: 20, fontWeight: 800 }}>Пробное тестирование INTELLECT</h3>
+              <button className="btn btn-sm" onClick={() => setShowTrialModal(false)}>✕</button>
+            </div>
+            <div style={{ padding: '0 24px 24px' }}>
+              <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 16 }}>
+                Выберите пробный вариант по номеру. В ЕНТ-пробнике на следующем шаге
+                нужно выбрать два профильных предмета; NUET начинается сразу.
+              </p>
+              {['ent', 'nuet'].map(track => {
+                const group = orderedTrials.filter(s => s.track === track)
+                if (!group.length) return null
+                return (
+                  <div key={track} style={{ marginBottom: 18 }}>
+                    <div style={{
+                      fontSize: 11, fontWeight: 700, letterSpacing: '0.12em',
+                      textTransform: 'uppercase', color: 'var(--text-secondary)',
+                      marginBottom: 8,
+                    }}>
+                      {track === 'ent' ? 'ЕНТ · пробные варианты' : 'NUET · пробники по номерам'}
+                    </div>
+                    {group.map(s => {
+                      const info = trialStatus(s)
+                      const questions = s.total_questions || s.question_count || 0
+                      return (
+                        <div key={s.id} style={{
+                          display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+                          border: '1px solid var(--border)', borderRadius: 12,
+                          padding: '12px 14px', marginBottom: 8, background: '#fff',
+                        }}>
+                          <div style={{
+                            width: 40, height: 40, borderRadius: 11, flexShrink: 0,
+                            background: track === 'ent' ? 'rgba(245,158,11,0.12)' : 'rgba(16,185,129,0.12)',
+                            color: track === 'ent' ? '#92400E' : '#047857',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 15, fontWeight: 800,
+                          }}>{trialNumber(s)}</div>
+                          <div style={{ flex: '1 1 200px', minWidth: 160 }}>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
+                              {trialTitle(s)}
+                            </div>
+                            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
+                              {questions > 0
+                                ? `${questions} вопросов · ${Math.round(s.time_limit / 60)} мин`
+                                : 'Вопросы ещё загружаются'}
+                            </div>
+                            <div style={{ marginTop: 6 }}>
+                              <span className={`badge ${info.cls}`} style={{ fontSize: 10, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                <CalendarDays size={10} strokeWidth={1.5} /> {info.label}
+                              </span>
+                            </div>
+                          </div>
+                          <button className={info.disabled ? 'btn btn-outline btn-sm' : 'btn btn-primary btn-sm'}
+                            disabled={info.disabled}
+                            onClick={() => openTrial(s)}
+                            style={{ borderRadius: 10, padding: '8px 16px', flexShrink: 0 }}>
+                            {info.cta}
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })}
+              {!orderedTrials.length && (
+                <div style={{ fontSize: 14, color: 'var(--text-secondary)' }}>Пробные варианты пока не объявлены</div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
