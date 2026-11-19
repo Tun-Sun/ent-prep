@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import TelegramLoginButton, {
-  TelegramReturnPanel, useTelegramConfig, useTelegramReturn,
+import {
+  TelegramDirectButton, TelegramReturnPanel, useTelegramConfig, useTelegramReturn,
 } from './TelegramLoginButton'
 import ProfileIntroCard from './ProfileIntroCard'
 
@@ -28,6 +28,12 @@ export default function LoginPage() {
   const query = new URLSearchParams(window.location.search)
   const wanted = query.get('next') || '/'
   const next = wanted.startsWith('/') && !wanted.startsWith('//') ? wanted : '/'
+  // Урок из вложенной ссылки: Telegram-вход привязывает к нему тем же запросом.
+  const lessonHref = next.startsWith('/sso?') ? new URLSearchParams(next.slice(next.indexOf('?') + 1)) : null
+  const assignmentId = lessonHref && Number(lessonHref.get('preview_assignment'))
+  const lessonToken = lessonHref && lessonHref.get('lesson_token')
+  const lesson = assignmentId > 0 && lessonToken
+    ? { assignment_id: String(assignmentId), lesson_token: lessonToken } : null
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -84,9 +90,10 @@ export default function LoginPage() {
 
         {showTelegram && (
           <div style={{ marginBottom: 18 }}>
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
-              <TelegramLoginButton botName={telegram.botName} retryToken={tg.error} />
-            </div>
+            <TelegramDirectButton
+              botId={telegram.botId}
+              extra={lesson || {}}
+              label={lesson ? 'Войти через Telegram и открыть урок' : 'Войти через Telegram'} />
             {tg.entered && (
               <div style={{ marginTop: 10 }}>
                 <p className="text-sm" style={{ color: 'var(--danger)' }}>{tg.entered.notice}</p>
