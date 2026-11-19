@@ -147,6 +147,15 @@ class StartEntSerializer(serializers.Serializer):
     profile2_id = serializers.IntegerField(label='Профильный предмет 2')
 
 
+class StartTrialSerializer(serializers.Serializer):
+    """Старт ЕНТ-пробника: обязательные части + два профильных предмета."""
+    subject_id = serializers.IntegerField()
+    profile_ids = serializers.ListField(
+        child=serializers.IntegerField(), min_length=2, max_length=2,
+        label='Два профильных предмета',
+    )
+
+
 class AnswerBulkSerializer(serializers.Serializer):
     answers = serializers.ListField(child=AnswerRecordCreateSerializer())
 

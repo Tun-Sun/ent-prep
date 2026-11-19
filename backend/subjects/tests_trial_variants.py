@@ -16,8 +16,8 @@ from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from subjects.models import Answer, Assignment, Question, Subject, Topic
-from subjects.trial_variants import (MAX_TIME_LIMIT, MIN_TIME_LIMIT, TRIAL_SLUGS,
-                                     count_time_limit)
+from subjects.trial_variants import (ENT_TRIAL_TIME_LIMIT, MAX_TIME_LIMIT, MIN_TIME_LIMIT,
+                                     TRIAL_SLUGS, count_time_limit)
 from tests.models import TestSession
 from users.models import User
 
@@ -104,7 +104,8 @@ class TrialCountsSyncTest(TestCase):
 
         subject = Subject.objects.get(slug='ent-01')
         self.assertEqual(subject.question_count, 40)
-        self.assertEqual(subject.time_limit, 40 * 60)
+        # ENT-пробники идут фиксированно по 3 часа, сколько бы вопросов ни было.
+        self.assertEqual(subject.time_limit, ENT_TRIAL_TIME_LIMIT)
 
     def test_sync_skips_variant_without_questions(self):
         run('trial_variants')
@@ -227,7 +228,7 @@ class TrialImportCommandTest(TestCase):
 
         subject = Subject.objects.get(slug='ent-01')
         self.assertEqual(subject.question_count, 20)
-        self.assertEqual(subject.time_limit, 20 * 60)
+        self.assertEqual(subject.time_limit, ENT_TRIAL_TIME_LIMIT)
         self.assertIn('ent-01', out)
         # Соседний вариант не тронут: формы заливаются по одной.
         self.assertEqual(Subject.objects.get(slug='ent-02').question_count, 10)

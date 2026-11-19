@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import (
-    StartTestView, StartEntView, SubmitAnswerView,
+    StartTestView, StartEntView, StartTrialView, TrialProfileOptionsView, SubmitAnswerView,
     SubmitBulkAnswersView, FinishTestView, TestStateView,
     TestResultView, StudentTestHistoryView,
     TeacherTestHistoryView, TeacherTestResultView, TestPreviewView,
@@ -10,6 +10,8 @@ from .views import (
 
 urlpatterns = [
     path('start/', StartTestView.as_view(), name='start-test'),
+    path('start-trial/', StartTrialView.as_view(), name='start-trial'),
+    path('trial-options/', TrialProfileOptionsView.as_view(), name='trial-options'),
     path('start-ent/', StartEntView.as_view(), name='start-ent'),
     path('<int:session_id>/answer/', SubmitAnswerView.as_view(), name='submit-answer'),
     path('<int:session_id>/answers/bulk/', SubmitBulkAnswersView.as_view(), name='submit-bulk-answers'),

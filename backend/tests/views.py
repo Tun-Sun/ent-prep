@@ -20,9 +20,10 @@ from subjects.permissions import IsTeacherOrAdmin
 from core.choices import TrackChoices
 from core.tracks import (available_tracks, can_use_subject, filter_subjects_for_user,
                          requires_track, student_track)
+from subjects.trial_variants import ENT_TRIAL_SLUGS
 from .models import TestSession, TestSessionQuestion, TestSectionResult, AnswerRecord
 from .serializers import (
-    StartTestSerializer, StartEntSerializer, AnswerBulkSerializer,
+    StartTestSerializer, StartEntSerializer, StartTrialSerializer, AnswerBulkSerializer,
     AnswerRecordCreateSerializer,
     TestSessionListSerializer, TestSessionDetailSerializer,
     TeacherTestSessionListSerializer, TeacherTestSessionDetailSerializer,
@@ -34,6 +35,32 @@ ENT_SECTION_CONFIG = {
     'reading':  {'count': 10, 'section_label': 'Грамотность чтения', 'subject_slug': 'reading'},
     'math_lit': {'count': 10, 'section_label': 'Математическая грамотность', 'subject_slug': 'math_profile'},
 }
+
+# Профильные предметы, которые ученик выбирает в окне старта ЕНТ-пробника.
+TRIAL_PROFILE_SLUGS = ('math', 'physics', 'geography')
+TRIAL_PROFILE_ROLE = {'math': 'math', 'physics': 'physics', 'geography': 'geography'}
+
+
+def _trial_topic_role(topic_name):
+    """Определить роль темы пробника по её названию из Google Forms."""
+    name = (topic_name or '').casefold()
+    # Матграмотность проверяем раньше математики: «математическая грамотность»
+    # иначе попала бы в профильную математику.
+    if 'грамотност' in name:
+        return 'math_lit'
+    if 'истори' in name:
+        return 'history'
+    if 'географ' in name:
+        return 'geography'
+    if 'физ' in name:
+        return 'physics'
+    if 'математи' in name:
+        return 'math'
+    return ''
+
+
+def _trial_topics(subject, role):
+    return [t for t in subject.topics.all() if _trial_topic_role(t.name) == role]
 
 
 def _build_question_data(questions, request):
@@ -486,6 +513,139 @@ class StartEntView(APIView):
             'time_limit': session.time_limit,
             'sections': sections_info,
             'questions': question_data,
+        })
+
+
+class TrialProfileOptionsView(APIView):
+    """Какие профильные предметы доступны в конкретном ЕНТ-пробнике."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        subject_id = request.query_params.get('subject_id')
+        subject = Subject.objects.filter(id=subject_id, slug__in=ENT_TRIAL_SLUGS).first()
+        if not subject:
+            return Response({'error': 'Пробный вариант не найден'}, status=status.HTTP_404_NOT_FOUND)
+        result = []
+        for profile in Subject.objects.filter(slug__in=TRIAL_PROFILE_SLUGS).order_by('sort_order', 'name'):
+            role = TRIAL_PROFILE_ROLE[profile.slug]
+            topics = _trial_topics(subject, role)
+            count = Question.objects.filter(topic__in=topics).answerable().count()
+            result.append({
+                'id': profile.id, 'slug': profile.slug, 'name': profile.name,
+                'questions': count, 'available': count > 0,
+            })
+        return Response(result)
+
+
+class StartTrialView(APIView):
+    """ЕНТ-пробник: история + матграмотность + два выбранных профильных предмета."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = StartTrialSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        subject = Subject.objects.filter(
+            id=serializer.validated_data['subject_id'],
+            slug__in=ENT_TRIAL_SLUGS,
+        ).first()
+        if not subject:
+            return Response({'error': 'Пробный вариант не найден'}, status=status.HTTP_404_NOT_FOUND)
+        if getattr(request.user, 'role', '') == 'student' and not subject.is_visible:
+            return Response({'error': 'Этот предмет сейчас недоступен'},
+                            status=status.HTTP_403_FORBIDDEN)
+        if not can_use_subject(request.user, subject):
+            return Response({'error': 'Этот предмет относится к другому треку'},
+                            status=status.HTTP_403_FORBIDDEN)
+        if (getattr(request.user, 'role', '') == 'student'
+                and not subject.is_available_now()):
+            return Response({'error': 'Пробный тест сейчас недоступен'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        profiles = list(Subject.objects.filter(id__in=serializer.validated_data['profile_ids']))
+        if len(profiles) != 2:
+            return Response({'error': 'Выберите два профильных предмета'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        chosen = []
+        for profile in profiles:
+            role = TRIAL_PROFILE_ROLE.get(profile.slug)
+            if not role:
+                return Response({'error': f'«{profile.name}» не профильный предмет'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            chosen.append((role, profile))
+        if len({role for role, _ in chosen}) != 2:
+            return Response({'error': 'Выберите разные профильные предметы'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        selected = {}
+        labels = {}
+        for role in ('history', 'math_lit'):
+            topics = _trial_topics(subject, role)
+            need = 20 if role == 'history' else 10
+            qs = _pick_questions(Question.objects.filter(topic__in=topics), need)
+            if len(qs) < need:
+                return Response({
+                    'error': f'В варианте не хватает вопросов: {role} — '
+                             f'нужно {need}, есть {len(qs)}',
+                }, status=status.HTTP_400_BAD_REQUEST)
+            selected[role] = qs
+            labels[role] = topics[0].name if topics else role
+
+        for role, profile in chosen:
+            qs = _pick_questions(
+                Question.objects.filter(topic__in=_trial_topics(subject, role)), 40)
+            if not qs:
+                return Response({
+                    'error': f'По предмету «{profile.name}» в этом варианте '
+                             f'пока нет вопросов',
+                }, status=status.HTTP_400_BAD_REQUEST)
+            selected[role] = qs
+            labels[role] = profile.name
+
+        section_keys = {'history': 'history', 'math_lit': 'math_lit',
+                        chosen[0][0]: 'profile1', chosen[1][0]: 'profile2'}
+        order = ['history', 'math_lit', chosen[0][0], chosen[1][0]]
+        all_questions = []
+        for role in order:
+            all_questions.extend(selected[role])
+
+        session = TestSession.objects.create(
+            student=request.user,
+            subject=subject,
+            total_questions=len(all_questions),
+            time_limit=subject.time_limit,
+            total_points=sum(q.points for q in all_questions),
+        )
+        TestSessionQuestion.objects.bulk_create([
+            TestSessionQuestion(
+                session=session, question=question, position=position,
+                section=section_keys[role],
+            )
+            for role in order
+            for position, question in enumerate(selected[role],
+                                                start=1 + sum(len(selected[r]) for r in order[:order.index(role)]))
+        ])
+
+        sections_info = []
+        idx = 0
+        for role in order:
+            qs = selected[role]
+            sections_info.append({
+                'id': section_keys[role],
+                'label': labels[role],
+                'start': idx + 1,
+                'end': idx + len(qs),
+                'count': len(qs),
+                'points_max': sum(q.points for q in qs),
+            })
+            idx += len(qs)
+
+        return Response({
+            'session_id': session.id,
+            'total_questions': len(all_questions),
+            'total_points': session.total_points,
+            'time_limit': session.time_limit,
+            'sections': sections_info,
+            'questions': _build_question_data(all_questions, request),
         })
 
 

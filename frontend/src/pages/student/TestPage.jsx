@@ -48,6 +48,7 @@ export default function TestPage() {
   const isEnt = location.pathname === '/test/ent'
   const isRush = location.pathname === '/test/rush'
   const isDuel = location.pathname.startsWith('/test/duel/')
+  const isTrialStart = !isEnt && !isRush && !isDuel && Boolean(location.state?.trial)
   const entProfileIds = location.state || {}
   const topicIds = location.state?.topicIds || []
 
@@ -65,10 +66,61 @@ export default function TestPage() {
   const [showGrid, setShowGrid] = useState(true)
   const [timeLimit, setTimeLimit] = useState(600)
   const [totalPoints, setTotalPoints] = useState(0)
+  const [showTrialModal, setShowTrialModal] = useState(false)
+  const [trialOptions, setTrialOptions] = useState([])
+  const [trialPick, setTrialPick] = useState(['', ''])
+  const [trialError, setTrialError] = useState('')
+  const [trialStarting, setTrialStarting] = useState(false)
+
+  const applyStart = (data) => {
+    const incoming = data.questions || []
+    // Серверные секции (полная симуляция и ЕНТ-пробник) задают порядок.
+    const grouped = data.sections?.length
+      ? { questions: incoming, sections: data.sections }
+      : splitIntoTopicBlocks(incoming)
+    setSessionId(data.session_id)
+    setQuestions(grouped.questions)
+    setSections(grouped.sections)
+    setTimeLimit(data.time_limit || 600)
+    setTotalPoints(data.total_points || 0)
+  }
+
+  const startTrial = async () => {
+    if (!trialPick[0] || !trialPick[1] || trialPick[0] === trialPick[1]) {
+      setTrialError('Выберите два разных профильных предмета')
+      return
+    }
+    setTrialStarting(true)
+    setTrialError('')
+    try {
+      const res = await testsAPI.startTrial({
+        subject_id: parseInt(subjectId),
+        profile_ids: trialPick.map(id => parseInt(id)),
+      })
+      applyStart(res.data)
+      setShowTrialModal(false)
+    } catch (err) {
+      setTrialError(err.response?.data?.error || 'Не удалось начать пробный тест')
+    } finally {
+      setTrialStarting(false)
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    const startTest = async () => {
+    const bootstrap = async () => {
       try {
+        if (isTrialStart) {
+          const res = await testsAPI.trialOptions(parseInt(subjectId))
+          const options = res.data || []
+          setTrialOptions(options)
+          setTrialPick([
+            options.find(o => o.available)?.id || '',
+            options.filter(o => o.available)[1]?.id || '',
+          ])
+          setShowTrialModal(true)
+          return
+        }
         let res
         if (isEnt) {
           res = await testsAPI.startEnt({
@@ -88,26 +140,15 @@ export default function TestPage() {
           if (topicIds.length > 0) payload.topic_ids = topicIds
           res = await testsAPI.start(payload)
         }
-        const data = res.data
-        const incoming = data.questions || []
-        // У полной симуляции ЕНТ секции приходят с сервера и задают позиции —
-        // их нельзя переставлять. У пробных вариантов строим два блока сами.
-        const grouped = data.sections?.length
-          ? { questions: incoming, sections: data.sections }
-          : splitIntoTopicBlocks(incoming)
-        setSessionId(data.session_id)
-        setQuestions(grouped.questions)
-        setSections(grouped.sections)
-        setTimeLimit(data.time_limit || 600)
-        setTotalPoints(data.total_points || 0)
+        applyStart(res.data)
       } catch (err) {
         setError(err.response?.data?.error || 'Ошибка старта теста')
       } finally {
         setLoading(false)
       }
     }
-    startTest()
-  }, [subjectId, isEnt, isRush, isDuel, duelId])
+    bootstrap()
+  }, [subjectId, isEnt, isRush, isDuel, isTrialStart, duelId])
 
   const current = questions[currentIdx]
 
@@ -259,6 +300,51 @@ export default function TestPage() {
     if (answers[q.id]) return 'answered'
     if (idx === currentIdx) return 'current'
     return ''
+  }
+
+  if (showTrialModal) {
+    return (
+      <div className="modal-overlay">
+        <div className="modal" style={{ maxWidth: 560, borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)', width: '100%' }}>
+          <div className="modal-header">
+            <h3 style={{ fontSize: 20, fontWeight: 800 }}>Начать ЕНТ пробный тест</h3>
+          </div>
+          <div style={{ padding: '0 24px 24px' }}>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 16 }}>
+              История Казахстана (20) и математическая грамотность (10) уже включены.
+              Выберите два профильных предмета — всего будет 90 вопросов за 3 часа.
+            </p>
+            {trialError && <div className="alert alert-error" style={{ marginBottom: 12 }}>{trialError}</div>}
+            {[0, 1].map(index => (
+              <select key={index} className="form-select" value={trialPick[index]}
+                onChange={e => setTrialPick(prev => {
+                  const next = [...prev]
+                  next[index] = e.target.value
+                  return next
+                })}
+                style={{ width: '100%', marginBottom: 10, padding: '12px 14px', borderRadius: 12,
+                  border: '1px solid var(--border)', fontSize: 15, background: '#fff', cursor: 'pointer' }}>
+                <option value="">Профильный предмет {index + 1}</option>
+                {trialOptions.map(o => (
+                  <option key={o.id} value={o.id}
+                    disabled={!o.available || trialPick[1 - index] === o.id}>
+                    {o.name} — {o.available ? `${o.questions} вопросов` : 'скоро'}
+                  </option>
+                ))}
+              </select>
+            ))}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
+              <button className="btn btn-outline" onClick={() => navigate(-1)}
+                style={{ borderRadius: 12, padding: '10px 20px' }}>Отмена</button>
+              <button className="btn btn-primary" onClick={startTrial} disabled={trialStarting}
+                style={{ borderRadius: 12, padding: '10px 22px', opacity: trialStarting ? 0.6 : 1 }}>
+                {trialStarting ? 'Начинаем…' : 'Начать тест'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (loading) return <div className="text-center mt-8"><div className="spinner"></div></div>
