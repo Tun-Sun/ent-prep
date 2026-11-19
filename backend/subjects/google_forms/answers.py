@@ -324,7 +324,7 @@ def get_questions_via_api(form_id: str) -> Optional[dict]:
     info = form.get('info') or {}
     # У старых ENT-форм заголовок лежит в documentTitle, а не в title.
     title = (info.get('title') or info.get('documentTitle')
-             or f'Form {form_id}')
+             or f'Form {form_id}').strip()
     questions: list[dict] = []
     image_uris: dict[int, str] = {}
 
