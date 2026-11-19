@@ -61,7 +61,7 @@ const studentSections = (user) => {
 
 // Кабинет тренера: 13 пунктов одним списком было не найти нужный. Три группы по
 // смыслу — учебный процесс, контент банка, цифры.
-const teacherSections = [
+const teacherSections = (user) => [
   {
     title: 'Обучение',
     links: [
@@ -85,6 +85,14 @@ const teacherSections = [
       { to: '/teacher/settings', label: 'Настройки', short: 'Настройки', icon: 'admin' },
     ],
   },
+  // Панель администратора была доступна только по прямому адресу: пункта
+  // меню не было, и «поставить даты пробнику» упиралось в поиск ссылки.
+  ...(user?.role === 'admin' ? [{
+    title: 'Администрирование',
+    links: [
+      { to: '/teacher/admin', label: 'Админ-панель', short: 'Админ', icon: 'admin' },
+    ],
+  }] : []),
 ]
 
 const flatLinks = (sections) => sections.flatMap(s => s.links)
@@ -118,7 +126,7 @@ export default function Layout() {
   }
 
   const isTeacherMode = mode === 'teacher'
-  const sections = isTeacherMode ? teacherSections : studentSections(user)
+  const sections = isTeacherMode ? teacherSections(user) : studentSections(user)
   const links = flatLinks(sections)
 
   // Переключатель ведёт не только меню, но и экран: один клик — и владелец

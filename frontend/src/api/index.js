@@ -217,9 +217,10 @@ export const groupsAPI = {
   delete: (id) => api.delete(`/auth/groups/${id}/`),
   addStudents: (id, studentIds) => api.post(`/auth/groups/${id}/students/`, { student_ids: studentIds }),
   removeStudent: (id, studentId) => api.delete(`/auth/groups/${id}/students/?student_id=${studentId}`),
-  searchStudents: (query, groupId) => {
+  searchStudents: (query, groupId, status) => {
     let url = `/auth/students/search/?search=${query}`
     if (groupId) url += `&group_id=${groupId}`
+    if (status) url += `&status=${status}`
     return api.get(url)
   },
   createStudent: (data) => api.post('/auth/students/create/', data),
@@ -230,6 +231,7 @@ export const groupsAPI = {
       track, extra_tracks: extraTracks,
     }),
   deactivateStudent: (studentId) => api.delete(`/auth/students/${studentId}/`),
+  reactivateStudent: (studentId) => api.post(`/auth/students/${studentId}/reactivate/`),
 }
 
 // Оцифровка новых книг: загрузил PDF — сервер сам прогнал конвейер и положил черновики

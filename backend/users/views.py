@@ -283,6 +283,26 @@ class DeactivateStudentView(APIView):
                          'is_active': False, 'message': 'Ученик деактивирован'})
 
 
+class ReactivateStudentView(APIView):
+    """Вернуть доступ деактивированному ученику.
+
+    Без этого снятие было дорогой в одну сторону: найти ученика в фильтре
+    можно, а включить обратно — только через Django admin.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, student_id):
+        if request.user.role not in ('teacher', 'admin'):
+            return Response({'error': 'Доступ только для учителей'}, status=403)
+        student = User.objects.filter(id=student_id, role='student').first()
+        if not student:
+            return Response({'error': 'Ученик не найден'}, status=404)
+        student.is_active = True
+        student.save(update_fields=['is_active'])
+        return Response({'id': student.id, 'username': student.username,
+                         'is_active': True, 'message': 'Доступ восстановлен'})
+
+
 class ChangePasswordView(APIView):
     """Смена собственного пароля (все роли)."""
     permission_classes = [IsAuthenticated]
@@ -422,7 +442,12 @@ class StudentListView(APIView):
         search = request.query_params.get('search', '')
         group_id = request.query_params.get('group_id')
         track = request.query_params.get('track', '')
+        # В поиске по умолчанию только активные: деактивированного нельзя
+        # случайно записать в группу или выбрать в фильтр результатов.
+        status_param = request.query_params.get('status', 'active')
         students = User.objects.filter(role='student')
+        if status_param != 'all':
+            students = students.filter(is_active=status_param != 'inactive')
         if track:
             if track not in ('school', 'ent', 'nuet'):
                 return Response({'error': 'Такого трека нет: school / ent / nuet'}, status=400)
@@ -466,6 +491,9 @@ class AdminUserListView(AdminRequiredMixin, generics.ListAPIView):
         qs = User.objects.all()
         search = self.request.query_params.get('search', '')
         role = self.request.query_params.get('role', '')
+        status_param = self.request.query_params.get('status', 'active')
+        if status_param != 'all':
+            qs = qs.filter(is_active=status_param != 'inactive')
         if search:
             qs = qs.filter(
                 Q(username__icontains=search) |

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { dashboardAPI, groupsAPI, subjectsAPI, authAPI } from '../../api'
 import { TRACK_LABELS, GRADUATION_TRACKS } from '../../constants/tracks'
-import { X, Users, Plus, Check, BookOpen, Search, Filter, GraduationCap, School, BarChart3, Trophy, FileDown, KeyRound, Settings, UserX } from 'lucide-react'
+import { X, Users, Plus, Check, BookOpen, Search, Filter, GraduationCap, School, BarChart3, Trophy, FileDown, KeyRound, Settings, UserX, UserCheck } from 'lucide-react'
 
 export default function StudentsPage() {
   const [students, setStudents] = useState([])
@@ -12,6 +12,7 @@ export default function StudentsPage() {
   const [filterGroupId, setFilterGroupId] = useState('')
   const [filterGrade, setFilterGrade] = useState('')
   const [filterTrack, setFilterTrack] = useState('')
+  const [filterStatus, setFilterStatus] = useState('active')
   const [filterSubjectId, setFilterSubjectId] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -36,6 +37,7 @@ export default function StudentsPage() {
     if (filterGroupId) params.group_id = filterGroupId
     if (filterGrade) params.grade = filterGrade
     if (filterTrack) params.track = filterTrack
+    if (filterStatus) params.status = filterStatus
     if (filterSubjectId) params.subject_id = filterSubjectId
     if (dateFrom) params.date_from = dateFrom
     if (dateTo) params.date_to = dateTo
@@ -53,7 +55,7 @@ export default function StudentsPage() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { loadData() }, [filterGroupId, filterGrade, filterTrack, filterSubjectId, dateFrom, dateTo])
+  useEffect(() => { loadData() }, [filterGroupId, filterGrade, filterTrack, filterStatus, filterSubjectId, dateFrom, dateTo])
 
   const handleAssign = async () => {
     if (!assignStudent || !selectedGroup) return
@@ -100,6 +102,16 @@ export default function StudentsPage() {
     }
   }
 
+  const doReactivateStudent = async (student) => {
+    if (!window.confirm(`Вернуть доступ ${student.full_name || student.username}?`)) return
+    try {
+      await groupsAPI.reactivateStudent(student.id)
+      await loadData()
+    } catch (err) {
+      alert(err.response?.data?.error || 'Не удалось вернуть доступ')
+    }
+  }
+
   const openTracks = (student) => {
     setTrackStudent(student)
     setPrimaryTrack(student.track || '')
@@ -126,7 +138,8 @@ export default function StudentsPage() {
   }
 
   const clearFilters = () => {
-    setFilterGroupId(''); setFilterGrade(''); setFilterTrack(''); setFilterSubjectId(''); setDateFrom(''); setDateTo('')
+    setFilterGroupId(''); setFilterGrade(''); setFilterTrack(''); setFilterStatus('active')
+    setFilterSubjectId(''); setDateFrom(''); setDateTo('')
   }
 
   const downloadReport = async (student) => {
@@ -170,7 +183,7 @@ export default function StudentsPage() {
       return (a.full_name || a.username).localeCompare(b.full_name || b.username)
     })
 
-  const hasFilters = filterGroupId || filterGrade || filterTrack || filterSubjectId || dateFrom || dateTo
+  const hasFilters = filterGroupId || filterGrade || filterTrack || filterStatus !== 'active' || filterSubjectId || dateFrom || dateTo
 
   return (
     <div>
@@ -203,6 +216,18 @@ export default function StudentsPage() {
               <option value="school">Школа</option>
               <option value="ent">ЕНТ</option>
               <option value="nuet">NUET</option>
+            </select>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <Filter size={12} strokeWidth={1.5} style={{ display: 'inline', marginRight: 4, verticalAlign: -1 }} />
+              Доступ
+            </div>
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+              style={{ height: 38, borderRadius: 10, border: '1px solid var(--border)', padding: '0 12px', fontSize: 13, background: '#fff', cursor: 'pointer', minWidth: 160 }}>
+              <option value="active">Активные</option>
+              <option value="inactive">Деактивированные</option>
+              <option value="all">Все ученики</option>
             </select>
           </div>
           <div>
@@ -376,7 +401,16 @@ export default function StudentsPage() {
                       }}>
                       <Settings size={16} strokeWidth={1.8} />
                     </button>
-                    {s.is_active !== false && (
+                    {s.is_active === false ? (
+                      <button onClick={() => doReactivateStudent(s)} title="Вернуть доступ"
+                        style={{
+                          border: 'none', background: 'transparent', cursor: 'pointer',
+                          color: '#047857', marginRight: 10, verticalAlign: 'middle',
+                          display: 'inline-flex', alignItems: 'center',
+                        }}>
+                        <UserCheck size={16} strokeWidth={1.8} />
+                      </button>
+                    ) : (
                       <button onClick={() => doDeactivateStudent(s)} title="Деактивировать ученика"
                         style={{
                           border: 'none', background: 'transparent', cursor: 'pointer',
@@ -402,7 +436,7 @@ export default function StudentsPage() {
                       }}>
                       <KeyRound size={16} strokeWidth={1.8} />
                     </button>
-                    <a href={`/teacher/tests?student=${s.id}`}
+                    <a href={`/teacher/tests?student=${s.id}&status=all`}
                       style={{ fontSize: 13, color: 'var(--primary)', fontWeight: 600, textDecoration: 'none' }}>
                       Результаты
                     </a>

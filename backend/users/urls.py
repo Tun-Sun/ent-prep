@@ -3,6 +3,7 @@ from .views import (
     RegisterView, ProfileView, UpdateProfileSubjectsView,
     ClearTestHistoryView, DeleteOwnAccountView,
     UpdateStudentSubjectsView, UpdateStudentTracksView, DeactivateStudentView,
+    ReactivateStudentView,
     ChangePasswordView, ResetStudentPasswordView, ResetStudentPasswordView,
     StudyGroupListCreateView, StudyGroupDetailView,
     StudyGroupAddStudentsView, CreateStudentView, StudentListView,
@@ -32,6 +33,8 @@ urlpatterns = [
     path('students/<int:student_id>/subjects/', UpdateStudentSubjectsView.as_view(), name='student-subjects'),
     path('students/<int:student_id>/tracks/', UpdateStudentTracksView.as_view(), name='student-tracks'),
     path('students/<int:student_id>/', DeactivateStudentView.as_view(), name='student-deactivate'),
+    path('students/<int:student_id>/reactivate/', ReactivateStudentView.as_view(),
+         name='student-reactivate'),
     path('students/<int:student_id>/reset-password/', ResetStudentPasswordView.as_view(), name='student-reset-password'),
     # Admin panel
     path('admin/users/', AdminUserListView.as_view(), name='admin-users'),

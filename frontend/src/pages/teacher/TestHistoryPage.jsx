@@ -9,6 +9,10 @@ export default function TestHistoryPage() {
   const [groups, setGroups] = useState([])
   const [filterSubject, setFilterSubject] = useState('')
   const [filterGroupId, setFilterGroupId] = useState('')
+  const [filterStatus, setFilterStatus] = useState(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get('status')
+    return ['active', 'inactive', 'all'].includes(fromUrl) ? fromUrl : 'active'
+  })
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [studentSearch, setStudentSearch] = useState('')
@@ -29,6 +33,7 @@ export default function TestHistoryPage() {
     setLoading(true)
     const params = {}
     if (filterSubject) params.subject = filterSubject
+    if (filterStatus) params.status = filterStatus
     if (selectedStudent) {
       params.student = selectedStudent.id
     } else if (urlStudentFilter) {
@@ -37,17 +42,17 @@ export default function TestHistoryPage() {
     testsAPI.teacherHistory(params)
       .then(res => setSessions(Array.isArray(res.data) ? res.data : []))
       .finally(() => setLoading(false))
-  }, [filterSubject, selectedStudent, urlStudentFilter])
+  }, [filterSubject, filterStatus, selectedStudent, urlStudentFilter])
 
   useEffect(() => {
     if (!studentSearch || studentSearch.length < 2) { setStudentResults([]); return }
     const timer = setTimeout(() => {
-      groupsAPI.searchStudents(studentSearch, filterGroupId).then(res => {
+      groupsAPI.searchStudents(studentSearch, filterGroupId, filterStatus).then(res => {
         setStudentResults(Array.isArray(res.data) ? res.data : [])
       }).catch(() => {})
     }, 300)
     return () => clearTimeout(timer)
-  }, [studentSearch, filterGroupId])
+  }, [studentSearch, filterGroupId, filterStatus])
 
   const filtered = useMemo(() => {
     let result = sessions
@@ -78,9 +83,9 @@ export default function TestHistoryPage() {
 
   const getScoreClass = (pct) => pct >= 70 ? '#16a34a' : pct >= 40 ? '#d97706' : '#dc2626'
 
-  const filterActive = filterSubject || filterGroupId || dateFrom || dateTo || selectedStudent || studentSearch
+  const filterActive = filterSubject || filterGroupId || filterStatus !== 'active' || dateFrom || dateTo || selectedStudent || studentSearch
   const clearFilters = () => {
-    setFilterSubject(''); setFilterGroupId(''); setDateFrom(''); setDateTo('')
+    setFilterSubject(''); setFilterGroupId(''); setFilterStatus('active'); setDateFrom(''); setDateTo('')
     setSelectedStudent(null); setStudentSearch(''); setShowDropdown(false); setUrlStudentFilter('')
   }
 
@@ -126,6 +131,18 @@ export default function TestHistoryPage() {
               style={{ height: 38, borderRadius: 10, border: '1px solid var(--border)', padding: '0 12px', fontSize: 13, background: '#fff', cursor: 'pointer', maxWidth: 160 }}>
               <option value="">Все группы</option>
               {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              <Filter size={12} strokeWidth={1.5} style={{ display: 'inline', marginRight: 4, verticalAlign: -1 }} />
+              Доступ
+            </label>
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+              style={{ height: 38, borderRadius: 10, border: '1px solid var(--border)', padding: '0 12px', fontSize: 13, background: '#fff', cursor: 'pointer', maxWidth: 170 }}>
+              <option value="active">Активные</option>
+              <option value="inactive">Деактивированные</option>
+              <option value="all">Все ученики</option>
             </select>
           </div>
           <div style={{ position: 'relative', minWidth: 180 }}>

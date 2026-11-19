@@ -17,6 +17,21 @@ from subjects.permissions import IsTeacherOrAdmin
 from tests.models import TestSession, TestSectionResult, AnswerRecord
 
 
+# Деактивированный ученик остаётся в базе и в истории, но в общих списках
+# тренера ему не место: снятый доступ — это не «ещё один ученик». Показываем
+# его только по явному фильтру, чтобы при возврате было легко найти.
+def _filter_student_status(qs, status, field='is_active'):
+    """Оставить в выборке активных, деактивированных или всех.
+
+    `active` — поведение по умолчанию для любого списка учеников. Опечатка или
+    пустой параметр не должны внезапно показывать деактивированных, поэтому
+    всё, кроме `inactive`/`all`, считается `active`.
+    """
+    if status == 'all':
+        return qs
+    return qs.filter(**{field: status != 'inactive'})
+
+
 class StudentDashboardView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -107,10 +122,10 @@ class TeacherDashboardView(APIView):
         else:
             start = None
 
-        students = User.objects.filter(role='student')
+        students = _filter_student_status(User.objects.filter(role='student'), 'active')
         total_students = students.count()
 
-        completed = TestSession.objects.filter(is_completed=True)
+        completed = TestSession.objects.filter(is_completed=True, student__is_active=True)
         total_tests = completed.count()
         avg_score = completed.aggregate(avg=Avg('score_percent'))['avg'] or 0
 
@@ -199,8 +214,10 @@ class TeacherDashboardView(APIView):
 
         # Средний балл по предметам
         subject_stats = subjects_qs.annotate(
-            avg_score=Avg('test_sessions__score_percent', filter=Q(test_sessions__is_completed=True)),
-            test_count=Count('test_sessions', filter=Q(test_sessions__is_completed=True)),
+            avg_score=Avg('test_sessions__score_percent', filter=Q(
+                test_sessions__is_completed=True, test_sessions__student__is_active=True)),
+            test_count=Count('test_sessions', filter=Q(
+                test_sessions__is_completed=True, test_sessions__student__is_active=True)),
         )
 
         subject_data = [
@@ -243,9 +260,11 @@ class TeacherStudentsView(APIView):
         date_to = request.query_params.get('date_to')
         grade = request.query_params.get('grade')
         track = request.query_params.get('track')
+        status_param = request.query_params.get('status', 'active')
 
-        # Base student query
-        students = User.objects.filter(role='student')
+        # Base student query: деактивированные не висят в общем журнале,
+        # но остаются доступны отдельным фильтром.
+        students = _filter_student_status(User.objects.filter(role='student'), status_param)
 
         # Класс 5–11: журнал тренера покрывает всю школу, а не только 11-й
         if grade:
@@ -460,6 +479,11 @@ class TeacherAnalyticsView(APIView):
         group_id = request.query_params.get('group_id')
         subject_id = request.query_params.get('subject_id')
         student_id = request.query_params.get('student_id')
+        status_param = request.query_params.get('status', 'active')
+
+        # Результаты деактивированных не должны попадать в общую аналитику:
+        # их видно только отдельным фильтром «Деактивированные».
+        qs = _filter_student_status(qs, status_param, field='student__is_active')
 
         if date_from:
             qs = qs.filter(started_at__date__gte=date_from)
@@ -507,7 +531,7 @@ class LeaderboardView(APIView):
         else:
             start = None
 
-        students = User.objects.filter(role='student')
+        students = User.objects.filter(role='student', is_active=True)
         rankings = []
         for s in students:
             sessions = TestSession.objects.filter(student=s, is_completed=True)

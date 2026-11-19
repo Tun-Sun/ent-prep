@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.shortcuts import render
 from django.contrib import messages
+from django.utils import timezone
 from functools import wraps
 
 from .models import Subject, Topic, Question, Answer, Variant, Assignment, AssignmentBlock
@@ -16,7 +17,8 @@ class TopicInline(admin.TabularInline):
 
 @admin.register(Subject)
 class SubjectAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'track', 'icon', 'is_visible', 'topics_count', 'questions_count')
+    list_display = ('name', 'slug', 'track', 'icon', 'is_visible',
+                    'opens_at', 'closes_at', 'topics_count', 'questions_count')
     list_display_links = ('name',)
     # Галочка прямо в списке: снять предмет с платформы нужно массово, а не входя
     # в карточку каждого из 15 предметов.
@@ -26,6 +28,41 @@ class SubjectAdmin(admin.ModelAdmin):
     search_fields = ('name', 'slug')
     inlines = [TopicInline]
     actions = ('hide_subjects', 'show_subjects')
+
+    # Даты открытия/закрытия пробника — в отдельном блоке вверху карточки:
+    # в общем списке полей их не находили, а это ровно то, что меняется
+    # перед каждым пробным тестом.
+    fieldsets = (
+        ('Основное', {
+            'fields': ('name', 'slug', 'icon', 'description', 'track',
+                       'subject_type', 'sort_order'),
+        }),
+        ('Показ ученикам и расписание', {
+            'fields': ('is_visible', 'show_in_profiles',
+                       'available_from', 'available_until'),
+            'description': (
+                'Пустые даты — предмет доступен всегда. Вне окна вариант '
+                'не показывается в каталоге и не запускается. '
+                'Время хранится в UTC и вводится в текущей часовой зоне.'
+            ),
+        }),
+        ('Параметры теста', {
+            'fields': ('question_count', 'time_limit',
+                       'ent_question_count', 'ent_max_score', 'ent_threshold'),
+        }),
+    )
+
+    @admin.display(description='Открыт с', ordering='available_from')
+    def opens_at(self, obj):
+        if not obj.available_from:
+            return '—'
+        return timezone.localtime(obj.available_from).strftime('%d.%m.%Y %H:%M')
+
+    @admin.display(description='Закрыт до', ordering='available_until')
+    def closes_at(self, obj):
+        if not obj.available_until:
+            return '—'
+        return timezone.localtime(obj.available_until).strftime('%d.%m.%Y %H:%M')
 
     @admin.display(description='Тем')
     def topics_count(self, obj):

@@ -974,6 +974,12 @@ class TeacherTestHistoryView(APIView):
 
         student_id = request.query_params.get('student')
         subject_id = request.query_params.get('subject')
+        status_param = request.query_params.get('status', 'active')
+
+        # Результаты деактивированных не висят в общей ленте: доступ снят,
+        # но история осталась и находится фильтром «Деактивированные».
+        if status_param != 'all':
+            sessions = sessions.filter(student__is_active=status_param != 'inactive')
 
         if student_id:
             sessions = sessions.filter(student_id=student_id)

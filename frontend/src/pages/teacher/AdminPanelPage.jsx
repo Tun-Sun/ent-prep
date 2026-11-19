@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { subjectsAPI, questionsAPI } from '../../api'
-import { Users, BookOpen, FolderOpen, Settings } from 'lucide-react'
+import { Users, BookOpen, FolderOpen, Settings, CalendarDays } from 'lucide-react'
 
 const iconSize = 18
 const TABS = [
   { key: 'users', label: 'Пользователи', icon: <Users size={iconSize} strokeWidth={1.5} /> },
   { key: 'subjects', label: 'Предметы', icon: <BookOpen size={iconSize} strokeWidth={1.5} /> },
+  { key: 'trials', label: 'Пробные', icon: <CalendarDays size={iconSize} strokeWidth={1.5} /> },
   { key: 'topics', label: 'Темы', icon: <FolderOpen size={iconSize} strokeWidth={1.5} /> },
   { key: 'settings', label: 'Настройки', icon: <Settings size={iconSize} strokeWidth={1.5} /> },
 ]
@@ -40,6 +41,7 @@ export default function AdminPanelPage() {
       </div>
       {tab === 'users' && <UsersTab />}
       {tab === 'subjects' && <SubjectsTab />}
+      {tab === 'trials' && <TrialScheduleTab />}
       {tab === 'topics' && <TopicsTab />}
       {tab === 'settings' && <SettingsTab />}
     </div>
@@ -51,6 +53,7 @@ function UsersTab() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('active')
   const [saving, setSaving] = useState(null)
 
   const authHeaders = { Authorization: `Bearer ${localStorage.getItem('access_token')}` }
@@ -60,6 +63,7 @@ function UsersTab() {
     const params = new URLSearchParams()
     if (search) params.set('search', search)
     if (roleFilter) params.set('role', roleFilter)
+    if (statusFilter) params.set('status', statusFilter)
     fetch(`/api/auth/admin/users/?${params}`, { headers: authHeaders })
       .then(r => r.json())
       .then(setUsers)
@@ -67,7 +71,7 @@ function UsersTab() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [search, roleFilter])
+  useEffect(() => { load() }, [search, roleFilter, statusFilter])
 
   const updateUser = (id, data) => {
     setSaving(id)
@@ -98,6 +102,12 @@ function UsersTab() {
           <option value="student">Ученики</option>
           <option value="teacher">Учителя</option>
           <option value="admin">Админы</option>
+        </select>
+        <select className="form-select" style={{ maxWidth: 180 }}
+          value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+          <option value="active">Активные</option>
+          <option value="inactive">Деактивированные</option>
+          <option value="all">Все статусы</option>
         </select>
       </div>
       {loading ? <div className="text-center"><div className="spinner"></div></div> : (
@@ -157,6 +167,161 @@ function UsersTab() {
           </table>
         </div>
       )}
+    </div>
+  )
+}
+
+// Пробные варианты живут отдельными предметами. Даты открытия/закрытия —
+// единственное, что тренеру нужно менять перед каждым пробником, поэтому
+// выносим их в отдельную вкладку, а не в общий список предметов.
+const TRIAL_SLUGS = ['ent-01', 'ent-02', 'ent-03', 'nuet-01', 'nuet-02', 'nuet-03']
+const TRIAL_TRACKS = { ent: 'ЕНТ', nuet: 'NUET' }
+
+function trialScheduleState(row) {
+  if (!row.is_visible) return { label: 'Скрыт', cls: 'badge-hard' }
+  const now = Date.now()
+  if (row.available_from && now < new Date(row.available_from).getTime()) {
+    return { label: 'Откроется позже', cls: 'badge-medium' }
+  }
+  if (row.available_until && now > new Date(row.available_until).getTime()) {
+    return { label: 'Закрыт', cls: 'badge-hard' }
+  }
+  return { label: 'Доступен', cls: 'badge-easy' }
+}
+
+function TrialScheduleTab() {
+  const [rows, setRows] = useState([])
+  const [drafts, setDrafts] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [savingId, setSavingId] = useState(null)
+  const [savedId, setSavedId] = useState(null)
+
+  const applyRows = (subjects) => {
+    const trials = TRIAL_SLUGS
+      .map(slug => subjects.find(s => s.slug === slug))
+      .filter(Boolean)
+    setRows(trials)
+    const next = {}
+    trials.forEach(s => {
+      next[s.id] = {
+        available_from: dateToInput(s.available_from),
+        available_until: dateToInput(s.available_until),
+        is_visible: s.is_visible,
+      }
+    })
+    setDrafts(next)
+  }
+
+  const load = () => subjectsAPI.list()
+    .then(res => applyRows(Array.isArray(res.data) ? res.data : []))
+    .catch(() => {})
+    .finally(() => setLoading(false))
+
+  useEffect(() => { load() }, [])
+
+  const updateDraft = (id, patch) =>
+    setDrafts(prev => ({ ...prev, [id]: { ...prev[id], ...patch } }))
+
+  const save = async (row, override = {}) => {
+    const draft = { ...drafts[row.id], ...override }
+    setSavingId(row.id)
+    setSavedId(null)
+    try {
+      const res = await fetch(`/api/subjects/${row.id}/`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('access_token')}`,
+        },
+        body: JSON.stringify({
+          available_from: inputToDate(draft.available_from),
+          available_until: inputToDate(draft.available_until),
+          is_visible: draft.is_visible,
+        }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      setSavedId(row.id)
+      await load()
+    } catch {
+      alert('Не удалось сохранить расписание')
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  if (loading) return <div className="text-center"><div className="spinner"></div></div>
+
+  return (
+    <div className="card">
+      <div style={{ marginBottom: 18 }}>
+        <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>Расписание пробных вариантов</h3>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
+          Пустое поле — без ограничения. Вне окна вариант не показывается ученику
+          в каталоге и не запускается. Время — местное (Алматы).
+        </p>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {rows.map(row => {
+          const draft = drafts[row.id] || {}
+          const state = trialScheduleState({ ...row, ...draft })
+          return (
+            <div key={row.id} style={{
+              border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px',
+              background: '#fff', display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'flex-end',
+            }}>
+              <div style={{ flex: '1 1 200px', minWidth: 180 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>{row.name}</div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span className="badge" style={{ fontSize: 10 }}>{TRIAL_TRACKS[row.track] || row.track}</span>
+                  <span className="badge" style={{ fontSize: 10 }}>{row.question_count} вопросов</span>
+                  <span className={`badge ${state.cls}`} style={{ fontSize: 10 }}>{state.label}</span>
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Открыт с
+                </label>
+                <input className="form-input" type="datetime-local"
+                  value={draft.available_from || ''}
+                  onChange={e => updateDraft(row.id, { available_from: e.target.value })}
+                  style={{ minWidth: 190 }} />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Закрыт до
+                </label>
+                <input className="form-input" type="datetime-local"
+                  value={draft.available_until || ''}
+                  onChange={e => updateDraft(row.id, { available_until: e.target.value })}
+                  style={{ minWidth: 190 }} />
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button className="btn btn-primary btn-sm" onClick={() => save(row)}
+                  disabled={savingId === row.id}>
+                  {savingId === row.id ? 'Сохраняем…' : savedId === row.id ? 'Сохранено ✓' : 'Сохранить'}
+                </button>
+                <button className="btn btn-outline btn-sm"
+                  onClick={() => {
+                    updateDraft(row.id, { available_from: '', available_until: '' })
+                    save(row, { available_from: '', available_until: '' })
+                  }}
+                  title="Убрать обе даты — вариант доступен всегда">
+                  Бессрочно
+                </button>
+                <button className={row.is_visible ? 'btn btn-outline btn-sm' : 'btn btn-success btn-sm'}
+                  onClick={() => save(row, { is_visible: !draft.is_visible })}
+                  disabled={savingId === row.id}>
+                  {row.is_visible ? 'Скрыть' : 'Показать'}
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

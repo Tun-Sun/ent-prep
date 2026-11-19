@@ -107,6 +107,7 @@ export default function App() {
           <Route path="teacher/tests" element={<TeacherRoute><TestHistoryPage /></TeacherRoute>} />
           <Route path="teacher/tests/:sessionId" element={<TeacherRoute><TestResultPage /></TeacherRoute>} />
           <Route path="teacher/settings" element={<TeacherRoute><TeacherSettingsPage /></TeacherRoute>} />
+          <Route path="teacher/admin" element={<TeacherRoute><AdminPanelPage /></TeacherRoute>} />
           <Route path="admin" element={<TeacherRoute><AdminPanelPage /></TeacherRoute>} />
         </Route>
 

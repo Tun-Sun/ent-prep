@@ -28,6 +28,7 @@ export default function AnalyticsPage() {
   const [dateTo, setDateTo] = useState('')
   const [groupId, setGroupId] = useState('')
   const [subjectId, setSubjectId] = useState('')
+  const [statusFilter, setStatusFilter] = useState('active')
   const [studentSearch, setStudentSearch] = useState('')
   const [selectedStudent, setSelectedStudent] = useState(null)
   const [studentResults, setStudentResults] = useState([])
@@ -44,6 +45,7 @@ export default function AnalyticsPage() {
     if (dateTo) params.date_to = dateTo
     if (groupId) params.group_id = groupId
     if (subjectId) params.subject_id = subjectId
+    if (statusFilter) params.status = statusFilter
     if (selectedStudent) params.student_id = selectedStudent.id
 
     dashboardAPI.teacherAnalytics(params)
@@ -57,20 +59,20 @@ export default function AnalyticsPage() {
     groupsAPI.list().then(res => setGroups(Array.isArray(res.data) ? res.data : [])).catch(() => {})
   }, [])
 
-  useEffect(() => { setPage(1) }, [dateFrom, dateTo, groupId, subjectId, selectedStudent])
+  useEffect(() => { setPage(1) }, [dateFrom, dateTo, groupId, subjectId, statusFilter, selectedStudent])
 
-  useEffect(() => { loadData() }, [page, dateFrom, dateTo, groupId, subjectId, selectedStudent])
+  useEffect(() => { loadData() }, [page, dateFrom, dateTo, groupId, subjectId, statusFilter, selectedStudent])
 
   // Student search (filter by group if selected)
   useEffect(() => {
     if (!studentSearch || studentSearch.length < 2) { setStudentResults([]); return }
     const timer = setTimeout(() => {
-      groupsAPI.searchStudents(studentSearch, groupId).then(res => {
+      groupsAPI.searchStudents(studentSearch, groupId, statusFilter).then(res => {
         setStudentResults(Array.isArray(res.data) ? res.data : [])
       }).catch(() => {})
     }, 300)
     return () => clearTimeout(timer)
-  }, [studentSearch, groupId])
+  }, [studentSearch, groupId, statusFilter])
 
   // Sorting
   const sortedResults = useMemo(() => {
@@ -94,10 +96,10 @@ export default function AnalyticsPage() {
 
   const totalPages = data ? Math.ceil((data.total_count || 0) / (data.page_size || 20)) : 0
 
-  const filterActive = dateFrom || dateTo || groupId || subjectId || selectedStudent
+  const filterActive = dateFrom || dateTo || groupId || subjectId || statusFilter !== 'active' || selectedStudent
 
   const clearFilters = () => {
-    setDateFrom(''); setDateTo(''); setGroupId(''); setSubjectId('')
+    setDateFrom(''); setDateTo(''); setGroupId(''); setSubjectId(''); setStatusFilter('active')
     setSelectedStudent(null); setStudentSearch(''); setPage(1)
   }
 
@@ -150,6 +152,15 @@ export default function AnalyticsPage() {
               style={{ height: 40, borderRadius: 12, border: '1.5px solid var(--border)', padding: '0 12px', fontSize: 14, background: '#fff', minWidth: 140 }}>
               <option value="">Все предметы</option>
               {subjects.map(s => <option key={s.id} value={s.id}>{s.icon} {s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 4 }}>Доступ</label>
+            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+              style={{ height: 40, borderRadius: 12, border: '1.5px solid var(--border)', padding: '0 12px', fontSize: 14, background: '#fff', minWidth: 160 }}>
+              <option value="active">Активные</option>
+              <option value="inactive">Деактивированные</option>
+              <option value="all">Все ученики</option>
             </select>
           </div>
           <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
