@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import TelegramLoginButton, {
+import {
   TelegramDirectButton, TelegramReturnPanel, useTelegramConfig, useTelegramReturn,
 } from './TelegramLoginButton'
 import ProfileIntroCard from './ProfileIntroCard'
@@ -94,14 +94,6 @@ export default function LoginPage() {
               botId={telegram.botId}
               extra={lesson || {}}
               label={lesson ? 'Войти через Telegram и открыть урок' : 'Войти через Telegram'} />
-            {telegram.botName && (
-              <div style={{ marginTop: 12 }}>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>
-                  или кнопкой Telegram
-                </div>
-                <TelegramLoginButton botName={telegram.botName} retryToken={tg.error} />
-              </div>
-            )}
             {tg.entered && (
               <div style={{ marginTop: 10 }}>
                 <p className="text-sm" style={{ color: 'var(--danger)' }}>{tg.entered.notice}</p>

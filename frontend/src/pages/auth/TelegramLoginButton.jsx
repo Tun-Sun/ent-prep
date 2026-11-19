@@ -1,29 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { telegramAPI } from '../../api'
 
-// Кнопка «Log in with Telegram» (вход для учебного чата).
+// Вход через Telegram: крупная кнопка ведёт в том же окне на страницу согласия
+// Telegram, а подписанный ответ возвращается на наш адрес фрагментом `#tgAuthResult=`.
 //
-// Русскую подпись рисует наш экран, саму кнопку — скрипт Telegram. Подпись ответа
-// проверяет только сервер (секрет — SHA256 от токена бота), поэтому сюда попадает
-// честный `telegram_id`, а фронт не решает, кто вошёл.
-//
-// Возврат от Telegram читает страница, а не замыкание внутри виджета. На телефоне
-// (особенно в Telegram In-App Browser, откуда ученики открывают ссылки из чата)
-// колбэк `data-onauth` теряется при переходе между окнами, и кнопка «ничего не
-// делает». Пути доставки три, и все три ведут в один запрос на сервер:
-//  · `postMessage` от `oauth.telegram.org` с `{event:'auth_user', auth_data}` — так
-//    виджет отдаёт результат, когда человек уже авторизован в мессенджере: адрес
-//    страницы при этом не меняется ни в строке запроса, ни во фрагменте; скрипт
-//    Telegram принимает это сообщение сам и только потом сочиняет переход по
-//    `data-auth-url`, который на мобильном Chrome может не состояться;
-//  · `data-auth-url` — виджет несёт человека на эту же страницу, дописав в
-//    строку запроса `id`, `first_name`, `username`, `auth_date`, `photo_url`, `hash`;
-//  · `#tgAuthResult=` — когда мессенджер вернулся ответом во фрагмент (именно так
-//    приходит возврат на нашу отдельную кнопку: она идёт в том же окне, без iframe
-//    и без попапа), страница распаковывает его сама, не дожидаясь, пока скрипт
-//    Telegram инициализируется.
+// Русскую подпись рисует наш экран, подпись ответа проверяет только сервер (секрет —
+// SHA256 от токена бота), поэтому сюда попадает честный `telegram_id`, а фронт не
+// решает, кто вошёл. Виджет Telegram больше не ставим: на телефоне его попап и iframe
+// теряли ответ, а встроенный обработчик портил кириллицу при распаковке base64.
 
-const WIDGET_SRC = 'https://telegram.org/js/telegram-widget.js?22'
 const OAUTH_ORIGIN = 'https://oauth.telegram.org'
 
 // Поля, которые Telegram подписывает и приносит обратно.
@@ -279,40 +264,4 @@ export function TelegramDirectButton({ botId, extra, label }) {
       {label || 'Войти через Telegram'}
     </button>
   )
-}
-
-/**
- * Кнопка Telegram рисует его скрипт, но приём возврата целиком у нас. `data-auth-url`
- * сюда не передаём: увидев `auth_user`, скрипт сам уходит по этому адресу, и тогда на
- * один тап приходится два входа — наш запрос и перезагрузка страницы с полями в строке
- * запроса, которая запускает приёмник ещё раз. Хуже того, свой `#tgAuthResult=` скрипт
- * распаковывает «latin-1» (у него `atob` без UTF-8), и на сервер уезжает `ÐÐ¹Ð´Ð°` —
- * подпись не сходится, ученик видит «Подпись Telegram не совпала». Наш читатель декодирует
- * по-честному, а переход в том же окне делает крупная кнопка выше.
- */
-export default function TelegramLoginButton({ botName, retryToken }) {
-  const box = useRef(null)
-
-  useEffect(() => {
-    if (!botName || !box.current) return undefined
-    // Пока возврат не разыбран, виджет не ставим: он сам читает `#tgAuthResult=` и
-    // распаковывает base64 без UTF-8, а его переход дублировал бы наш запрос.
-    if (readTelegramReturn()) return undefined
-    const node = box.current
-    const script = document.createElement('script')
-    script.async = true
-    script.src = WIDGET_SRC
-    script.setAttribute('data-telegram-login', botName)
-    script.setAttribute('data-size', 'large')
-    script.setAttribute('data-radius', '10')
-    node.appendChild(script)
-    return () => {
-      script.remove()
-      node.innerHTML = ''
-    }
-    // `retryToken` меняется после отказа: адрес к тому времени уже очищен от возврата,
-    // и кнопка Telegram обязана встать на место, а не исчезнуть до перезагрузки.
-  }, [botName, retryToken])
-
-  return <div ref={box}></div>
 }
