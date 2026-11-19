@@ -57,6 +57,41 @@ def _completed_session(student, questions, correct_count, subject=None, is_ent=F
     return session
 
 
+class StudentDashboardViewTest(TestCase):
+    def test_session_without_subject_does_not_break_dashboard(self):
+        """Question Rush и дуэли не привязаны к предмету — кабинет обязан открыться."""
+        student = User.objects.create_user(
+            username='dash-student', password='password', role='student')
+        subject = _subject('Математика', 'math-dash')
+        topic = Topic.objects.create(name='Алгебра', subject=subject)
+        questions = _add_questions(topic, 2)
+        _completed_session(student, questions, correct_count=1)  # subject=None
+
+        client = APIClient()
+        client.force_authenticate(student)
+        response = client.get('/api/dashboard/student/')
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data['total_tests'], 1)
+        self.assertEqual(response.data['recent_tests'][0]['subject'], 'Тренировка')
+
+    def test_rush_session_is_labeled(self):
+        student = User.objects.create_user(
+            username='rush-dash', password='password', role='student')
+        subject = _subject('Математика', 'math-rush-dash')
+        topic = Topic.objects.create(name='Алгебра', subject=subject)
+        session = _completed_session(student, _add_questions(topic, 2), 1)
+        session.mode = 'rush'
+        session.save(update_fields=['mode'])
+
+        client = APIClient()
+        client.force_authenticate(student)
+        response = client.get('/api/dashboard/student/')
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data['recent_tests'][0]['subject'], 'Question Rush')
+
+
 class WeakTopicsTest(TestCase):
     def setUp(self):
         self.student = User.objects.create_user(username='weak-student', password='password', role='student')

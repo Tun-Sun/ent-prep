@@ -63,10 +63,13 @@ class StudentDashboardView(APIView):
 
         # Последние 10 тестов для графика
         recent = completed_sessions[:10]
+        # У Question Rush / дуэли предмета нет: раньше `s.subject.name` падал
+        # с AttributeError и весь кабинет показывал «Не удалось загрузить данные».
+        mode_labels = {'rush': 'Question Rush', 'duel': 'Дуэль'}
         chart_data = [
             {
                 'date': s.started_at.strftime('%d.%m'),
-                'subject': s.subject.name,
+                'subject': s.subject.name if s.subject else mode_labels.get(s.mode, 'Тренировка'),
                 'score': s.score_percent,
             }
             for s in reversed(list(recent))
