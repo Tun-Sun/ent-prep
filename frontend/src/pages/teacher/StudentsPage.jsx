@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { dashboardAPI, groupsAPI, subjectsAPI, authAPI } from '../../api'
 import { TRACK_LABELS, GRADUATION_TRACKS } from '../../constants/tracks'
-import { X, Users, Plus, Check, BookOpen, Search, Filter, GraduationCap, School, BarChart3, Trophy, FileDown, KeyRound, Settings, UserX, UserCheck } from 'lucide-react'
+import { X, Users, Plus, Check, BookOpen, Search, Filter, GraduationCap, School, BarChart3, Trophy, FileDown, KeyRound, Settings, UserX, UserCheck, Pencil } from 'lucide-react'
 
 export default function StudentsPage() {
   const [students, setStudents] = useState([])
@@ -27,6 +27,8 @@ export default function StudentsPage() {
   const [resetResult, setResetResult] = useState(null)
   const [resetting, setResetting] = useState(false)
   const [trackStudent, setTrackStudent] = useState(null)
+  const [nameStudent, setNameStudent] = useState(null)
+  const [nameDraft, setNameDraft] = useState('')
   const [primaryTrack, setPrimaryTrack] = useState('')
   const [extraTracks, setExtraTracks] = useState([])
   const [savingTracks, setSavingTracks] = useState(false)
@@ -109,6 +111,22 @@ export default function StudentsPage() {
       await loadData()
     } catch (err) {
       alert(err.response?.data?.error || 'Не удалось вернуть доступ')
+    }
+  }
+
+  const openName = (student) => {
+    setNameStudent(student)
+    setNameDraft(student.full_name || '')
+  }
+
+  const saveName = async () => {
+    if (!nameStudent || !nameDraft.trim()) return
+    try {
+      await groupsAPI.updateStudentName(nameStudent.id, nameDraft.trim())
+      setNameStudent(null)
+      await loadData()
+    } catch (err) {
+      alert(err.response?.data?.error || 'Не удалось изменить ФИО')
     }
   }
 
@@ -393,6 +411,14 @@ export default function StudentsPage() {
                     </div>
                   </td>
                   <td style={{ textAlign: 'right', padding: '14px 16px', whiteSpace: 'nowrap' }}>
+                    <button onClick={() => openName(s)} title="Изменить ФИО"
+                      style={{
+                        border: 'none', background: 'transparent', cursor: 'pointer',
+                        color: 'var(--primary)', marginRight: 10, verticalAlign: 'middle',
+                        display: 'inline-flex', alignItems: 'center',
+                      }}>
+                      <Pencil size={16} strokeWidth={1.8} />
+                    </button>
                     <button onClick={() => openTracks(s)} title="Треки подготовки"
                       style={{
                         border: 'none', background: 'transparent', cursor: 'pointer',
@@ -452,6 +478,39 @@ export default function StudentsPage() {
           </table>
         </div>
       </div>
+
+      {nameStudent && (
+        <div className="modal-overlay" onClick={() => setNameStudent(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}
+            style={{ maxWidth: 420, borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)' }}>
+            <div className="modal-header">
+              <h3 style={{ fontSize: 18, fontWeight: 800 }}>Изменить ФИО</h3>
+              <button className="btn btn-sm" onClick={() => setNameStudent(null)}>
+                <X size={16} />
+              </button>
+            </div>
+            <div style={{ padding: '12px 20px' }}>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
+                Сейчас: {nameStudent.full_name || nameStudent.username}
+              </p>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 4 }}>
+                Фамилия и имя
+              </label>
+              <input className="form-input" value={nameDraft}
+                onChange={e => setNameDraft(e.target.value)}
+                placeholder="Например, Ахметов Арман"
+                onKeyDown={e => { if (e.key === 'Enter') saveName() }}
+                style={{ width: '100%', marginBottom: 16 }} />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button className="btn btn-outline" onClick={() => setNameStudent(null)}>Отмена</button>
+                <button className="btn btn-primary" onClick={saveName} disabled={!nameDraft.trim()}>
+                  Сохранить
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {assignStudent && (
         <div className="modal-overlay" onClick={() => setAssignStudent(null)}>

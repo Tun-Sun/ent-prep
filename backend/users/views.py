@@ -124,6 +124,8 @@ class ProfileView(APIView):
             update_fields.append('username')
         if 'full_name' in request.data:
             full_name = request.data.get('full_name', '').strip()
+            if not full_name:
+                return Response({'error': 'ФИО не может быть пустым'}, status=status.HTTP_400_BAD_REQUEST)
             request.user.full_name = full_name
             # Экран знает одно поле «Фамилия и Имя», а журнал тренера читает
             # first_name/last_name — поэтому правим их вместе, иначе карточка
@@ -131,7 +133,8 @@ class ProfileView(APIView):
             first_name, last_name = split_full_name(full_name)
             request.user.first_name = first_name
             request.user.last_name = last_name
-            update_fields += ['full_name', 'first_name', 'last_name']
+            request.user.name_confirmed = True
+            update_fields += ['full_name', 'first_name', 'last_name', 'name_confirmed']
         if 'grade' in request.data:
             # Класс и трек — не игрушка: смена класса пересчитывала бы трек и
             # открывала чужой каталог. Но пустая карточка Telegram/GetCourse
@@ -265,6 +268,31 @@ class UpdateStudentTracksView(APIView):
             'track': student.track or '',
             'extra_tracks': student.extra_tracks,
         })
+
+
+class UpdateStudentNameView(APIView):
+    """Учитель/админ исправляет ФИО ученика, пришедшего из Telegram с ником."""
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, student_id):
+        if request.user.role not in ('teacher', 'admin'):
+            return Response({'error': 'Доступ только для учителей'}, status=403)
+        student = User.objects.filter(id=student_id, role='student').first()
+        if not student:
+            return Response({'error': 'Ученик не найден'}, status=404)
+        from .serializers import split_full_name
+        full_name = str(request.data.get('full_name', '')).strip()
+        if not full_name:
+            return Response({'error': 'ФИО не может быть пустым'}, status=400)
+        if len(full_name) > 150:
+            return Response({'error': 'ФИО слишком длинное'}, status=400)
+
+        student.full_name = full_name
+        student.first_name, student.last_name = split_full_name(full_name)
+        student.name_confirmed = True
+        student.save(update_fields=['full_name', 'first_name', 'last_name', 'name_confirmed'])
+        return Response({'id': student.id, 'full_name': student.full_name,
+                         'name_confirmed': True})
 
 
 class DeactivateStudentView(APIView):
@@ -514,6 +542,16 @@ class AdminUserDetailView(AdminRequiredMixin, generics.RetrieveUpdateAPIView):
             return AdminUserUpdateSerializer
         return AdminUserSerializer
 
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        if 'full_name' not in self.request.data:
+            return
+        from .serializers import split_full_name
+        user = serializer.instance
+        user.first_name, user.last_name = split_full_name(user.full_name)
+        user.name_confirmed = True
+        user.save(update_fields=['first_name', 'last_name', 'name_confirmed'])
+
 
 class AdminUserDeleteView(AdminRequiredMixin, generics.DestroyAPIView):
     queryset = User.objects.all()
@@ -702,11 +740,11 @@ class TelegramAuthView(APIView):
         Пустое поле не затирает: мессенджер отдаёт `last_name` только если человек его
         заполнял, а пустая строка в ответе виджета — не его вердикт.
 
-        Как только человек представился сам (карточка «Представься»: настоящие фамилия,
-        имя и класс), ник из Telegram перестаёт быть истиной — иначе каждый вход
-        стирал бы то, что учитель читает в журнале.
+        Как только человек представился сам (карточка «Представься») или ФИО
+        поправил учитель (`name_confirmed`), ник из Telegram перестаёт быть
+        истиной — иначе каждый вход стирал бы фамилию из журнала.
         """
-        introduced = student.is_profile_completed
+        introduced = student.is_profile_completed or student.name_confirmed
         changed = []
         for field, value in (('first_name', first), ('last_name', last),
                              ('telegram_username', tg_username)):

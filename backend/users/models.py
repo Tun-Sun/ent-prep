@@ -28,6 +28,10 @@ class User(AbstractUser):
     extra_tracks = models.JSONField(default=list, blank=True,
                                     verbose_name='Дополнительные треки')
     full_name = models.CharField(max_length=150, blank=True)
+    # ФИО, которое ввели сам ученик или поправил учитель. Такой строкой Telegram
+    # больше не управляет: иначе каждый вход затирал бы исправленную фамилию
+    # ником из мессенджера.
+    name_confirmed = models.BooleanField(default=False, verbose_name='ФИО подтверждено')
     school = models.CharField(max_length=200, blank=True)
     # Код ученика в GetCourse: по нему вход из урока находит своего человека, не
     # глядя на письмо (почту в ГК правят чаще, чем теряют аккаунт). Пустое значение

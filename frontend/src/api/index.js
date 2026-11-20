@@ -240,6 +240,7 @@ export const groupsAPI = {
     }),
   deactivateStudent: (studentId) => api.delete(`/auth/students/${studentId}/`),
   reactivateStudent: (studentId) => api.post(`/auth/students/${studentId}/reactivate/`),
+  updateStudentName: (studentId, fullName) => api.put(`/auth/students/${studentId}/name/`, { full_name: fullName }),
 }
 
 // Оцифровка новых книг: загрузил PDF — сервер сам прогнал конвейер и положил черновики

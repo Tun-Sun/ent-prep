@@ -55,6 +55,8 @@ function UsersTab() {
   const [roleFilter, setRoleFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('active')
   const [saving, setSaving] = useState(null)
+  const [nameUser, setNameUser] = useState(null)
+  const [nameDraft, setNameDraft] = useState('')
 
   const authHeaders = { Authorization: `Bearer ${localStorage.getItem('access_token')}` }
 
@@ -80,6 +82,22 @@ function UsersTab() {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token')}` },
       body: JSON.stringify(data),
     }).then(r => r.ok ? load() : null).finally(() => setSaving(null))
+  }
+
+  const saveName = async () => {
+    if (!nameUser || !nameDraft.trim()) return
+    try {
+      const res = await fetch(`/api/auth/admin/users/${nameUser.id}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token')}` },
+        body: JSON.stringify({ full_name: nameDraft.trim() }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      setNameUser(null)
+      load()
+    } catch {
+      alert('Не удалось изменить ФИО')
+    }
   }
 
   const deleteUser = (id, name) => {
@@ -156,6 +174,10 @@ function UsersTab() {
                     {u.last_login ? new Date(u.last_login).toLocaleDateString('ru-RU') : '—'}
                   </td>
                   <td>
+                    <button className="btn btn-sm btn-outline" style={{ marginRight: 6 }}
+                      onClick={() => { setNameUser(u); setNameDraft(u.full_name || '') }}>
+                      ФИО
+                    </button>
                     <button className="btn btn-sm btn-outline" style={{ color: 'var(--danger)' }}
                       onClick={() => deleteUser(u.id, u.full_name || u.username)}>
                       Удалить
@@ -165,6 +187,34 @@ function UsersTab() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {nameUser && (
+        <div className="modal-overlay" onClick={() => setNameUser(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}
+            style={{ maxWidth: 420, borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)' }}>
+            <div className="modal-header">
+              <h3 style={{ fontSize: 18, fontWeight: 800 }}>Изменить ФИО</h3>
+              <button className="btn btn-sm" onClick={() => setNameUser(null)}>✕</button>
+            </div>
+            <div style={{ padding: '12px 20px' }}>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
+                Логин: {nameUser.username}
+              </p>
+              <input className="form-input" value={nameDraft}
+                onChange={e => setNameDraft(e.target.value)}
+                placeholder="Фамилия и имя"
+                onKeyDown={e => { if (e.key === 'Enter') saveName() }}
+                style={{ width: '100%', marginBottom: 16 }} />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button className="btn btn-outline" onClick={() => setNameUser(null)}>Отмена</button>
+                <button className="btn btn-primary" onClick={saveName} disabled={!nameDraft.trim()}>
+                  Сохранить
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

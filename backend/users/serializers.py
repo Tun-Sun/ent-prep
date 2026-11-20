@@ -173,17 +173,19 @@ class AdminUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('id', 'username', 'email', 'role', 'full_name', 'school', 'grade', 'track',
-                  'extra_tracks', 'is_active', 'date_joined', 'last_login')
+                  'extra_tracks', 'is_active', 'name_confirmed', 'date_joined', 'last_login')
         read_only_fields = ('id', 'date_joined', 'last_login')
 
 
 class AdminUserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('role', 'is_active', 'grade', 'track', 'extra_tracks')
+        fields = ('role', 'is_active', 'grade', 'track', 'extra_tracks', 'full_name')
 
     def validate(self, attrs):
         """Админ меняет класс и трек теми же правилами, что и ученик в профиле."""
+        if 'full_name' in attrs and not str(attrs['full_name']).strip():
+            raise serializers.ValidationError({'full_name': 'ФИО не может быть пустым'})
         if not ({'role', 'grade', 'track', 'extra_tracks'} & set(attrs)):
             # PATCH только `is_active` не должен пересчитывать трек: иначе снятие
             # блокировки молча меняло бы профиль ученика.
