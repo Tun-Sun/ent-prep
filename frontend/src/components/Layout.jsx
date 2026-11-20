@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { useViewMode } from '../context/ViewModeContext'
 import { seesEntTools } from '../constants/tracks'
 import TrackGate from './TrackGate'
-import { User, TrendingUp, BookOpen, Library, ScanText, Wallet, Clock, LayoutDashboard, HelpCircle, FileEdit, Download, Users, BarChart3, Settings, Layers, Swords, ClipboardList } from 'lucide-react'
+import { User, TrendingUp, BookOpen, Library, ScanText, Wallet, Clock, LayoutDashboard, HelpCircle, FileEdit, Download, Users, BarChart3, Settings, Layers, Swords, ClipboardList, CalendarDays } from 'lucide-react'
 
 const iconMap = {
   'profile': User,
@@ -22,6 +22,7 @@ const iconMap = {
   'authorial': FileEdit,
   'import': Download,
   'students': Users,
+  'trials': CalendarDays,
   'groups': Layers,
   'results': BarChart3,
   'analytics': TrendingUp,
@@ -67,6 +68,7 @@ const teacherSections = (user) => [
     links: [
       { to: '/teacher/assign', label: 'Уроки и проверка', short: 'Уроки', icon: 'assign' },
       { to: '/teacher/students', label: 'Ученики и группы', short: 'Ученики', icon: 'students' },
+      { to: '/teacher/trials', label: 'Пробные тесты', short: 'Пробники', icon: 'trials' },
     ],
   },
   {

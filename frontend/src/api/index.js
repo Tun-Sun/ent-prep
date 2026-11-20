@@ -155,6 +155,12 @@ export const testsAPI = {
   startEnt: (data) => api.post('/tests/start-ent/', data),
   startTrial: (data) => api.post('/tests/start-trial/', data),
   trialOptions: (subjectId) => api.get('/tests/trial-options/', { params: { subject_id: subjectId } }),
+  trialAccess: (params) => api.get('/tests/trial-access/', { params }),
+  grantTrialAccess: (data) => api.post('/tests/trial-access/', data),
+  revokeTrialAccess: (studentId, subjectId) => api.delete('/tests/trial-access/', {
+    params: { student_id: studentId, subject_id: subjectId },
+  }),
+  trialAccessStats: (params) => api.get('/tests/trial-access/stats/', { params }),
   answer: (sessionId, data) => api.post(`/tests/${sessionId}/answer/`, data),
   answerBulk: (sessionId, data) => api.post(`/tests/${sessionId}/answers/bulk/`, data),
   finish: (sessionId) => api.post(`/tests/${sessionId}/finish/`),

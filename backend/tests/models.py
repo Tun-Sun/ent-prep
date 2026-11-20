@@ -6,6 +6,32 @@ from django.utils import timezone
 from subjects.models import Question
 
 
+class TrialAccess(models.Model):
+    """Ручной доступ к пробному тесту вне расписания.
+
+    Окно доступности закрывается само, но ученик мог не успеть сдать.
+    Тренер открывает ему доступ персонально — на конкретный вариант,
+    а не на все пробники сразу.
+    """
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='trial_accesses')
+    subject = models.ForeignKey(
+        'subjects.Subject', on_delete=models.CASCADE, related_name='trial_accesses')
+    granted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='granted_trial_accesses')
+    created_at = models.DateTimeField(default=timezone.now)
+    note = models.TextField(blank=True, default='', verbose_name='Причина')
+
+    class Meta:
+        verbose_name = 'Ручной доступ к пробнику'
+        verbose_name_plural = 'Ручной доступ к пробникам'
+        unique_together = ['student', 'subject']
+
+    def __str__(self):
+        return f'{self.student.username} → {self.subject.slug}'
+
+
 class TestSession(models.Model):
     MODE_CHOICES = [
         ('standard', 'Обычный тест'),

@@ -63,10 +63,18 @@ class SubjectViewSet(viewsets.ModelViewSet):
         if getattr(user, 'role', '') == 'student':
             qs = filter_subjects_for_user(qs, user)
             # Заранее объявленное окно доступности: пробник не должен светиться
-            # в каталоге до даты открытия и после даты закрытия.
+            # в каталоге до даты открытия и после даты закрытия. Исключение —
+            # доступ, который тренер открыл ученику персонально.
             now = timezone.now()
+            opened = []
+            if getattr(user, 'is_authenticated', False):
+                from tests.models import TrialAccess
+                opened = list(TrialAccess.objects.filter(student=user)
+                              .values_list('subject_id', flat=True))
             qs = qs.filter(
+                Q(id__in=opened) |
                 Q(available_from__isnull=True) | Q(available_from__lte=now),
+                Q(id__in=opened) |
                 Q(available_until__isnull=True) | Q(available_until__gte=now),
             )
         search = self.request.query_params.get('search', '')

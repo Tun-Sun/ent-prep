@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     StartTestView, StartEntView, StartTrialView, TrialProfileOptionsView, SubmitAnswerView,
     SubmitBulkAnswersView, FinishTestView, TestStateView,
-    TestResultView, StudentTestHistoryView,
+    TestResultView, StudentTestHistoryView, TrialAccessView, TrialAccessStatsView,
     TeacherTestHistoryView, TeacherTestResultView, TestPreviewView,
     AuthorialTestListView, AuthorialTestDetailView, AuthorialTestDeleteView,
     AIExplainView,
@@ -20,6 +20,8 @@ urlpatterns = [
     path('<int:session_id>/result/', TestResultView.as_view(), name='test-result'),
     path('history/', StudentTestHistoryView.as_view(), name='test-history'),
     path('teacher/history/', TeacherTestHistoryView.as_view(), name='teacher-test-history'),
+    path('trial-access/', TrialAccessView.as_view(), name='trial-access'),
+    path('trial-access/stats/', TrialAccessStatsView.as_view(), name='trial-access-stats'),
     path('teacher/result/<int:session_id>/', TeacherTestResultView.as_view(), name='teacher-test-result'),
     path('preview/', TestPreviewView.as_view(), name='test-preview'),
     path('authorial-tests/', AuthorialTestListView.as_view(), name='authorial-test-list'),

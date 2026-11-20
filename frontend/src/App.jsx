@@ -34,6 +34,7 @@ import TeacherDashboardPage from './pages/teacher/DashboardPage'
 
 import TeacherStudentsSectionPage from './pages/teacher/TeacherStudentsSectionPage'
 import AnalyticsPage from './pages/teacher/AnalyticsPage'
+import TeacherTrialsPage from './pages/teacher/TeacherTrialsPage'
 import QuestionsPage from './pages/teacher/QuestionsPage'
 import BookBankPage from './pages/teacher/BookBankPage'
 import BookIngestPage from './pages/teacher/BookIngestPage'
@@ -100,6 +101,7 @@ export default function App() {
           <Route path="teacher/import/google-forms" element={<TeacherRoute><GoogleFormsImportPage /></TeacherRoute>} />
 
           <Route path="teacher/students" element={<TeacherRoute><TeacherStudentsSectionPage /></TeacherRoute>} />
+          <Route path="teacher/trials" element={<TeacherRoute><TeacherTrialsPage /></TeacherRoute>} />
           <Route path="teacher/analytics" element={<TeacherRoute><AnalyticsPage /></TeacherRoute>} />
           <Route path="teacher/tests/preview" element={<TeacherRoute><TestPreviewPage /></TeacherRoute>} />
           <Route path="teacher/tests/authorial/:formId/edit" element={<TeacherRoute><AuthorialTestEditorPage /></TeacherRoute>} />

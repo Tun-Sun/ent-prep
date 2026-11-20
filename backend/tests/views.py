@@ -21,11 +21,13 @@ from core.choices import TrackChoices
 from core.tracks import (available_tracks, can_use_subject, filter_subjects_for_user,
                          requires_track, student_track)
 from subjects.trial_variants import (
-    ENT_TRIAL_SLUGS,
+    ENT_TRIAL_SLUGS, TRIAL_SLUGS,
     trial_topic_role as _trial_topic_role,
     trial_topics as _trial_topics,
 )
-from .models import TestSession, TestSessionQuestion, TestSectionResult, AnswerRecord
+from users.models import User, StudyGroup
+from .access import can_take_subject
+from .models import TestSession, TestSessionQuestion, TestSectionResult, AnswerRecord, TrialAccess
 from .serializers import (
     StartTestSerializer, StartEntSerializer, StartTrialSerializer, AnswerBulkSerializer,
     AnswerRecordCreateSerializer,
@@ -221,7 +223,7 @@ class StartTestView(APIView):
             )
         # Прямая ссылка на /test/start/<id> не должна обходить расписание.
         if (getattr(request.user, 'role', '') == 'student'
-                and not subject.is_available_now()):
+                and not can_take_subject(request.user, subject)):
             return Response(
                 {'error': 'Пробный тест сейчас недоступен'},
                 status=status.HTTP_403_FORBIDDEN,
@@ -539,7 +541,7 @@ class StartTrialView(APIView):
             return Response({'error': 'Этот предмет относится к другому треку'},
                             status=status.HTTP_403_FORBIDDEN)
         if (getattr(request.user, 'role', '') == 'student'
-                and not subject.is_available_now()):
+                and not can_take_subject(request.user, subject)):
             return Response({'error': 'Пробный тест сейчас недоступен'},
                             status=status.HTTP_403_FORBIDDEN)
 
@@ -710,6 +712,14 @@ def _expire_session(session):
     _on_session_completed(session)
 
 
+def _session_access_error(session, user):
+    """После дедлайна ответы не принимаем, пока тренер не откроет доступ."""
+    if session.subject_id and not can_take_subject(user, session.subject):
+        return Response({'error': 'Срок прохождения теста истёк'},
+                        status=status.HTTP_403_FORBIDDEN)
+    return None
+
+
 def _on_session_completed(session):
     """Пост-обработка завершённой сессии: достижения и дуэли."""
     try:
@@ -756,6 +766,10 @@ class SubmitAnswerView(APIView):
             session = TestSession.objects.get(id=session_id, student=request.user)
         except TestSession.DoesNotExist:
             return Response({'error': 'Сессия не найдена'}, status=status.HTTP_404_NOT_FOUND)
+
+        access_error = _session_access_error(session, request.user)
+        if access_error:
+            return access_error
 
         if session.is_completed:
             return Response({'error': 'Тест уже завершён'}, status=status.HTTP_400_BAD_REQUEST)
@@ -804,6 +818,10 @@ class SubmitBulkAnswersView(APIView):
             session = TestSession.objects.get(id=session_id, student=request.user)
         except TestSession.DoesNotExist:
             return Response({'error': 'Сессия не найдена'}, status=status.HTTP_404_NOT_FOUND)
+
+        access_error = _session_access_error(session, request.user)
+        if access_error:
+            return access_error
 
         if session.is_completed:
             return Response({'error': 'Тест уже завершён'}, status=status.HTTP_400_BAD_REQUEST)
@@ -856,6 +874,10 @@ class FinishTestView(APIView):
         except TestSession.DoesNotExist:
             return Response({'error': 'Сессия не найдена'}, status=status.HTTP_404_NOT_FOUND)
 
+        access_error = _session_access_error(session, request.user)
+        if access_error:
+            return access_error
+
         if session.is_completed:
             return Response({'error': 'Тест уже завершён'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -887,6 +909,10 @@ class TestStateView(APIView):
             session = TestSession.objects.get(id=session_id, student=request.user)
         except TestSession.DoesNotExist:
             return Response({'error': 'Сессия не найдена'}, status=status.HTTP_404_NOT_FOUND)
+
+        access_error = _session_access_error(session, request.user)
+        if access_error:
+            return access_error
 
         answers = session.answers.all()
         time_elapsed = (timezone.now() - session.started_at).total_seconds()
@@ -987,6 +1013,126 @@ class TeacherTestResultView(APIView):
 
         serializer = TeacherTestSessionDetailSerializer(session)
         return Response(serializer.data)
+
+
+class TrialAccessView(APIView):
+    """Тренер открывает/закрывает пробник конкретному ученику вручную."""
+    permission_classes = [IsAuthenticated, IsTeacherOrAdmin]
+
+    def _targets(self, request, from_body=False):
+        source = request.data if from_body else request.query_params
+        student_id = source.get('student_id')
+        subject_id = source.get('subject_id')
+        student = User.objects.filter(id=student_id, role='student').first()
+        subject = Subject.objects.filter(id=subject_id, slug__in=TRIAL_SLUGS).first()
+        if not student or not subject:
+            return None, None, Response(
+                {'error': 'Ученик или пробный вариант не найден'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return student, subject, None
+
+    def get(self, request):
+        subject_id = request.query_params.get('subject_id')
+        qs = TrialAccess.objects.select_related('student', 'subject', 'granted_by')
+        if subject_id:
+            qs = qs.filter(subject_id=subject_id)
+        return Response([
+            {
+                'student_id': row.student_id,
+                'student_name': row.student.full_name or row.student.username,
+                'subject_id': row.subject_id,
+                'subject_name': row.subject.name,
+                'granted_by': row.granted_by.username if row.granted_by else '',
+                'created_at': row.created_at.isoformat(),
+                'note': row.note,
+            }
+            for row in qs.order_by('-created_at')
+        ])
+
+    def post(self, request):
+        student, subject, error = self._targets(request, from_body=True)
+        if error:
+            return error
+        access, _ = TrialAccess.objects.get_or_create(
+            student=student, subject=subject,
+            defaults={
+                'granted_by': request.user,
+                'note': str(request.data.get('note', ''))[:500],
+            },
+        )
+        return Response({
+            'student_id': student.id, 'subject_id': subject.id,
+            'is_open': True, 'created_at': access.created_at.isoformat(),
+        }, status=status.HTTP_201_CREATED)
+
+    def delete(self, request):
+        student, subject, error = self._targets(request)
+        if error:
+            return error
+        TrialAccess.objects.filter(student=student, subject=subject).delete()
+        return Response({'student_id': student.id, 'subject_id': subject.id,
+                         'is_open': False})
+
+
+class TrialAccessStatsView(APIView):
+    """Кто сдал и кто не сдал пробник из учеников выбранной группы."""
+    permission_classes = [IsAuthenticated, IsTeacherOrAdmin]
+
+    def get(self, request):
+        group_id = request.query_params.get('group_id')
+        subject_id = request.query_params.get('subject_id')
+        group = StudyGroup.objects.filter(id=group_id).first()
+        subject = Subject.objects.filter(id=subject_id, slug__in=TRIAL_SLUGS).first()
+        if not group or not subject:
+            return Response({'error': 'Группа или пробный вариант не найден'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        # В отчёте нужны все зарегистрированные в группе, включая тех, у кого
+        # доступ уже снят: факт сдачи/несдачи от этого не меняется.
+        students = group.students.filter(role='student').order_by('full_name', 'username')
+        opened = set(TrialAccess.objects.filter(
+            subject=subject, student__in=students).values_list('student_id', flat=True))
+
+        latest = {}
+        sessions = TestSession.objects.filter(
+            subject=subject, student__in=students, is_completed=True,
+        ).select_related('student').order_by('completed_at', 'id')
+        for session in sessions:
+            latest[session.student_id] = session
+
+        results = []
+        for student in students:
+            session = latest.get(student.id)
+            results.append({
+                'student_id': student.id,
+                'student_name': student.full_name or student.username,
+                'username': student.username,
+                'is_active': student.is_active,
+                'submitted': session is not None,
+                'completed_at': session.completed_at.isoformat() if session else None,
+                'score_percent': round(session.score_percent, 1) if session else None,
+                'session_id': session.id if session else None,
+                'manual_access': student.id in opened,
+            })
+
+        submitted = sum(1 for row in results if row['submitted'])
+        return Response({
+            'group': {'id': group.id, 'name': group.name},
+            'subject': {'id': subject.id, 'name': subject.name, 'slug': subject.slug,
+                        'available_from': subject.available_from.isoformat()
+                        if subject.available_from else None,
+                        'available_until': subject.available_until.isoformat()
+                        if subject.available_until else None,
+                        'is_open_now': subject.is_available_now()},
+            'summary': {
+                'total': len(results),
+                'submitted': submitted,
+                'not_submitted': len(results) - submitted,
+                'manual_access': len(opened),
+            },
+            'results': results,
+        })
 
 
 class TestPreviewView(APIView):
