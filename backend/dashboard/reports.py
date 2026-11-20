@@ -77,7 +77,7 @@ def build_student_report(student, stats, subjects, weak_topics, forecast, recent
     )
 
     story = []
-    story.append(Paragraph('ENT Prep — отчёт по прогрессу', _h1))
+    story.append(Paragraph('INTELLECT — отчёт по прогрессу', _h1))
     story.append(Spacer(1, 6))
     story.append(Paragraph(
         f'Ученик: <b>{student.full_name or student.username}</b> '
@@ -212,7 +212,7 @@ def build_student_report(student, stats, subjects, weak_topics, forecast, recent
 
     story.append(Spacer(1, 16))
     story.append(Paragraph(
-        'Отчёт сформирован автоматически платформой ENT Prep · ent.pmci.kz', _small))
+        'Отчёт сформирован автоматически учебной платформой INTELLECT · ent.pmci.kz', _small))
 
     doc.build(story)
     return buf.getvalue()
