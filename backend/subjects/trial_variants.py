@@ -32,9 +32,12 @@ TRIAL_VARIANTS = (
 TRIAL_SLUGS = tuple(variant['slug'] for variant in TRIAL_VARIANTS)
 
 # Пробные ЕНТ идут как полноценная симуляция: три часа на вариант,
-# сколько бы вопросов ни залилось. NUET остаётся на автолимите.
+# сколько бы вопросов ни залилось. NUET — по часу на каждый из двух предметов
+# (математика и критическое мышление), то есть два часа на вариант.
 ENT_TRIAL_TIME_LIMIT = 3 * 60 * 60
+NUET_TRIAL_TIME_LIMIT = 2 * 60 * 60
 ENT_TRIAL_SLUGS = tuple(v['slug'] for v in TRIAL_VARIANTS if v['track'] == 'ent')
+NUET_TRIAL_SLUGS = tuple(v['slug'] for v in TRIAL_VARIANTS if v['track'] == 'nuet')
 
 # Ориентир для автолимита: минута на вопрос — та же цена, что у прежних
 # профильных предметов (40 вопросов / 2400 секунд). Полный вариант на 120
@@ -163,9 +166,14 @@ def sync_counts(*, seconds_per_question: int = DEFAULT_SECONDS_PER_QUESTION,
             continue
 
         new_count = total
+        if variant['slug'] in ENT_TRIAL_SLUGS:
+            fixed_limit = ENT_TRIAL_TIME_LIMIT
+        elif variant['slug'] in NUET_TRIAL_SLUGS:
+            fixed_limit = NUET_TRIAL_TIME_LIMIT
+        else:
+            fixed_limit = None
         new_limit = (time_limit
-                     or (ENT_TRIAL_TIME_LIMIT if variant['slug'] in ENT_TRIAL_SLUGS
-                         else None)
+                     or fixed_limit
                      or count_time_limit(total, seconds_per_question))
         changed = (subject.question_count != new_count
                    or subject.time_limit != new_limit)

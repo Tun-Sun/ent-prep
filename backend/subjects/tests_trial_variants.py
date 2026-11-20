@@ -17,7 +17,7 @@ from rest_framework.test import APIClient
 
 from subjects.models import Answer, Assignment, Question, Subject, Topic
 from subjects.trial_variants import (ENT_TRIAL_TIME_LIMIT, MAX_TIME_LIMIT, MIN_TIME_LIMIT,
-                                     TRIAL_SLUGS, count_time_limit)
+                                     NUET_TRIAL_TIME_LIMIT, TRIAL_SLUGS, count_time_limit)
 from tests.models import TestSession
 from users.models import User
 
@@ -126,6 +126,17 @@ class TrialCountsSyncTest(TestCase):
         subject = Subject.objects.get(slug='ent-03')
         self.assertEqual(subject.question_count, 120)
         self.assertEqual(subject.time_limit, 14400)
+
+    def test_nuet_gets_two_hours(self):
+        run('trial_variants')
+        add_questions(Subject.objects.get(slug='nuet-01'), 60, 'nuet-01')
+
+        run('trial_variants', '--sync')
+
+        subject = Subject.objects.get(slug='nuet-01')
+        self.assertEqual(subject.question_count, 60)
+        self.assertEqual(subject.time_limit, NUET_TRIAL_TIME_LIMIT)
+        self.assertEqual(subject.time_limit, 7200)
 
     def test_time_limit_bounds(self):
         self.assertEqual(count_time_limit(1), MIN_TIME_LIMIT)
