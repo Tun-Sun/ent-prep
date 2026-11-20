@@ -87,3 +87,20 @@ class TrialProfileChoiceTest(TestCase):
         }, format='json')
 
         self.assertEqual(response.status_code, 400)
+
+    def test_partial_answers_do_not_shrink_max_score(self):
+        response = self.api.post('/api/tests/start-trial/', {
+            'subject_id': self.trial.id,
+            'profile_ids': [self.math.id, self.physics.id],
+        }, format='json')
+        data = response.data
+        question = data['questions'][0]
+
+        self.api.post(f"/api/tests/{data['session_id']}/answer/", {
+            'question': question['id'],
+            'selected_answer': question['answers'][0]['id'],
+        }, format='json')
+        finish = self.api.post(f"/api/tests/{data['session_id']}/finish/")
+
+        self.assertEqual(finish.status_code, 200)
+        self.assertEqual(finish.data['total_points'], 90)

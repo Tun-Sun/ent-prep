@@ -663,7 +663,9 @@ def _recalc_session(session):
 
     session.correct_answers = correct_count
     session.earned_points = earned
-    session.total_points = total or session.total_points
+    # Максимум — это все выданные в сессию вопросы, а не только те, на которые
+    # успели ответить. Иначе в результате было бы «2 из 5» при 90 вопросах.
+    session.total_points = max(session.total_points, total)
     session.calculate_score()
 
     # Обновляем section results
