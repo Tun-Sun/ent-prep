@@ -153,6 +153,7 @@ export const importAPI = {
 export const testsAPI = {
   start: (data) => api.post('/tests/start/', data),
   startEnt: (data) => api.post('/tests/start-ent/', data),
+  resume: (subjectId) => api.get(`/tests/resume/${subjectId}/`),
   startTrial: (data) => api.post('/tests/start-trial/', data),
   trialOptions: (subjectId) => api.get('/tests/trial-options/', { params: { subject_id: subjectId } }),
   trialAccess: (params) => api.get('/tests/trial-access/', { params }),

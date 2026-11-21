@@ -49,6 +49,7 @@ export default function TestPage() {
   const isRush = location.pathname === '/test/rush'
   const isDuel = location.pathname.startsWith('/test/duel/')
   const isTrialStart = !isEnt && !isRush && !isDuel && Boolean(location.state?.trial)
+  const wantsResume = !isEnt && !isRush && !isDuel && Boolean(location.state?.resume)
   const entProfileIds = location.state || {}
   const topicIds = location.state?.topicIds || []
 
@@ -72,7 +73,7 @@ export default function TestPage() {
   const [trialError, setTrialError] = useState('')
   const [trialStarting, setTrialStarting] = useState(false)
 
-  const applyStart = (data) => {
+  const applyStart = (data, restoreAnswers = false) => {
     const incoming = data.questions || []
     // Серверные секции (полная симуляция и ЕНТ-пробник) задают порядок.
     const grouped = data.sections?.length
@@ -83,6 +84,18 @@ export default function TestPage() {
     setSections(grouped.sections)
     setTimeLimit(data.time_limit || 600)
     setTotalPoints(data.total_points || 0)
+    if (restoreAnswers && data.answer_map) {
+      const restored = {}
+      for (const q of grouped.questions) {
+        const saved = data.answer_map[q.id]
+        if (!saved) continue
+        if (q.question_type === 'single_choice') restored[q.id] = saved.selected_answer
+        else if (q.question_type === 'multiple_choice') restored[q.id] = saved.selected_answers || []
+        else if (q.question_type === 'short_answer') restored[q.id] = saved.text_answer || ''
+        else if (q.question_type === 'matching') restored[q.id] = saved.matching_pairs || {}
+      }
+      setAnswers(restored)
+    }
   }
 
   const startTrial = async () => {
@@ -110,6 +123,17 @@ export default function TestPage() {
   useEffect(() => {
     const bootstrap = async () => {
       try {
+        if (wantsResume) {
+          try {
+            const saved = await testsAPI.resume(parseInt(subjectId))
+            if (saved.data?.session_id) {
+              applyStart(saved.data, true)
+              return
+            }
+          } catch {
+            // Нет незавершённой попытки — начинаем новую обычным путём.
+          }
+        }
         if (isTrialStart) {
           const res = await testsAPI.trialOptions(parseInt(subjectId))
           const options = res.data || []
@@ -148,7 +172,7 @@ export default function TestPage() {
       }
     }
     bootstrap()
-  }, [subjectId, isEnt, isRush, isDuel, isTrialStart, duelId])
+  }, [subjectId, isEnt, isRush, isDuel, isTrialStart, wantsResume, duelId])
 
   const current = questions[currentIdx]
 

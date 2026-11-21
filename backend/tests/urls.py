@@ -1,7 +1,7 @@
 from django.urls import path
 from .views import (
     StartTestView, StartEntView, StartTrialView, TrialProfileOptionsView, SubmitAnswerView,
-    SubmitBulkAnswersView, FinishTestView, TestStateView,
+    SubmitBulkAnswersView, FinishTestView, TestStateView, ResumeTestView,
     TestResultView, StudentTestHistoryView, TrialAccessView, TrialAccessStatsView,
     TeacherTestHistoryView, TeacherTestResultView, TestPreviewView,
     AuthorialTestListView, AuthorialTestDetailView, AuthorialTestDeleteView,
@@ -10,6 +10,7 @@ from .views import (
 
 urlpatterns = [
     path('start/', StartTestView.as_view(), name='start-test'),
+    path('resume/<int:subject_id>/', ResumeTestView.as_view(), name='resume-test'),
     path('start-trial/', StartTrialView.as_view(), name='start-trial'),
     path('trial-options/', TrialProfileOptionsView.as_view(), name='trial-options'),
     path('start-ent/', StartEntView.as_view(), name='start-ent'),

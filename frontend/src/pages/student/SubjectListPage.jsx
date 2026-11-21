@@ -86,7 +86,7 @@ export default function SubjectListPage() {
       navigate(`/teacher/questions?subject=${subj.id}`)
     } else {
       navigate(`/test/start/${subj.id}`, {
-        state: (isTrial(subj) && subj.slug.startsWith('ent-')) ? { trial: true } : {},
+        state: isTrial(subj) ? { trial: subj.slug.startsWith('ent-'), resume: true } : {},
       })
     }
   }

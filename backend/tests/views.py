@@ -903,6 +903,62 @@ class FinishTestView(APIView):
         })
 
 
+class ResumeTestView(APIView):
+    """Продолжить незавершённую сессию вместо создания новой.
+
+    Когда окно доступности закрылось раньше, чем ученик нажал «Завершить»,
+    ответы уже сохранены, а сам тест висит незавершённым. После открытия
+    доступа человек должен договорить её, а не начинать заново.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, subject_id):
+        session = TestSession.objects.filter(
+            student=request.user, subject_id=subject_id, is_completed=False,
+        ).select_related('subject').order_by('-started_at').first()
+        if not session or not session.session_questions.exists():
+            return Response({'error': 'Незавершённой попытки нет'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if not can_take_subject(request.user, session.subject):
+            return Response({'error': 'Срок прохождения теста истёк'},
+                            status=status.HTTP_403_FORBIDDEN)
+
+        questions = [row.question for row in
+                     session.session_questions.select_related('question')]
+        answer_map = {}
+        for answer in session.answers.all():
+            answer_map[answer.question_id] = {
+                'selected_answer': answer.selected_answer_id,
+                'selected_answers': answer.selected_answers,
+                'matching_pairs': answer.matching_pairs,
+                'text_answer': answer.text_answer,
+            }
+        time_left = max(0, session.time_limit
+                        - int((timezone.now() - session.started_at).total_seconds()))
+
+        sections = []
+        idx = 0
+        for result in session.section_results.all().order_by('id'):
+            sections.append({
+                'id': result.section,
+                'label': result.get_section_display(),
+                'start': idx + 1,
+                'end': idx + result.total_questions,
+                'count': result.total_questions,
+            })
+            idx += result.total_questions
+
+        return Response({
+            'session_id': session.id,
+            'total_questions': len(questions),
+            'questions': _build_question_data(questions, request),
+            'sections': sections,
+            'time_limit': time_left,
+            'answer_map': answer_map,
+            'total_points': session.total_points,
+        })
+
+
 class TestStateView(APIView):
     permission_classes = [IsAuthenticated]
 
