@@ -913,10 +913,13 @@ class ResumeTestView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, subject_id):
+        # Берём последнюю попытку: если ученик уже сдал более позднюю, старые
+        # незавершённые сессии не должны перезаписывать результат в статистике.
         session = TestSession.objects.filter(
-            student=request.user, subject_id=subject_id, is_completed=False,
+            student=request.user, subject_id=subject_id,
         ).select_related('subject').order_by('-started_at').first()
-        if not session or not session.session_questions.exists():
+        if (not session or session.is_completed
+                or not session.session_questions.exists()):
             return Response({'error': 'Незавершённой попытки нет'},
                             status=status.HTTP_404_NOT_FOUND)
         if not can_take_subject(request.user, session.subject):

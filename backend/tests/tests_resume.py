@@ -67,8 +67,14 @@ class ResumeTestTest(TestCase):
         response = self.api.get(f'/api/tests/resume/{self.subject.id}/')
         self.assertEqual(response.status_code, 200, response.data)
 
-    def test_no_open_session_returns_404(self):
+    def test_completed_latest_session_is_not_resumed(self):
         self.session.is_completed = True
-        self.session.save(update_fields=['is_completed'])
+        self.session.completed_at = timezone.now()
+        self.session.save(update_fields=['is_completed', 'completed_at'])
+        response = self.api.get(f'/api/tests/resume/{self.subject.id}/')
+        self.assertEqual(response.status_code, 404)
+
+    def test_no_session_returns_404(self):
+        self.session.delete()
         response = self.api.get(f'/api/tests/resume/{self.subject.id}/')
         self.assertEqual(response.status_code, 404)
