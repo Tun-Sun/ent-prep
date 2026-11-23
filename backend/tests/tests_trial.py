@@ -80,13 +80,42 @@ class TrialProfileChoiceTest(TestCase):
         self.assertIn('География', response.data['error'])
         self.assertEqual(TestSession.objects.count(), 0)
 
-    def test_two_different_profile_subjects_required(self):
+    def test_duplicate_profile_subjects_rejected(self):
         response = self.api.post('/api/tests/start-trial/', {
             'subject_id': self.trial.id,
             'profile_ids': [self.math.id, self.math.id],
         }, format='json')
 
         self.assertEqual(response.status_code, 400)
+
+    def test_start_without_profiles_only_mandatory_parts(self):
+        response = self.api.post('/api/tests/start-trial/', {
+            'subject_id': self.trial.id,
+            'profile_ids': [],
+        }, format='json')
+
+        self.assertEqual(response.status_code, 200, response.data)
+        data = response.data
+        self.assertEqual(data['total_questions'], 30)
+        self.assertEqual(len(data['sections']), 2)
+        session = TestSession.objects.get(id=data['session_id'])
+        self.assertEqual(
+            set(TestSessionQuestion.objects.filter(session=session)
+                .values_list('section', flat=True)),
+            {'history', 'math_lit'},
+        )
+
+    def test_start_with_one_profile(self):
+        response = self.api.post('/api/tests/start-trial/', {
+            'subject_id': self.trial.id,
+            'profile_ids': [self.math.id],
+        }, format='json')
+
+        self.assertEqual(response.status_code, 200, response.data)
+        data = response.data
+        self.assertEqual(data['total_questions'], 60)
+        self.assertEqual([s['id'] for s in data['sections']],
+                         ['history', 'math_lit', 'profile1'])
 
     def test_partial_answers_do_not_shrink_max_score(self):
         response = self.api.post('/api/tests/start-trial/', {

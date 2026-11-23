@@ -322,8 +322,9 @@ export default function SubjectListPage() {
             </div>
             <div style={{ padding: '0 24px 24px' }}>
               <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 16 }}>
-                Выберите пробный вариант по номеру. В ЕНТ-пробнике на следующем шаге
-                нужно выбрать два профильных предмета; NUET начинается сразу.
+                Выберите пробный вариант по номеру. В ЕНТ-пробнике профильные
+                предметы выбирать необязательно — можно взять один, два или только
+                обязательные части. NUET начинается сразу.
               </p>
               {['ent', 'nuet'].map(track => {
                 const group = orderedTrials.filter(s => s.track === track)

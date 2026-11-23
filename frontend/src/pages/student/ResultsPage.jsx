@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { testsAPI } from '../../api'
 import FormattedText from '../../components/FormattedText'
 import ProgressRing from '../../components/ProgressRing'
-import { ArrowLeft, CheckCircle2, XCircle, HelpCircle } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, XCircle, HelpCircle, Printer } from 'lucide-react'
 
 export default function ResultsPage() {
   const { sessionId } = useParams()
@@ -39,11 +39,17 @@ export default function ResultsPage() {
         <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Назад</span>
       </div>
 
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', margin: 0 }}>
-          {isEnt ? 'Результаты ЕНТ' : 'Результаты теста'}
-        </h1>
-        <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>{result.subject_name}</p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', margin: 0 }}>
+            {isEnt ? 'Результаты ЕНТ' : 'Результаты теста'}
+          </h1>
+          <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginTop: 4 }}>{result.subject_name}</p>
+        </div>
+        <button className="btn btn-outline" onClick={() => window.print()}
+          style={{ borderRadius: 12, display: 'flex', alignItems: 'center', gap: 6, padding: '10px 18px' }}>
+          <Printer size={16} strokeWidth={1.5} /> Печать
+        </button>
       </div>
 
       <div className="result-card">
@@ -122,6 +128,11 @@ export default function ResultsPage() {
         <div className="card-header" style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
           Разбор ответов
         </div>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '10px 20px 0' }}>
+          Здесь видны ваш ответ и правильный ответ по каждому вопросу. Запишите
+          ошибки в тетрадь и прорешайте их ещё раз — так пробник принесёт пользу.
+          Кнопка «Печать» сохранит разбор в PDF.
+        </p>
         {result.answers.map((ans, i) => {
           const Icon = ans.is_correct ? CheckCircle2 : XCircle
           const iconColor = ans.is_correct ? '#16a34a' : '#dc2626'
@@ -225,8 +236,18 @@ export default function ResultsPage() {
 
       <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 28, marginBottom: 40 }}>
         <Link to="/" className="btn btn-primary" style={{ borderRadius: 12, padding: '10px 24px', fontWeight: 600 }}>На дашборд</Link>
+        <Link to="/history" className="btn btn-outline" style={{ borderRadius: 12, padding: '10px 24px', fontWeight: 600 }}>Мои результаты</Link>
         <Link to="/subjects" className="btn btn-outline" style={{ borderRadius: 12, padding: '10px 24px', fontWeight: 600 }}>Новый тест</Link>
       </div>
+
+      <style>{`
+        @media print {
+          .sidebar, .mobile-tabbar, .btn, .test-header { display: none !important; }
+          .card { box-shadow: none !important; border: 1px solid #ddd !important; break-inside: avoid; }
+          .review-item { break-inside: avoid; }
+          body { background: #fff !important; }
+        }
+      `}</style>
     </div>
   )
 }

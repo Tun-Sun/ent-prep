@@ -148,11 +148,11 @@ class StartEntSerializer(serializers.Serializer):
 
 
 class StartTrialSerializer(serializers.Serializer):
-    """Старт ЕНТ-пробника: обязательные части + два профильных предмета."""
+    """Старт ЕНТ-пробника: обязательные части и 0–2 выбранных профиля."""
     subject_id = serializers.IntegerField()
     profile_ids = serializers.ListField(
-        child=serializers.IntegerField(), min_length=2, max_length=2,
-        label='Два профильных предмета',
+        child=serializers.IntegerField(), min_length=0, max_length=2,
+        label='Профильные предметы (необязательно)',
     )
 
 

@@ -70,6 +70,7 @@ export default function TestPage() {
   const [showTrialModal, setShowTrialModal] = useState(false)
   const [trialOptions, setTrialOptions] = useState([])
   const [trialPick, setTrialPick] = useState(['', ''])
+  const [onlyMandatory, setOnlyMandatory] = useState(false)
   const [trialError, setTrialError] = useState('')
   const [trialStarting, setTrialStarting] = useState(false)
 
@@ -99,8 +100,9 @@ export default function TestPage() {
   }
 
   const startTrial = async () => {
-    if (!trialPick[0] || !trialPick[1] || trialPick[0] === trialPick[1]) {
-      setTrialError('Выберите два разных профильных предмета')
+    const ids = onlyMandatory ? [] : trialPick.filter(Boolean).map(id => parseInt(id))
+    if (new Set(ids).size !== ids.length) {
+      setTrialError('Выберите разные профильные предметы')
       return
     }
     setTrialStarting(true)
@@ -108,7 +110,7 @@ export default function TestPage() {
     try {
       const res = await testsAPI.startTrial({
         subject_id: parseInt(subjectId),
-        profile_ids: trialPick.map(id => parseInt(id)),
+        profile_ids: ids,
       })
       applyStart(res.data)
       setShowTrialModal(false)
@@ -142,6 +144,7 @@ export default function TestPage() {
             options.find(o => o.available)?.id || '',
             options.filter(o => o.available)[1]?.id || '',
           ])
+          setOnlyMandatory(false)
           setShowTrialModal(true)
           return
         }
@@ -336,11 +339,19 @@ export default function TestPage() {
           <div style={{ padding: '0 24px 24px' }}>
             <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 16 }}>
               История Казахстана (20) и математическая грамотность (10) уже включены.
-              История Казахстана (20) и математическая грамотность (10) уже включены.
-              Выберите два профильных предмета — время на пробник 3 часа.
+              Профильные предметы выбирать необязательно: можно взять один, два
+              или ни одного. Время на пробник — 3 часа.
             </p>
             {trialError && <div className="alert alert-error" style={{ marginBottom: 12 }}>{trialError}</div>}
-            {[0, 1].map(index => (
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14,
+              fontSize: 14, cursor: 'pointer',
+            }}>
+              <input type="checkbox" checked={onlyMandatory}
+                onChange={e => setOnlyMandatory(e.target.checked)} />
+              Только обязательные части — без профильных предметов
+            </label>
+            {!onlyMandatory && [0, 1].map(index => (
               <select key={index} className="form-select" value={trialPick[index]}
                 onChange={e => setTrialPick(prev => {
                   const next = [...prev]
@@ -349,7 +360,7 @@ export default function TestPage() {
                 })}
                 style={{ width: '100%', marginBottom: 10, padding: '12px 14px', borderRadius: 12,
                   border: '1px solid var(--border)', fontSize: 15, background: '#fff', cursor: 'pointer' }}>
-                <option value="">Профильный предмет {index + 1}</option>
+                <option value="">Не выбирать</option>
                 {trialOptions.map(o => (
                   <option key={o.id} value={o.id}
                     disabled={!o.available || trialPick[1 - index] === o.id}>

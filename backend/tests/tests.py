@@ -62,7 +62,7 @@ class TestSessionApiTest(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(AnswerRecord.objects.count(), 0)
 
-    def test_expired_session_rejects_answers_and_completes(self):
+    def test_expired_session_saves_answers_and_completes(self):
         session_id = self._start()
         session = TestSession.objects.get(id=session_id)
         session.started_at = timezone.now() - timedelta(seconds=session.time_limit + 1)
@@ -73,9 +73,11 @@ class TestSessionApiTest(TestCase):
             {'question': self.question.id, 'selected_answer': self.correct.id},
             format='json',
         )
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data['expired'])
         session.refresh_from_db()
         self.assertTrue(session.is_completed)
+        self.assertEqual(session.answers.count(), 1)
 
     def test_multiple_choice_rejects_more_than_two_answers(self):
         question = self._question('Выберите два', question_type='multiple_choice')

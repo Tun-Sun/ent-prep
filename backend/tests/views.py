@@ -545,9 +545,10 @@ class StartTrialView(APIView):
             return Response({'error': 'Пробный тест сейчас недоступен'},
                             status=status.HTTP_403_FORBIDDEN)
 
-        profiles = list(Subject.objects.filter(id__in=serializer.validated_data['profile_ids']))
-        if len(profiles) != 2:
-            return Response({'error': 'Выберите два профильных предмета'},
+        profile_ids = serializer.validated_data['profile_ids']
+        profiles = list(Subject.objects.filter(id__in=profile_ids))
+        if len(profiles) != len(profile_ids):
+            return Response({'error': 'Профильный предмет не найден'},
                             status=status.HTTP_400_BAD_REQUEST)
         chosen = []
         for profile in profiles:
@@ -556,7 +557,7 @@ class StartTrialView(APIView):
                 return Response({'error': f'«{profile.name}» не профильный предмет'},
                                 status=status.HTTP_400_BAD_REQUEST)
             chosen.append((role, profile))
-        if len({role for role, _ in chosen}) != 2:
+        if len({role for role, _ in chosen}) != len(chosen):
             return Response({'error': 'Выберите разные профильные предметы'},
                             status=status.HTTP_400_BAD_REQUEST)
 
@@ -585,9 +586,11 @@ class StartTrialView(APIView):
             selected[role] = qs
             labels[role] = profile.name
 
-        section_keys = {'history': 'history', 'math_lit': 'math_lit',
-                        chosen[0][0]: 'profile1', chosen[1][0]: 'profile2'}
-        order = ['history', 'math_lit', chosen[0][0], chosen[1][0]]
+        section_keys = {'history': 'history', 'math_lit': 'math_lit'}
+        order = ['history', 'math_lit']
+        for number, (role, _) in enumerate(chosen, start=1):
+            section_keys[role] = f'profile{number}'
+            order.append(role)
         all_questions = []
         for role in order:
             all_questions.extend(selected[role])
@@ -775,9 +778,7 @@ class SubmitAnswerView(APIView):
 
         if session.is_completed:
             return Response({'error': 'Тест уже завершён'}, status=status.HTTP_400_BAD_REQUEST)
-        if _session_expired(session):
-            _expire_session(session)
-            return Response({'error': 'Время теста истекло'}, status=status.HTTP_400_BAD_REQUEST)
+        expired = _session_expired(session)
 
         serializer = AnswerRecordCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -803,12 +804,17 @@ class SubmitAnswerView(APIView):
         _save_answer_record(session, question, selected_answer, selected_answers,
                             matching_pairs, text_answer)
         _recalc_session(session)
+        # Даже после истечения времени сохраняем последний ответ, чтобы в
+        # результате было видно, на что ученик успел ответить.
+        if expired:
+            _expire_session(session)
 
         return Response({
             'answered': session.answers.count(),
             'total': session.total_questions,
             'correct': session.correct_answers,
             'earned_points': session.earned_points,
+            'expired': expired,
         })
 
 
@@ -827,9 +833,7 @@ class SubmitBulkAnswersView(APIView):
 
         if session.is_completed:
             return Response({'error': 'Тест уже завершён'}, status=status.HTTP_400_BAD_REQUEST)
-        if _session_expired(session):
-            _expire_session(session)
-            return Response({'error': 'Время теста истекло'}, status=status.HTTP_400_BAD_REQUEST)
+        expired = _session_expired(session)
 
         serializer = AnswerBulkSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -858,12 +862,15 @@ class SubmitBulkAnswersView(APIView):
                 _save_answer_record(session, *prepared)
 
         _recalc_session(session)
+        if expired:
+            _expire_session(session)
 
         return Response({
             'answered': session.answers.count(),
             'total': session.total_questions,
             'correct': session.correct_answers,
             'earned_points': session.earned_points,
+            'expired': expired,
         })
 
 
@@ -880,18 +887,19 @@ class FinishTestView(APIView):
         if access_error:
             return access_error
 
-        if session.is_completed:
-            return Response({'error': 'Тест уже завершён'}, status=status.HTTP_400_BAD_REQUEST)
-
-        if _session_expired(session):
-            _expire_session(session)
-            return Response({'error': 'Время теста истекло'}, status=status.HTTP_400_BAD_REQUEST)
-
-        _recalc_session(session)
-        session.completed_at = timezone.now()
-        session.is_completed = True
-        session.save()
-        _on_session_completed(session)
+        # Повторное нажатие «Завершить» и авто-завершение по таймеру не должны
+        # ломать экран результата: отвечаем тем же набором данных.
+        if not session.is_completed:
+            if _session_expired(session):
+                _expire_session(session)
+            else:
+                _recalc_session(session)
+                session.completed_at = timezone.now()
+                session.is_completed = True
+                session.save()
+                _on_session_completed(session)
+        else:
+            session.refresh_from_db()
 
         return Response({
             'session_id': session.id,
