@@ -8,7 +8,7 @@ from .views import (
     StudyGroupListCreateView, StudyGroupDetailView,
     StudyGroupAddStudentsView, CreateStudentView, StudentListView,
     AdminUserListView, AdminUserDetailView, AdminUserDeleteView,
-    AdminSettingListView, AdminSettingDetailView,
+    AdminSettingListView, AdminSettingDetailView, AdminInviteCodeView,
     TelegramAuthView, TelegramConfigView, PublicGroupListView,
 )
 
@@ -42,5 +42,5 @@ urlpatterns = [
     path('admin/users/<int:pk>/', AdminUserDetailView.as_view(), name='admin-user-detail'),
     path('admin/users/<int:pk>/delete/', AdminUserDeleteView.as_view(), name='admin-user-delete'),
     path('admin/settings/', AdminSettingListView.as_view(), name='admin-settings'),
-    path('admin/settings/<int:pk>/', AdminSettingDetailView.as_view(), name='admin-setting-detail'),
+    path('admin/invite-code/', AdminInviteCodeView.as_view(), name='admin-invite-code'),    path('admin/settings/<int:pk>/', AdminSettingDetailView.as_view(), name='admin-setting-detail'),
 ]

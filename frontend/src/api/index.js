@@ -214,6 +214,7 @@ export const adminAPI = {
   settings: () => api.get('/auth/admin/settings/'),
   updateSetting: (id, data) => api.patch(`/auth/admin/settings/${id}/`, data),
   createSetting: (data) => api.post('/auth/admin/settings/', data),
+  inviteCode: () => api.get('/auth/admin/invite-code/'),
 }
 
 // Groups (учительские группы)

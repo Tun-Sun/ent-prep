@@ -564,6 +564,13 @@ class AdminUserDeleteView(AdminRequiredMixin, generics.DestroyAPIView):
         return Response({'message': 'Пользователь удалён'}, status=status.HTTP_200_OK)
 
 
+class AdminInviteCodeView(AdminRequiredMixin, APIView):
+    """Инвайт-код для регистрации учителей — только администратору."""
+
+    def get(self, request):
+        return Response({'invite_code': settings.TEACHER_INVITE_CODE or ''})
+
+
 class AdminSettingListView(AdminRequiredMixin, generics.ListCreateAPIView):
     queryset = SystemSetting.objects.all()
     serializer_class = SystemSettingSerializer

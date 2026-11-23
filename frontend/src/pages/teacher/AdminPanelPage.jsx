@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { subjectsAPI, questionsAPI } from '../../api'
+import { subjectsAPI, questionsAPI, adminAPI } from '../../api'
 import { Users, BookOpen, FolderOpen, Settings, CalendarDays } from 'lucide-react'
 
 const iconSize = 18
@@ -714,6 +714,8 @@ function SettingsTab() {
   const [settings, setSettings] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(null)
+  const [inviteCode, setInviteCode] = useState('')
+  const [copied, setCopied] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -722,7 +724,22 @@ function SettingsTab() {
     }).then(r => r.json()).then(setSettings).catch(() => {}).finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    adminAPI.inviteCode()
+      .then(res => setInviteCode(res.data?.invite_code || ''))
+      .catch(() => {})
+  }, [])
+
+  const copyInvite = async () => {
+    try {
+      await navigator.clipboard.writeText(inviteCode)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setCopied(false)
+    }
+  }
 
   const update = (id, value) => {
     setSaving(id)
@@ -747,9 +764,31 @@ function SettingsTab() {
   if (loading) return <div className="text-center"><div className="spinner"></div></div>
 
   return (
-    <div className="card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <p className="page-subtitle" style={{ margin: 0 }}>Системные настройки (ключ — значение)</p>
+    <>
+      <div className="card" style={{ marginBottom: 20, borderLeft: '4px solid var(--primary)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: 6 }}>
+              Инвайт-код для учителей
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: '0.08em', color: 'var(--primary)' }}>
+              {inviteCode || '—'}
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '6px 0 0' }}>
+              Этим кодом преподаватель регистрируется: вкладка «Преподаватель» → поле «Инвайт-код центра».
+            </p>
+          </div>
+          {inviteCode && (
+            <button className="btn btn-outline" onClick={copyInvite}>
+              {copied ? '✓ Скопировано' : 'Скопировать'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+          <p className="page-subtitle" style={{ margin: 0 }}>Системные настройки (ключ — значение)</p>
         <button className="btn btn-primary btn-sm" onClick={addSetting}>+ Добавить</button>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -770,6 +809,7 @@ function SettingsTab() {
         ))}
         {settings.length === 0 && <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: 32 }}>Нет настроек. Нажмите «+ Добавить»</p>}
       </div>
-    </div>
+      </div>
+    </>
   )
 }
