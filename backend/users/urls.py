@@ -4,7 +4,7 @@ from .views import (
     ClearTestHistoryView, DeleteOwnAccountView,
     UpdateStudentSubjectsView, UpdateStudentTracksView, DeactivateStudentView,
     ReactivateStudentView, UpdateStudentNameView,
-    ChangePasswordView, ResetStudentPasswordView, ResetStudentPasswordView,
+    ChangePasswordView, ResetStudentPasswordView, SetPasswordView, ResetStudentPasswordView,
     StudyGroupListCreateView, StudyGroupDetailView,
     StudyGroupAddStudentsView, CreateStudentView, StudentListView,
     AdminUserListView, AdminUserDetailView, AdminUserDeleteView,
@@ -15,6 +15,7 @@ from .views import (
 urlpatterns = [
     path('register/', RegisterView.as_view(), name='register'),
     path('login/change-password/', ChangePasswordView.as_view(), name='change-password'),
+    path('login/set-password/', SetPasswordView.as_view(), name='set-password'),
     # Вход из учебного чата: виджет Telegram отдаёт подписанные поля, сервер сверяет
     # подпись и выдаёт ключи. Конфиг — чтобы фронт не пересобирать ради ника бота.
     path('telegram/', TelegramAuthView.as_view(), name='telegram-auth'),

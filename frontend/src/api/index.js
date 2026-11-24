@@ -54,6 +54,7 @@ export const authAPI = {
   clearHistory: () => api.delete('/auth/profile/history/'),
   deleteAccount: (password) => api.delete('/auth/profile/account/', { data: { password } }),
   changePassword: (oldPassword, newPassword) => api.post('/auth/login/change-password/', { old_password: oldPassword, new_password: newPassword }),
+  setPassword: (password) => api.post('/auth/login/set-password/', { password }),
   resetStudentPassword: (studentId, password) => api.post(`/auth/students/${studentId}/reset-password/`, password ? { password } : {}),
 }
 

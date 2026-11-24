@@ -331,6 +331,28 @@ class ReactivateStudentView(APIView):
                          'is_active': True, 'message': 'Доступ восстановлен'})
 
 
+class SetPasswordView(APIView):
+    """Задать пароль ученику, который вошёл через Telegram без пароля.
+
+   Так человек может зайти с ноутбука по логину и паролю, если Telegram-вход
+   на другом устройстве не проходит. Требуется уже действующая сессия.
+   """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        if user.has_usable_password():
+            return Response({'error': 'У вас уже есть пароль — используйте смену пароля'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        password = str(request.data.get('password', ''))
+        if len(password) < 8:
+            return Response({'error': 'Пароль — минимум 8 символов'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        user.set_password(password)
+        user.save(update_fields=['password'])
+        return Response({'ok': True, 'username': user.username})
+
+
 class ChangePasswordView(APIView):
     """Смена собственного пароля (все роли)."""
     permission_classes = [IsAuthenticated]
@@ -394,9 +416,10 @@ class StudyGroupListCreateView(TeacherGroupMixin, generics.ListCreateAPIView):
     serializer_class = StudyGroupSerializer
 
     def get_queryset(self):
-        if self.request.user.role == 'admin':
-            return StudyGroup.objects.all()
-        return StudyGroup.objects.filter(teacher=self.request.user)
+        # Группы видны всем тренерам: учитель может быть прикреплён к другой
+        # группе или только что заведён, а список нужен для фильтров и отчётов.
+        # Менять остаётся только свои группы (см. detail/добавление учеников).
+        return StudyGroup.objects.all()
 
     def perform_create(self, serializer):
         serializer.save(teacher=self.request.user)
@@ -409,9 +432,13 @@ class StudyGroupDetailView(TeacherGroupMixin, generics.RetrieveUpdateDestroyAPIV
         return StudyGroupSerializer
 
     def get_queryset(self):
-        if self.request.user.role == 'admin':
-            return StudyGroup.objects.all()
-        return StudyGroup.objects.filter(teacher=self.request.user)
+        return StudyGroup.objects.all()
+
+    def check_object_permissions(self, request, obj):
+        super().check_object_permissions(request, obj)
+        if (request.method != 'GET' and request.user.role != 'admin'
+                and obj.teacher_id != request.user.id):
+            self.permission_denied(request, message='Нет доступа к чужой группе')
 
 
 class StudyGroupAddStudentsView(TeacherGroupMixin, APIView):

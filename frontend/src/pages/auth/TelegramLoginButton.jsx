@@ -39,6 +39,10 @@ export function useTelegramConfig() {
 export function telegramReturnUrl(extra) {
   const url = new URL(window.location.href)
   url.hash = ''
+  // BotFather обычно принимает только голый домен без www. Если ученик зашёл
+  // через www, Telegram отвергает вход «domain invalid» — приводим адрес к
+  // каноническому и для origin, и для return_to.
+  if (url.hostname.startsWith('www.')) url.hostname = url.hostname.slice(4)
   url.searchParams.set(RETURN_MARKER, '1')
   if (extra) {
     if (extra.assignment_id) url.searchParams.set('assignment_id', extra.assignment_id)
@@ -61,7 +65,9 @@ export function telegramAuthUrl(botId, extra) {
   if (!botId) return ''
   const url = new URL(OAUTH_ORIGIN + '/auth')
   url.searchParams.set('bot_id', String(botId))
-  url.searchParams.set('origin', window.location.origin)
+  const origin = new URL(window.location.origin)
+  if (origin.hostname.startsWith('www.')) origin.hostname = origin.hostname.slice(4)
+  url.searchParams.set('origin', origin.toString().replace(/\/$/, ''))
   url.searchParams.set('return_to', telegramReturnUrl(extra))
   return url.toString()
 }

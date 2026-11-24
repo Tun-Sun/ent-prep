@@ -140,12 +140,14 @@ class UserSerializer(serializers.ModelSerializer):
     profile_subjects = serializers.SerializerMethodField()
     avatar = serializers.SerializerMethodField()
     profile_completed = serializers.SerializerMethodField()
+    has_password = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = ('id', 'username', 'email', 'role', 'full_name', 'first_name', 'last_name',
                   'grade', 'track', 'extra_tracks', 'school', 'profile_subjects', 'avatar',
-                  'is_staff', 'is_superuser', 'telegram_username', 'profile_completed')
+                  'is_staff', 'is_superuser', 'telegram_username', 'profile_completed',
+                  'has_password')
         read_only_fields = ('id', 'username', 'role', 'track', 'extra_tracks',
                             'is_staff', 'is_superuser', 'telegram_username')
 
@@ -167,6 +169,9 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_profile_completed(self, obj):
         return obj.is_profile_completed
+
+    def get_has_password(self, obj):
+        return obj.has_usable_password()
 
 
 class AdminUserSerializer(serializers.ModelSerializer):

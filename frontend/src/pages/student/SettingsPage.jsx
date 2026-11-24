@@ -20,6 +20,8 @@ export default function SettingsPage() {
   const [showPasswords, setShowPasswords] = useState(false)
   const [changingPassword, setChangingPassword] = useState(false)
   const [passwordMessage, setPasswordMessage] = useState(null)
+  const [newSetPassword, setNewSetPassword] = useState('')
+  const [settingPassword, setSettingPassword] = useState(false)
 
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const fileInputRef = useRef(null)
@@ -71,6 +73,25 @@ export default function SettingsPage() {
       setPasswordMessage({ type: 'error', text: error.response?.data?.error || 'Ошибка смены пароля' })
     } finally {
       setChangingPassword(false)
+    }
+  }
+
+  const setPassword = async () => {
+    if (newSetPassword.length < 8) {
+      setPasswordMessage({ type: 'error', text: 'Пароль — минимум 8 символов' })
+      return
+    }
+    setSettingPassword(true)
+    setPasswordMessage(null)
+    try {
+      await authAPI.setPassword(newSetPassword)
+      setProfile(prev => ({ ...prev, has_password: true }))
+      setNewSetPassword('')
+      setPasswordMessage({ type: 'success', text: 'Пароль задан. Теперь можно войти с ноутбука по логину и паролю.' })
+    } catch (error) {
+      setPasswordMessage({ type: 'error', text: error.response?.data?.error || 'Не удалось задать пароль' })
+    } finally {
+      setSettingPassword(false)
     }
   }
 
@@ -267,6 +288,32 @@ export default function SettingsPage() {
       </div>
 
       <div className="card" style={{ padding: 24, marginBottom: 28 }}>
+        {profile?.has_password === false ? (
+          <>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Вход с ноутбука</div>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
+              Вы вошли через Telegram и пока не задавали пароль. Если с ноутбука
+              Telegram-вход не проходит, придумайте пароль — и сможете заходить
+              по логину <strong>{profile?.username}</strong> и этому паролю.
+            </p>
+            <input className="form-input" type="password" value={newSetPassword}
+              onChange={e => setNewSetPassword(e.target.value)}
+              placeholder="Новый пароль (минимум 8 символов)"
+              style={{ width: '100%', height: 44, borderRadius: 12, marginBottom: 12 }} />
+            {passwordMessage && (
+              <div style={{
+                padding: '10px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600, marginBottom: 12,
+                background: passwordMessage.type === 'success' ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)',
+                color: passwordMessage.type === 'success' ? '#059669' : '#DC2626',
+              }}>{passwordMessage.text}</div>
+            )}
+            <button onClick={setPassword} disabled={settingPassword || newSetPassword.length < 8}
+              className="btn btn-primary" style={{ width: '100%', borderRadius: 12, padding: 11 }}>
+              {settingPassword ? 'Сохраняем...' : 'Задать пароль'}
+            </button>
+          </>
+        ) : (
+          <>
         <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Смена пароля</div>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
           Используйте пароль длиной не менее 8 символов
@@ -323,6 +370,8 @@ export default function SettingsPage() {
           <Check size={16} strokeWidth={2} />
           {changingPassword ? 'Сохраняем...' : 'Сменить пароль'}
         </button>
+          </>
+        )}
       </div>
 
       <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: 10, paddingLeft: 4 }}>
