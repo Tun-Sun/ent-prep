@@ -46,7 +46,8 @@ class TrialVariantsCommandTest(TestCase):
     def test_creates_six_variants_with_required_flags(self):
         run('trial_variants')
 
-        self.assertEqual(Subject.objects.filter(slug__in=TRIAL_SLUGS).count(), 6)
+        self.assertEqual(Subject.objects.filter(slug__in=TRIAL_SLUGS).count(),
+                         len(TRIAL_SLUGS))
         for slug in ('ent-01', 'ent-02', 'ent-03'):
             subject = Subject.objects.get(slug=slug)
             self.assertEqual(subject.track, 'ent')
@@ -64,7 +65,8 @@ class TrialVariantsCommandTest(TestCase):
         run('trial_variants')
         run('trial_variants')
 
-        self.assertEqual(Subject.objects.filter(slug__in=TRIAL_SLUGS).count(), 6)
+        self.assertEqual(Subject.objects.filter(slug__in=TRIAL_SLUGS).count(),
+                         len(TRIAL_SLUGS))
         # Повторный запуск не плодит темы и не затирает вопросы.
         self.assertEqual(Topic.objects.count(), 0)
 

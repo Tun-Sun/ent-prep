@@ -27,6 +27,7 @@ TRIAL_VARIANTS = (
     {'slug': 'nuet-01', 'track': 'nuet', 'number': 1, 'icon': '📗', 'sort_order': -3},
     {'slug': 'nuet-02', 'track': 'nuet', 'number': 2, 'icon': '📗', 'sort_order': -2},
     {'slug': 'nuet-03', 'track': 'nuet', 'number': 3, 'icon': '📗', 'sort_order': -1},
+    {'slug': 'nuet-04', 'track': 'nuet', 'number': 4, 'icon': '📗', 'sort_order': 0},
 )
 
 TRIAL_SLUGS = tuple(variant['slug'] for variant in TRIAL_VARIANTS)
