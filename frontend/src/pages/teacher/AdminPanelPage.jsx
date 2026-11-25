@@ -224,7 +224,7 @@ function UsersTab() {
 // Пробные варианты живут отдельными предметами. Даты открытия/закрытия —
 // единственное, что тренеру нужно менять перед каждым пробником, поэтому
 // выносим их в отдельную вкладку, а не в общий список предметов.
-const TRIAL_SLUGS = ['ent-01', 'ent-02', 'ent-03', 'nuet-01', 'nuet-02', 'nuet-03', 'nuet-04']
+const TRIAL_SLUGS = ['ent-01', 'ent-02', 'ent-03', 'ent-04', 'nuet-01', 'nuet-02', 'nuet-03', 'nuet-04']
 const TRIAL_TRACKS = { ent: 'ЕНТ', nuet: 'NUET' }
 
 function trialScheduleState(row) {
